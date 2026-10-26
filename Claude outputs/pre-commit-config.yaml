@@ -1,0 +1,48 @@
+# Instalar una vez por clon:  uv run pre-commit install
+# Ejecutar sobre todo el repo: uv run pre-commit run --all-files
+default_install_hook_types: [pre-commit]
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+        exclude: ^\.vscode/
+      - id: check-merge-conflict
+      - id: no-commit-to-branch   # obliga a trabajar en ramas + Pull Request
+        args: [--branch, main]
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: [--fix=lf]
+        exclude: \.(bat|ps1)$
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.2
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  # Quita salidas de los notebooks: las salidas pueden contener filas de datos reales
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.9.1
+    hooks:
+      - id: nbstripout
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.0
+    hooks:
+      - id: gitleaks
+
+  - repo: local
+    hooks:
+      - id: bloquear-datos
+        name: Bloquear archivos de datos y modelos (no van a Git)
+        language: fail
+        entry: "Archivo de datos/modelo detectado. Los datos se comparten por canal privado, no por Git:"
+        files: \.(csv|xlsx|xls|parquet|feather|sav|dta|joblib|pkl|db|bundle)$

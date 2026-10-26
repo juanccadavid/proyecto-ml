@@ -1,0 +1,34 @@
+# Uso: docker compose up --build   ->  App: http://localhost:8501   MLflow: http://localhost:5000
+services:
+  app:
+    build: .
+    image: proyecto-ml:latest
+    ports:
+      - "8501:8501"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    volumes:
+      - ./models:/app/models:ro   # modelo entrenado (best_model.joblib)
+      - ./data:/app/data:ro       # datos locales, solo lectura
+    depends_on:
+      - mlflow
+
+  mlflow:
+    image: proyecto-ml:latest
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+      --host 0.0.0.0 --port 5000
+      --allowed-hosts mlflow:5000,localhost:5000,127.0.0.1:5000
+    ports:
+      - "5000:5000"
+    user: root
+    volumes:
+      - mlflow_data:/mlflow
+
+volumes:
+  mlflow_data:

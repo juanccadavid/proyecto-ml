@@ -1,0 +1,32 @@
+# Configuración de Gitleaks: reglas por defecto + reglas propias del proyecto.
+# Se ejecuta en cada commit vía pre-commit y manualmente con `make secrets`.
+title = "proyecto-ml gitleaks"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "anon-salt"
+description = "Sal de anonimización (ANON_SALT) expuesta: permitiría re-identificar personas"
+regex = '''(?i)ANON_SALT\s*[=:]\s*['"]?([^\s'"]{8,})'''
+keywords = ["anon_salt"]
+
+[[rules]]
+id = "documento-identidad"
+description = "Posible número de cédula/documento asignado a un campo de identificación"
+regex = '''(?i)(c[eé]dula|num_?documento|nro_?documento|documento_identidad|nit)\s*[=:,;]\s*['"]?\d{6,10}\b'''
+keywords = ["cedula", "cédula", "documento", "nit"]
+
+[[rules]]
+id = "uri-con-credenciales"
+description = "URI de base de datos o tracking con usuario:contraseña embebidos"
+regex = '''(?i)\b(postgres(?:ql)?|mysql|mssql|sqlserver|mongodb(?:\+srv)?|https?)://[^\s:/@]+:[^\s@/]+@[^\s'"]+'''
+keywords = ["://"]
+
+[allowlist]
+description = "Archivos que solo contienen plantillas o datos de prueba"
+paths = [
+    '''\.env\.example$''',
+    '''uv\.lock$''',
+    '''tests/.*''',
+]

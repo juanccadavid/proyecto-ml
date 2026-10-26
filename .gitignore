@@ -1,0 +1,67 @@
+# ---------- Secretos ----------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---------- DATOS (nunca a Git) ----------
+data/*
+!data/README.md
+!data/raw/
+!data/processed/
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+*.csv
+*.xlsx
+*.xls
+*.parquet
+*.feather
+*.sav
+*.dta
+
+# ---------- Modelos y experimentos ----------
+models/**
+!models/.gitkeep
+*.joblib
+*.pkl
+mlflow.db
+mlflow.db-journal
+mlruns/
+mlartifacts/
+
+# ---------- Respaldos git ----------
+*.bundle
+
+# ---------- Python / entorno ----------
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+.ipynb_checkpoints/
+
+# ---------- Reportes generados pesados ----------
+reports/**/*.html
+
+# ---------- IDEs / SO ----------
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.cursor/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- Claude Code (config personal) ----------
+.claude/settings.local.json

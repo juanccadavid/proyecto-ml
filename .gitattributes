@@ -1,0 +1,33 @@
+# Normaliza saltos de línea: el repo guarda LF aunque se trabaje en Windows.
+* text=auto eol=lf
+
+# Archivos que DEBEN ser LF (se rompen con CRLF en Linux/Docker)
+*.sh        text eol=lf
+Makefile    text eol=lf
+Dockerfile  text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.toml      text eol=lf
+
+# Scripts de Windows sí van con CRLF
+*.bat       text eol=crlf
+*.ps1       text eol=crlf
+
+# Notebooks: diffs legibles
+*.ipynb     text eol=lf
+
+# Binarios
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.pdf       binary
+*.db        binary
+*.joblib    binary
+*.pkl       binary
+*.parquet   binary
+*.xlsx      binary
+*.bundle    binary
+
+# Lockfile generado: no mostrar diff completo en PRs
+uv.lock     linguist-generated=true -diff

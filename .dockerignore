@@ -1,0 +1,42 @@
+# Secretos
+.env
+.env.*
+!.env.example
+
+# Datos y artefactos (se montan como volumen, nunca dentro de la imagen)
+data/
+mlflow.db*
+mlruns/
+mlartifacts/
+*.bundle
+*.csv
+*.xlsx
+*.parquet
+
+# Git y herramientas
+.git/
+.gitleaks.toml
+.pre-commit-config.yaml
+.mcp.json
+.claude/
+.cursor/
+.vscode/
+.idea/
+
+# Entorno y cachés
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+
+# No necesarios en la imagen
+sesiones/
+tests/
+reports/
+*.md
+!README.md
+limpiar-y-finalizar.sh
