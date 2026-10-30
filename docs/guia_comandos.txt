@@ -1,0 +1,308 @@
+===============================================================================================
+ GUÍA DE COMANDOS Y CONCEPTOS - PROYECTO I (abandono de asociados del fondo de empleados)
+===============================================================================================
+
+ Ruta de este archivo: docs/guia_comandos.txt
+ Todos los comandos se ejecutan desde la RAÍZ del repo (la carpeta que tiene pyproject.toml).
+ En Windows: usar Git Bash (o PowerShell para todo menos scripts .sh).
+
+ Contenido
+   1. Git ......................... guardar y compartir cambios
+   2. uv .......................... ambiente de Python y dependencias
+   3. Make ........................ atajos de terminal (make <objetivo>)
+   4. Modularizar ................. paquete, módulos e imports
+   5. Contratos de datos .......... qué dato es válido (y su test)
+   6. Pipeline .................... por qué fit solo con train
+   7. Generador de datos .......... asociados ficticios para probar y validar
+   8. Flujo completo de un día de trabajo
+
+
+===============================================================================================
+ 1. GIT - guardar y compartir cambios
+===============================================================================================
+
+ Regla del equipo: NUNCA se hace commit en main (un hook lo bloquea). Todo entra por rama + PR.
+
+ 1.1 Empezar una tarea
+     git switch main                       # ir a main
+     git pull                              # traer lo último de GitHub
+     git switch -c feature/juan-<tema>     # crear rama nueva (feature/, fix/, eda/, docs/, test/)
+
+ 1.2 Mientras trabajas
+     git status                            # qué archivos cambiaron
+     git diff                              # qué cambió exactamente
+     git add <archivo1> <archivo2>         # preparar archivos concretos (mejor que "git add .")
+     git commit -m "feat: agrega X"        # guardar (prefijos: feat, fix, docs, test, chore)
+     git log --oneline -5                  # últimos commits
+
+     Al hacer commit corren los hooks (ruff, gitleaks, bloquear-datos...). Si un hook CORRIGE un
+     archivo, el commit falla: vuelve a hacer "git add" y "git commit".
+
+ 1.3 Subir y abrir el Pull Request
+     git push -u origin feature/juan-<tema>        # primera vez en la rama
+     git push                                      # las siguientes veces
+     gh pr create --base main --fill               # abrir PR (o el botón en GitHub)
+     gh pr checks                                  # ver si el CI pasó (debe estar en verde)
+
+ 1.4 Después de que el PR se fusiona (merge)
+     git switch main
+     git pull
+     git branch -d feature/juan-<tema>             # borrar la rama local
+
+ 1.5 Si main avanzó mientras trabajabas
+     git fetch origin
+     git merge origin/main                         # trae lo nuevo de main a tu rama
+     # Si hay conflicto: abrir el archivo, buscar <<<<<<< ======= >>>>>>>, dejar lo correcto,
+     # luego: git add <archivo>  y  git commit
+
+ 1.6 Glosario rápido
+     pull   = traer cambios de GitHub a tu PC         push  = subir tus commits a GitHub
+     add    = elegir qué va en el próximo commit      commit = guardar una "foto" con mensaje
+     merge  = unir una rama con otra                  PR    = pedir revisión antes de unir a main
+
+ NUNCA: subir datos reales, .env, claves (sb_secret, tokens) ni usar --no-verify.
+
+
+===============================================================================================
+ 2. UV - ambiente de Python y dependencias
+===============================================================================================
+
+ uv crea el ambiente (.venv) y instala las versiones EXACTAS de uv.lock. Así todos usan lo mismo.
+
+ 2.1 Comandos del día a día
+     uv sync                       # crea/actualiza .venv según uv.lock (hazlo después de cada pull)
+     uv run python script.py       # ejecuta con el Python del proyecto (no hace falta "activar")
+     uv run pytest                 # cualquier herramienta del proyecto, con "uv run" delante
+
+ 2.2 Agregar o quitar librerías (actualiza pyproject.toml Y uv.lock; ambos van en el mismo commit)
+     uv add pandera                # dependencia del proyecto (la necesita el código)
+     uv add --dev ipykernel        # solo para desarrollo (tests, notebooks, linters)
+     uv remove <paquete>           # quitarla
+     uv sync --extra hf            # instalar extras opcionales (TabPFN/torch, ~2 GB)
+
+ 2.3 Los que NO se usan aquí (y por qué)
+     uv init              -> crea un proyecto NUEVO. Este ya está creado (pyproject.toml existe).
+     uv pip install X     -> instala sin anotar en pyproject.toml/uv.lock: a tus compañeros no les
+                             llega y el proyecto "funciona en mi máquina". Usa "uv add".
+     pip install X        -> igual que el anterior. No usar dentro del proyecto.
+
+ 2.4 Dónde quedó cada cosa en pyproject.toml
+     dependencies          -> lo que el código necesita para correr (pandas, scikit-learn, pandera...)
+     [dependency-groups]   -> herramientas de desarrollo (pytest, ruff, ipykernel...)
+     optional-dependencies -> extras que se piden a propósito (hf, explain)
+
+
+===============================================================================================
+ 3. MAKE - atajos de terminal en la raíz del repo
+===============================================================================================
+
+ "make <objetivo>" ejecuta un comando largo con un nombre corto. "make" solo, lista todo.
+ Cada objetivo es un comando "uv run ..." (ver Makefile) por si no tienes make instalado.
+ Windows: winget install ezwinports.make
+
+ 3.1 Entorno
+     make setup            uv sync + crea .env desde .env.example + instala hooks de pre-commit
+     make setup-hf         además instala TabPFN/transformers (pesado)
+
+ 3.2 Datos de ejemplo y contrato
+     make ejemplo          regenera los 50 asociados ficticios de data/ejemplo/
+     make contrato         valida data/ejemplo contra el contrato (o: make contrato DATA=otro.parquet)
+     make contrato-sql     regenera supabase/asociados.sql después de cambiar el contrato
+     make contrato-web     regenera web/contrato.js (campos del formulario)
+     make supabase-subir   sube un dataset a Supabase (valida antes; omite cédulas repetidas)
+     make formulario       abre el formulario web (datos aleatorios + botón Enviar)
+
+ 3.3 Modelos
+     make abandono         Ridge + KMeans de abandono, validados con 1000 asociados NUEVOS
+                           ej.: make abandono ARGS="--nuevos 5000 --semilla-nuevos 7 --alpha 10"
+     make train            compara logística / random forest / HistGB con MLflow (DATA=... ARGS=...)
+     make demo             dataset sintético genérico + entrenamiento
+     make mlflow-ui        ver experimentos en http://localhost:5000
+     make app              demo Streamlit en http://localhost:8501
+
+ 3.4 Calidad (antes de abrir un PR: make check)
+     make check            lint + todas las pruebas
+     make test             todas las pruebas          make test-fast   sin las lentas
+     make lint             revisa estilo              make format      lo corrige solo
+     make cov              pruebas con cobertura      make hooks       todos los hooks de pre-commit
+     make secrets          busca claves filtradas con gitleaks
+
+ 3.5 Otros
+     make up / down / logs     Docker (app + MLflow)
+     make salt                 genera ANON_SALT para anonimizar (va al .env, no se comparte)
+     make bundle               respaldo offline de todo el historial de Git
+     make clean / clean-all    limpia cachés (clean-all borra también .venv, mlruns/ y models/)
+
+
+===============================================================================================
+ 4. MODULARIZAR - paquete, módulos e imports
+===============================================================================================
+
+ La lógica reutilizable NO va en notebooks ni copiada entre scripts: va en un PAQUETE y se importa.
+
+ 4.1 Vocabulario (con el ejemplo de clase: from taxi.data import config as cf)
+     taxi    -> PAQUETE: una carpeta con __init__.py que agrupa módulos (la "librería").
+     data    -> MÓDULO: el archivo data.py dentro del paquete (también podría ser un subpaquete).
+     config  -> lo que se IMPORTA desde ese módulo: una función, una clase, una variable o
+                incluso otro módulo. (Ojo: "método" es una función definida DENTRO de una clase;
+                una función suelta en un módulo es simplemente "función".)
+     as cf   -> ALIAS: un nombre más corto para usarlo en tu código.
+
+ 4.2 En este proyecto el paquete es proyecto_ml (carpeta src/proyecto_ml/)
+     src/proyecto_ml/
+       config.py      rutas (DATA_DIR, MODELS_DIR...) y variables del .env  -> get_settings()
+       data.py        cargar datos, separar X/y, train/test             -> load_dataset, split_data
+       features.py    preprocesamiento (imputar, escalar, one-hot)       -> build_preprocessor
+       models.py      catálogo de modelos + armado del pipeline          -> get_models, build_pipeline
+       evaluate.py    métricas (ROC-AUC, PR-AUC, recall@10 %, F1)       -> compute_metrics
+       train.py       entrenamiento comparado + MLflow                   -> run
+       abandono.py    Ridge y KMeans de abandono                         -> modelo_ridge,
+                                                                            AgrupadorAbandono
+       contrato.py    contrato de datos (pandera, SQL, web)              -> validar, esquema
+       generador.py   asociados ficticios                                -> GeneradorAsociados
+       anonymize.py   anonimizar datos reales                            -> anonymize
+
+ 4.3 Ejemplos de import (funcionan en scripts, tests y notebooks, desde cualquier carpeta)
+     from proyecto_ml.data import load_dataset, split_data      # importar funciones concretas
+     from proyecto_ml import contrato as k                      # importar el módulo con alias
+     from proyecto_ml.generador import GeneradorAsociados       # importar una clase
+
+     df = load_dataset("data/ejemplo/asociados_ejemplo.parquet")
+     errores = k.validar(df)
+     nuevos = GeneradorAsociados(n=1000, seed=7).generar()
+
+ 4.4 ¿Por qué funciona el import desde cualquier lado?
+     uv sync instala proyecto_ml dentro de .venv como paquete editable: cualquier cambio en
+     src/proyecto_ml/ se ve al instante, sin reinstalar.
+
+ 4.5 Dónde va cada cosa
+     src/proyecto_ml/   lógica reutilizable (siempre con su prueba en tests/)
+     scripts/           programas que se ejecutan (leen argumentos, llaman al paquete)
+     tests/             pruebas (pytest)               sesiones/   notebooks de exploración
+     contratos/         contratos de datos (YAML)      docs/       documentación como esta guía
+
+
+===============================================================================================
+ 5. CONTRATOS DE DATOS - qué dato es válido para entrenar
+===============================================================================================
+
+ El contrato es la REGLA; el test es la PRUEBA de que la regla está encendida. Hacen falta los dos.
+
+ 5.1 Dónde vive cada cosa
+     contratos/asociados.yaml          el contrato (única fuente de verdad del esquema)
+     src/proyecto_ml/contrato.py       lo aplica con pandera, genera SQL de Supabase y el JS del form
+     tests/data/test_contrato_datos.py el test: límites ESCRITOS A MANO para que relajar una regla
+                                       rompa un test con nombre propio (corre en el CI)
+
+ 5.2 Tres niveles de verificación
+     Nivel 1  Por fila         registros corruptos           ESTRATO entre 1 y 6, SEXO en F/M
+     Nivel 2  Distribución     problemas del lote completo   salario_en_pesos, volumen_minimo
+     Nivel 3  Entre columnas   incoherencias                 retiro_coherente (#RETIROS=1 exige
+                                                             fecha y motivo de retiro)
+
+ 5.3 Dónde se exige (la "frontera": donde el dato ENTRA, no donde se usa)
+     uv run python scripts/ingesta.py --input <archivo> --target "#RETIROS" \
+         --contrato contratos/asociados.yaml
+     make supabase-subir                       (valida antes de subir)
+     Supabase                                  CHECK de la tabla (niveles 1 y 3) en cada INSERT
+
+ 5.4 Comandos
+     make contrato                             validar data/ejemplo
+     make contrato DATA=ruta/archivo.parquet   validar otro archivo
+     make contrato-sql contrato-web            después de cambiar el YAML
+     uv run pytest tests/data                  probar que las reglas están encendidas
+
+ 5.5 Cambiar una regla
+     1) editar contratos/asociados.yaml y subir "version"
+     2) make contrato-sql contrato-web
+     3) actualizar su caso en tests/data/test_contrato_datos.py   (si no, el test falla: es a propósito)
+     4) si la tabla de Supabase ya existe: crear una migración en supabase/migraciones/
+     5) make check  ->  commit  ->  PR
+
+
+===============================================================================================
+ 6. PIPELINE - por qué fit solo con train
+===============================================================================================
+
+ Flujo correcto:
+     1) separar train/test
+     2) pipeline.fit(X_train, y_train)   -> aprende medianas, escalado y categorías SOLO con train
+     3) pipeline.predict(X_test)         -> aplica esas MISMAS reglas a test, sin recalcular nada
+
+ Ejemplo: a "salario" le faltan valores. La mediana se calcula SOLO con X_train y con ella se
+ rellenan X_train y X_test. Si se calculara con todo el dataset, test "le contaría" algo a train
+ y la evaluación saldría más optimista que en producción (fuga de información).
+
+ En el código:
+     features.py   build_preprocessor()   ColumnTransformer: imputar + escalar (numéricas),
+                                          imputar + one-hot (categóricas)
+     models.py     build_pipeline()       preprocesador + (SMOTE opcional) + modelo
+     train.py      split_data -> pipeline.fit(X_train) -> predict(X_test)
+     abandono.py   modelo_ridge()         Pipeline(preprocess -> RidgeClassifier)
+                   AgrupadorAbandono      Pipeline(StandardScaler -> KMeans)
+     tests/test_pipeline.py               prueba que el pipeline aprende SOLO de train
+
+ Bonus (abandono.py): además del pipeline se excluyen las columnas que delatan el resultado
+ (FECHARETIRO, MOTIVORETIRO, ESTADO...). Con ellas cualquier modelo "acierta" el 100 % pero no
+ sirve para anticipar un retiro.
+
+ Ejemplo mínimo:
+     from proyecto_ml import abandono as a
+     from proyecto_ml.data import split_data
+     from proyecto_ml.generador import GeneradorAsociados
+
+     df = GeneradorAsociados(n=1000, seed=1).generar()
+     X, y = a.preparar(df), df[a.TARGET]
+     X_train, X_test, y_train, y_test = split_data(X, y, test_size=0.25)
+     modelo = a.modelo_ridge().fit(X_train, y_train)      # aprende solo de train
+     predicciones = modelo.predict(X_test)                # aplica a test
+
+
+===============================================================================================
+ 7. GENERADOR DE DATOS - asociados ficticios
+===============================================================================================
+
+ src/proyecto_ml/generador.py -> clase GeneradorAsociados(n, seed, tasa_retiro)
+ Mismo esquema que los datos reales (74 columnas, 4 grupos), cumple el contrato, y los que se
+ retiran se comportan distinto (más solicitudes de cancelación, más intención de retiro).
+ Nombres, cédulas, correos, etc. son inventados.
+
+ 7.1 Desde la terminal
+     make ejemplo                                              los 50 de data/ejemplo/ (seed 42)
+     uv run python scripts/generar_asociados_ejemplo.py --rows 1000 --seed 7 \
+         --output-dir data/processed --nombre nuevos           otro dataset (no va a Git)
+     uv run python scripts/generar_asociados_ejemplo.py --rows 500 --tasa-retiro 0.1 \
+         --output-dir data/processed --nombre pocos_retiros    escenario con pocos retiros
+
+     OJO: sin --output-dir escribe en data/ejemplo/ y REEMPLAZA los 50 versionados en Git.
+
+ 7.2 Desde Python
+     from proyecto_ml.generador import GeneradorAsociados
+     df = GeneradorAsociados(n=1000, seed=7).generar()         # DataFrame
+     GeneradorAsociados(n=200, seed=3).guardar()               # escribe parquet + xlsx
+
+ 7.3 Datos que el modelo NO conoce (para validar)
+     Misma semilla = mismo dataset. OTRA semilla = asociados nuevos con el mismo comportamiento.
+     data/ejemplo usa seed 42; para validar usa cualquier otra:
+     make abandono ARGS="--nuevos 2000 --semilla-nuevos 99"
+
+ Nota: los datos los genera un programa con reglas simples, así que los modelos aprenden esas
+ reglas. Con datos reales las métricas serán más bajas.
+
+ (src/proyecto_ml/synthetic.py es otro generador más simple y genérico, el de "make demo").
+
+
+===============================================================================================
+ 8. FLUJO COMPLETO DE UN DÍA DE TRABAJO
+===============================================================================================
+
+     git switch main && git pull && uv sync         # 1. ponerse al día
+     git switch -c feature/juan-<tema>              # 2. rama nueva
+     ...editar código en src/ + su prueba en tests/  # 3. trabajar
+     make contrato                                  #    (si tocaste datos o el contrato)
+     make abandono                                  #    (si tocaste modelos)
+     make check                                     # 4. lint + pruebas en verde
+     git add <archivos> && git commit -m "feat: ..."
+     git push -u origin feature/juan-<tema>         # 5. subir
+     gh pr create --base main --fill                # 6. PR -> CI en verde -> revisión -> merge
+     git switch main && git pull                    # 7. después del merge
