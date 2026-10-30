@@ -1,0 +1,57 @@
+# Publica web/formulario.html en GitHub Pages: https://<usuario>.github.io/<repo>/
+# La conexión a Supabase NO está en Git: config.js se arma aquí con las variables del repositorio
+# SUPABASE_URL y SUPABASE_KEY (Settings > Secrets and variables > Actions > Variables).
+# Solo la clave PÚBLICA (sb_publishable_... / anon): con RLS solo puede insertar.
+name: Formulario (GitHub Pages)
+
+on:
+  push:
+    branches: [main]
+    paths: ["web/**", ".github/workflows/formulario.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  desplegar:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Armar el sitio
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ vars.SUPABASE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ]; then
+            echo "::error::Faltan las variables SUPABASE_URL y/o SUPABASE_KEY del repositorio"; exit 1
+          fi
+          # Nunca publicar una clave secreta: daría acceso total a la base de datos.
+          case "$SUPABASE_KEY" in
+            sb_secret_*) echo "::error::SUPABASE_KEY es una clave SECRETA; usa la publishable"; exit 1 ;;
+          esac
+          if echo "$SUPABASE_KEY" | cut -d. -f2 | base64 -d 2>/dev/null | grep -q service_role; then
+            echo "::error::SUPABASE_KEY es la service_role; usa la anon/publishable"; exit 1
+          fi
+          mkdir _site
+          cp web/formulario.html _site/index.html
+          cp web/contrato.js _site/
+          printf 'window.SUPABASE_CONFIG = { url: "%s", key: "%s" };\n' "$SUPABASE_URL" "$SUPABASE_KEY" > _site/config.js
+          touch _site/.nojekyll
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
