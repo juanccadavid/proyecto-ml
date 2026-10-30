@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from proyecto_ml import abandono as a
-from proyecto_ml.generador import GeneradorAsociados
+from proyecto_ml.generador import FALTANTES, GeneradorAsociados
 
 
 @pytest.fixture(scope="module")
@@ -58,3 +58,17 @@ def test_kmeans_separa_a_los_que_abandonan(entrenamiento, nuevos):
     assert m["ari"] > 0.3  # mucho mejor que agrupar al azar (ARI ≈ 0)
     perfil = agrupador.perfil_
     assert perfil.loc["riesgo", "#INTENCIONRETIROS_ULT3MESES"] > perfil.loc["estable", "#INTENCIONRETIROS_ULT3MESES"]
+
+
+def test_modelos_toleran_datos_faltantes():
+    """Con vacíos (como llegan los datos reales) el pipeline imputa con lo aprendido en train."""
+    sucio = GeneradorAsociados(n=600, seed=21, faltantes=FALTANTES).generar()
+    nuevos_sucios = GeneradorAsociados(n=600, seed=22, faltantes=FALTANTES).generar()
+    X = a.preparar(sucio)
+    assert X.isna().any().any()  # hay vacíos de verdad...
+    assert not X[a.CATEGORICAS].isin(["nan", "None", "<NA>"]).any().any()  # ...y no texto "nan"
+
+    ridge = a.modelo_ridge().fit(X, sucio[a.TARGET])
+    assert a.metricas_ridge(ridge, nuevos_sucios)["roc_auc"] > 0.8
+    agrupador = a.AgrupadorAbandono().fit(sucio)
+    assert a.metricas_agrupacion(agrupador, nuevos_sucios)["recall"] > 0.7

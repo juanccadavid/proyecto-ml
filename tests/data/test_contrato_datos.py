@@ -181,3 +181,12 @@ def test_toda_regla_del_contrato_tiene_su_test(contrato):
     """Una regla nueva en el YAML sin caso aquí sería una regla que nadie comprueba que funcione."""
     assert {d["id"] for d in contrato.distribucion} == {c for c, *_ in DISTRIBUCION}
     assert {r["id"] for r in contrato.reglas} == {r for r, *_ in ENTRE_COLUMNAS}
+
+
+def test_dato_vacio_se_reporta_solo_en_nivel_1(lote, contrato):
+    """Como en un CHECK de SQL, una regla entre columnas no aplica si falta uno de sus datos: el
+    vacío ya lo reporta el nivel 1 y no se cuenta dos veces."""
+    lote.loc[0, "FECHANACIMIENTO"] = pd.NaT
+    errores = k.validar(lote, contrato)
+    assert any(e.startswith("Nivel 1 · FECHANACIMIENTO: 1 fila(s) vacías") for e in errores)
+    assert not [e for e in errores if e.startswith("Nivel 3")]

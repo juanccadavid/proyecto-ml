@@ -82,6 +82,11 @@ def _fecha(s: pd.Series) -> pd.Series:
     return pd.to_datetime(s.where(~_vacio(s)), errors="coerce")
 
 
+def _o_vacio(condicion: pd.Series, *columnas: pd.Series) -> pd.Series:
+    """Como un CHECK de SQL: si falta alguno de los datos, la regla no aplica (el vacío lo reporta el nivel 1)."""
+    return condicion | pd.concat([_vacio(c) for c in columnas], axis=1).any(axis=1)
+
+
 def _texto(*cols: pd.Series) -> pd.Series:
     """Une columnas de texto con espacio saltando vacíos (como concat_ws en SQL)."""
     partes = pd.concat(cols, axis=1).astype("string")
@@ -105,8 +110,8 @@ DISTRIBUCION: dict[str, tuple[Callable[[pd.DataFrame, dict], float], Callable[[f
 
 # Nivel 3: versión pandas de las reglas del YAML (mismo id). True en las filas que cumplen.
 REGLAS: dict[str, Callable[[pd.DataFrame], pd.Series]] = {
-    "retiro_posterior_ingreso": lambda d: (
-        _vacio(d["FECHARETIRO"]) | (_fecha(d["FECHARETIRO"]) > _fecha(d["FECHAINGRESOLABORA"]))
+    "retiro_posterior_ingreso": lambda d: _o_vacio(
+        _fecha(d["FECHARETIRO"]) > _fecha(d["FECHAINGRESOLABORA"]), d["FECHARETIRO"], d["FECHAINGRESOLABORA"]
     ),
     "nombreintegrado_coherente": lambda d: (
         d["NOMBREINTEGRADO"].astype("string").str.strip()
@@ -119,11 +124,15 @@ REGLAS: dict[str, Callable[[pd.DataFrame], pd.Series]] = {
     ),
     "estado_laboral_coherente": lambda d: (d["ESTADO"] == "RETIRADO") == (d["ESTADO_LABORAL"] == "RETIRADO"),
     "contrato_fijo_con_fecha_fin": lambda d: (d["TIPOCONTRATO"] == "FIJO") == ~_vacio(d["FECHATERMINACONTRATO"]),
-    "fin_contrato_posterior_ingreso": lambda d: (
-        _vacio(d["FECHATERMINACONTRATO"]) | (_fecha(d["FECHATERMINACONTRATO"]) > _fecha(d["FECHAINGRESOLABORA"]))
+    "fin_contrato_posterior_ingreso": lambda d: _o_vacio(
+        _fecha(d["FECHATERMINACONTRATO"]) > _fecha(d["FECHAINGRESOLABORA"]),
+        d["FECHATERMINACONTRATO"],
+        d["FECHAINGRESOLABORA"],
     ),
-    "mayor_de_edad_al_ingreso": lambda d: (
-        _fecha(d["FECHAINGRESOLABORA"]) >= _fecha(d["FECHANACIMIENTO"]) + pd.DateOffset(years=18)
+    "mayor_de_edad_al_ingreso": lambda d: _o_vacio(
+        _fecha(d["FECHAINGRESOLABORA"]) >= _fecha(d["FECHANACIMIENTO"]) + pd.DateOffset(years=18),
+        d["FECHAINGRESOLABORA"],
+        d["FECHANACIMIENTO"],
     ),
     "pacto_integral_coherente": lambda d: (
         ((d["TIPOPACTO"] == "INTEGRAL") == (d["MODALIDADSALARIAL"] == "INTEGRAL"))

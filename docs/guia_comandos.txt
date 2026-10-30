@@ -286,6 +286,32 @@
      data/ejemplo usa seed 42; para validar usa cualquier otra:
      make abandono ARGS="--nuevos 2000 --semilla-nuevos 99"
 
+ 7.4 Datos faltantes (como llegan los datos reales)
+     generador.FALTANTES define qué probabilidad tiene cada columna de venir vacía (SALARIO 5 %,
+     #INTENCIONRETIROS_ULT3MESES 8 %...). Nunca se vacían CEDULA, IDASOCIADOS ni #RETIROS.
+
+     uv run python scripts/generar_asociados_ejemplo.py --faltantes \
+         --output-dir data/processed --nombre sucios
+     make abandono ARGS="--faltantes"          valida también con asociados nuevos con vacíos
+
+     from proyecto_ml.generador import FALTANTES, GeneradorAsociados
+     g = GeneradorAsociados(n=1000, faltantes=FALTANTES)
+     sucio = g.generar()
+     print(g.reporte_faltantes_)               # cuántos vacíos quedaron por columna
+
+     Para qué sirve:
+       - el CONTRATO debe rechazarlos (nivel 1: "vacías en columna requerida")
+       - el PIPELINE debe imputarlos con la mediana / moda aprendida en train (sección 6)
+     Por eso data/ejemplo/ siempre es limpio: el script no deja usar --faltantes ahí.
+
+ 7.5 Qué tomamos de la plantilla de clase (generador_datos.py) y qué hicimos distinto
+     Igual:    clase con n y seed, método que genera, add_missing_data -> agregar_faltantes,
+               create_dataset -> guardar (parquet + Excel), reporte de vacíos por columna.
+     Distinto: fechas fijas en vez de datetime.now() (si no, el dataset cambia cada día aunque
+               uses la misma semilla); un generador de numpy (np.random.default_rng) en vez de la
+               semilla global; y un objetivo CON señal: en la plantilla dar_promocion es aleatorio,
+               y con un objetivo aleatorio ningún modelo puede aprender nada.
+
  Nota: los datos los genera un programa con reglas simples, así que los modelos aprenden esas
  reglas. Con datos reales las métricas serán más bajas.
 

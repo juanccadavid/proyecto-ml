@@ -5,6 +5,7 @@ Uso:
     uv run python scripts/modelo_abandono.py --nuevos 5000 --semilla-nuevos 7
     uv run python scripts/modelo_abandono.py --validar otro_archivo.parquet
     uv run python scripts/modelo_abandono.py --exportar-nuevos data/processed/nuevos.parquet
+    uv run python scripts/modelo_abandono.py --faltantes      # valida también con nuevos con datos vacíos
 
 Los "nuevos" salen del mismo generador con OTRA semilla: son asociados distintos que siguen
 el mismo comportamiento. Las métricas sobre ellos son las que cuentan; las de entrenamiento
@@ -26,7 +27,7 @@ from proyecto_ml import abandono as a
 from proyecto_ml.config import DATA_DIR, METRICS_DIR, MODELS_DIR
 from proyecto_ml.data import load_dataset
 from proyecto_ml.evaluate import compute_metrics
-from proyecto_ml.generador import GeneradorAsociados
+from proyecto_ml.generador import FALTANTES, GeneradorAsociados
 
 
 def _tabla(columnas: dict[str, dict]) -> str:
@@ -41,10 +42,14 @@ def main() -> None:
     parser.add_argument("--semilla-nuevos", type=int, default=2026, help="Distinta de 42 (la de data/ejemplo)")
     parser.add_argument("--validar", type=Path, help="Archivo adicional para validar (mismo esquema)")
     parser.add_argument("--exportar-nuevos", type=Path, help="Guardar los asociados nuevos generados")
+    parser.add_argument("--faltantes", action="store_true", help="Validar además con nuevos con vacíos")
     args = parser.parse_args()
 
     train = load_dataset(args.datos)
     validaciones = {f"nuevos (n={args.nuevos})": GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos).generar()}
+    if args.faltantes:
+        sucios = GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos, faltantes=FALTANTES).generar()
+        validaciones["nuevos con vacíos"] = sucios
     if args.validar:
         validaciones[args.validar.name] = load_dataset(args.validar)
     if args.exportar_nuevos:
