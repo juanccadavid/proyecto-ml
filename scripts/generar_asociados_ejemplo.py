@@ -254,6 +254,9 @@ def make_asociados(n: int = 50, seed: int = 42, tasa_retiro: float = 0.3) -> pd.
     }
     df = pd.DataFrame(data)
     df["CODBARRIO"] = np.where(en_medellin, df["CODCOMUNA"] * 100 + rng.integers(1, 20, n), 0)
+    # Contrato (mayor_de_edad_al_ingreso): nadie ingresa a laborar antes de los 18 años.
+    mayoria = df["FECHANACIMIENTO"] + pd.DateOffset(years=18)
+    df["FECHAINGRESOLABORA"] = df["FECHAINGRESOLABORA"].where(df["FECHAINGRESOLABORA"] >= mayoria, mayoria)
     columnas = [c for cols in GRUPOS.values() for c in cols]
     return df[columnas]
 
