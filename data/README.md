@@ -12,3 +12,10 @@ Reglas:
 3. Edad y salario en rangos.
 4. Si un archivo con datos reales llega a un commit, avisar de inmediato: no basta con borrarlo,
    hay que reescribir el historial.
+
+## Excepción: `data/ejemplo/` (sí se versiona)
+
+Contiene `asociados_ejemplo.parquet` / `.xlsx`: 50 asociados **ficticios** con el esquema real
+(SOCIODEMOGRAFICO, LABORAL, PRODUCTOS, RETIRO), para probar ingesta y modelos sin datos reales.
+Se regenera con `uv run python scripts/generar_asociados_ejemplo.py --rows 50`.
+Es la única carpeta exceptuada en `.gitignore` y en el hook `bloquear-datos`: **nunca** guardar datos reales aquí.
