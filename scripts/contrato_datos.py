@@ -47,21 +47,32 @@ def _subir(path: Path, contrato: k.Contrato, lote: int = 500) -> None:
         sys.exit("No se sube nada: corrige los incumplimientos primero.")
 
     registros = k.a_registros_db(load_dataset(path), contrato, origen="script")
-    endpoint = f"{url}/rest/v1/{contrato.tabla_db}?on_conflict=cedula"
-    headers = {
-        "apikey": key,
-        "Content-Type": "application/json",
-        "Prefer": "return=minimal,resolution=ignore-duplicates",
-    }
-    for i in range(0, len(registros), lote):
-        cuerpo = json.dumps(registros[i : i + lote]).encode("utf-8")
-        req = urllib.request.Request(endpoint, data=cuerpo, headers=headers, method="POST")
+    endpoint = f"{url}/rest/v1/{contrato.tabla_db}"
+    headers = {"apikey": key, "Content-Type": "application/json", "Prefer": "return=minimal"}
+
+    def insertar(filas: list[dict]) -> int:
+        """Devuelve el código HTTP. No se usa upsert/on_conflict: exige permiso de lectura, y la clave
+        pública solo puede insertar (RLS)."""
+        req = urllib.request.Request(endpoint, data=json.dumps(filas).encode("utf-8"), headers=headers, method="POST")
         try:
-            with urllib.request.urlopen(req, timeout=30):
-                pass
+            with urllib.request.urlopen(req, timeout=30) as r:
+                return r.status
         except urllib.error.HTTPError as e:
+            if e.code == 409:  # cédula o IDASOCIADOS ya existen
+                return 409
             sys.exit(f"Supabase respondió {e.code}: {e.read().decode('utf-8', 'replace')}")
-    print(f"{len(registros)} registros enviados a {contrato.tabla_db} (las cédulas repetidas se omiten)")
+
+    nuevos = repetidos = 0
+    for i in range(0, len(registros), lote):
+        bloque = registros[i : i + lote]
+        if insertar(bloque) != 409:
+            nuevos += len(bloque)
+            continue
+        # El lote completo se rechaza si una fila choca: se reintenta fila por fila.
+        for fila in bloque:
+            ok = insertar([fila]) != 409
+            nuevos, repetidos = nuevos + ok, repetidos + (not ok)
+    print(f"{nuevos} registros nuevos en {contrato.tabla_db}; {repetidos} omitidos por cédula/IDASOCIADOS repetidos")
 
 
 def main() -> None:
