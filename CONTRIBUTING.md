@@ -7,7 +7,8 @@
    Prefijos: `feature/`, `fix/`, `eda/`, `docs/`.
 3. Commits pequeños con mensajes en formato *Conventional Commits*:
    `feat: agrega PCA al preprocesador`, `fix: corrige fuga en split temporal`, `docs: ...`, `test: ...`.
-4. Antes de subir: `make lint test` (o `uv run ruff check . && uv run pytest`).
+4. Antes de subir: `make lint test` (o `uv run ruff check . && uv run pytest`). El CI de GitHub corre lo mismo
+   en cada PR; si queda en rojo, no se hace merge.
 5. `git push -u origin <rama>` y abre un Pull Request hacia `main`.
 6. Mínimo **1 revisión** de otro integrante antes de hacer merge. Preferir *Squash and merge*.
 

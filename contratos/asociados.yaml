@@ -1,0 +1,165 @@
+# Contrato de datos: asociados.
+# Única fuente de verdad del esquema. De aquí salen:
+#   - la validación en Python (src/proyecto_ml/contrato.py, ingesta y pruebas)
+#   - la tabla de Supabase con sus restricciones (supabase/asociados.sql)  -> make contrato-sql
+#   - los campos del formulario web (web/contrato.js)                    -> make contrato-web
+# Si cambias algo aquí: sube la versión, regenera SQL/JS y corre make test.
+#
+# Tres niveles de verificación (se ejecutan con pandera, ver src/proyecto_ml/contrato.py):
+#   1. Por fila      (grupos)        registros corruptos individuales.        También como CHECK en la BD.
+#   2. Distribución  (distribucion)  problemas sistemáticos del lote: cambio de unidades, ingesta cortada.
+#                                    Solo en Python: la BD valida fila a fila y no ve el lote completo.
+#   3. Entre columnas (reglas)       incoherencias que no se ven mirando una sola columna. También en la BD.
+#
+# Campos por columna:
+#   tipo: entero | texto | fecha        requerido: no admite nulos ni texto vacío (por defecto false)
+#   unico, min, max (enteros y fechas), valores (lista cerrada), patron (regex), descripcion
+# En la BD los nombres van en minúscula y el prefijo '#' se convierte en 'num_' (#RETIROS -> num_retiros).
+
+nombre: asociados
+version: 1.1.0
+tabla_db: asociados
+objetivo: "#RETIROS"
+
+grupos:
+  SOCIODEMOGRAFICO:
+    - {nombre: CEDULA, tipo: entero, requerido: true, unico: true, min: 1, max: 9999999999, descripcion: Número de documento}
+    - {nombre: PRIMERAPELLIDO, tipo: texto, requerido: true}
+    - {nombre: SEGUNDOAPELLIDO, tipo: texto}
+    - {nombre: NOMBRES, tipo: texto, requerido: true}
+    - {nombre: SEGUNDONOMBRE, tipo: texto}
+    - {nombre: NOMBREINTEGRADO, tipo: texto, requerido: true}
+    - {nombre: DIRECCION, tipo: texto, requerido: true}
+    - {nombre: TIPOIDENTIFICACION, tipo: texto, requerido: true, valores: [CC, CE, TI, PA]}
+    - {nombre: RELACION, tipo: texto, requerido: true, valores: [ASOCIADO]}
+    - {nombre: AGENCIA, tipo: entero, requerido: true, min: 1, max: 99}
+    - {nombre: TELEFONO1, tipo: texto, requerido: true, patron: "^[0-9]{7,10}$"}
+    - {nombre: EXTENSION1, tipo: texto, patron: "^[0-9]{1,6}$"}
+    - {nombre: TELEFONO2, tipo: texto, patron: "^[0-9]{7,10}$"}
+    - {nombre: EXTENSION2, tipo: texto, patron: "^[0-9]{1,6}$"}
+    - {nombre: APARTADOAEREO, tipo: texto}
+    - {nombre: SEXO, tipo: texto, requerido: true, valores: [F, M]}
+    - {nombre: CODPAISCEDULA, tipo: entero, requerido: true, min: 1, max: 999}
+    - {nombre: CODCIUDADCEDULA, tipo: entero, requerido: true, min: 1, max: 99999, descripcion: Código DANE}
+    - {nombre: EMAIL, tipo: texto, requerido: true, patron: "^[^@ ]+@[^@ ]+[.][^@ ]+$"}
+    - {nombre: FECHARETIRO, tipo: fecha, min: "1990-01-01", descripcion: Solo si el asociado se retiró}
+    - {nombre: FECHAULTACTUALIZACION, tipo: fecha, requerido: true, min: "1990-01-01"}
+    - {nombre: FECHANACIMIENTO, tipo: fecha, requerido: true, min: "1920-01-01"}
+    - {nombre: CODPAIS, tipo: entero, requerido: true, min: 1, max: 999}
+    - {nombre: CODDEPARTAMENTO, tipo: entero, requerido: true, min: 1, max: 99}
+    - {nombre: CODCIUDAD, tipo: entero, requerido: true, min: 1, max: 99999, descripcion: Código DANE}
+    - {nombre: CODZONA, tipo: entero, requerido: true, min: 1, max: 9}
+    - {nombre: CODCOMUNA, tipo: entero, requerido: true, min: 0, max: 99, descripcion: 0 fuera de Medellín}
+    - {nombre: CODBARRIO, tipo: entero, requerido: true, min: 0, max: 9999, descripcion: 0 fuera de Medellín}
+    - {nombre: CODCIIU, tipo: entero, requerido: true, min: 0, max: 9999}
+    - {nombre: CODDIVISION, tipo: entero, requerido: true, min: 0, max: 99}
+    - {nombre: ESTADO, tipo: texto, requerido: true, valores: [ACTIVO, RETIRADO]}
+    - {nombre: ESTRATO, tipo: entero, requerido: true, min: 1, max: 6}
+  LABORAL:
+    - {nombre: CODEMPRESA, tipo: entero, requerido: true, min: 1}
+    - {nombre: CODDEPENDENCIA, tipo: entero, requerido: true, min: 1}
+    - {nombre: PERIODODEDUCE, tipo: texto, requerido: true, valores: [MENSUAL, QUINCENAL]}
+    - {nombre: DEDUCEOCACIONAL, tipo: texto, requerido: true, valores: [S, N]}
+    - {nombre: SALARIO, tipo: entero, requerido: true, min: 0, descripcion: Pesos colombianos mensuales}
+    - {nombre: CODEMPRESALABORA, tipo: entero, requerido: true, min: 1}
+    - {nombre: FECHAINGRESOLABORA, tipo: fecha, requerido: true, min: "1950-01-01"}
+    - {nombre: TIPOCONTRATO, tipo: texto, requerido: true, valores: [FIJO, INDEFINIDO]}
+    - {nombre: FECHATERMINACONTRATO, tipo: fecha, descripcion: Solo para contrato FIJO}
+    - {nombre: CARGO, tipo: texto, requerido: true}
+    - {nombre: CODBANCO, tipo: entero, requerido: true, min: 1, max: 999}
+    - {nombre: NUMEROCUENTA, tipo: texto, requerido: true, patron: "^[0-9]{6,20}$"}
+    - {nombre: AGENCIA_LABORAL, tipo: entero, requerido: true, min: 1, max: 99, descripcion: AGENCIA del bloque LABORAL}
+    - {nombre: CODANALISTA, tipo: entero, requerido: true, min: 1}
+    - {nombre: RUTAANALISTA, tipo: texto, requerido: true}
+    - {nombre: TIPOCUENTA, tipo: texto, requerido: true, valores: [AHORROS, CORRIENTE]}
+    - {nombre: ESTADO_LABORAL, tipo: texto, requerido: true, valores: [VIGENTE, RETIRADO], descripcion: ESTADO del bloque LABORAL}
+    - {nombre: ULTIMAACTUALIZACION, tipo: fecha, requerido: true, min: "1990-01-01"}
+    - {nombre: OPERADORACTUALIZO, tipo: texto, requerido: true}
+    - {nombre: SZIN, tipo: entero, requerido: true, min: 0}
+    - {nombre: IDTIPOSALARIO, tipo: entero, requerido: true, valores: [1, 2], descripcion: "1 convencional, 2 integral"}
+    - {nombre: TIPOPACTO, tipo: texto, requerido: true, valores: [CONVENCIONAL, INTEGRAL]}
+    - {nombre: IDASOCIADOS, tipo: entero, requerido: true, unico: true, min: 1}
+    - {nombre: CODIGOTIPO, tipo: entero, requerido: true, min: 1}
+    - {nombre: CODPAISOFI, tipo: entero, requerido: true, min: 1, max: 999}
+    - {nombre: CODDEPARTAMENTOOFI, tipo: entero, requerido: true, min: 1, max: 99}
+    - {nombre: CODCIUDADOFI, tipo: entero, requerido: true, min: 1, max: 99999}
+    - {nombre: DIRECCIONEMPRESA, tipo: texto, requerido: true}
+    - {nombre: TELOFICINA, tipo: texto, requerido: true, patron: "^[0-9]{7,10}$"}
+    - {nombre: EXTENSION, tipo: texto, patron: "^[0-9]{1,6}$"}
+    - {nombre: MODALIDADSALARIAL, tipo: texto, requerido: true, valores: [FIJO, INTEGRAL]}
+  PRODUCTOS:
+    - {nombre: "#SOLICITUD_DISMINUCIONCUOTAS", tipo: entero, requerido: true, min: 0}
+    - {nombre: "#SOLICITUD_CANCELACIONAHORROS", tipo: entero, requerido: true, min: 0}
+    - {nombre: "#SOLICITUD_RETIROPARCIALAHORROS", tipo: entero, requerido: true, min: 0}
+    - {nombre: "#CANTIDAD_AHORROSALAVISTA", tipo: entero, requerido: true, min: 0}
+    - {nombre: "#CANTIDAD_AHORROSCONTRACTUALES", tipo: entero, requerido: true, min: 0}
+    - {nombre: CANCELACIONCREDITOS_ULT3MESES, tipo: entero, requerido: true, min: 0}
+    - {nombre: "#SOLICITUDCREDITOS_ULT3MESES", tipo: entero, requerido: true, min: 0}
+    - {nombre: "#CANTIDAD_SERVICIOS", tipo: entero, requerido: true, min: 0}
+  RETIRO:
+    - {nombre: "#INTENCIONRETIROS_ULT3MESES", tipo: entero, requerido: true, min: 0}
+    - {nombre: "#RETIROS", tipo: entero, requerido: true, valores: [0, 1], descripcion: "Objetivo: 1 si se retiró"}
+    - nombre: MOTIVORETIRO
+      tipo: texto
+      descripcion: Solo si el asociado se retiró
+      valores:
+        - INSATISFACCION CON TASAS
+        - TERMINACION CONTRATO LABORAL
+        - NECESIDAD DE LIQUIDEZ
+        - TRASLADO A OTRA ENTIDAD
+        - PENSION
+
+# Nivel 2: distribución del lote. Los parámetros se ajustan aquí; la lógica vive en contrato.DISTRIBUCION.
+distribucion:
+  - id: volumen_minimo
+    descripcion: El lote trae al menos min_filas asociados (una ingesta cortada trae muy pocos)
+    min_filas: 30
+  - id: tasa_retiro_plausible
+    descripcion: "La fracción con #RETIROS=1 está entre min y max (fuera de ahí: etiqueta mal calculada o filtro)"
+    min: 0.05
+    max: 0.50
+  - id: salario_en_pesos
+    descripcion: La mediana de SALARIO está entre min y max pesos (otra escala delata miles de pesos o dólares)
+    min: 1000000
+    max: 20000000
+  - id: salarios_atipicos_marginales
+    descripcion: A lo sumo max_fraccion de salarios supera factor veces la mediana
+    factor: 5
+    max_fraccion: 0.05
+  - id: edad_mediana_plausible
+    descripcion: La mediana de edad al corte está entre min y max años (fechas de nacimiento mal leídas la mueven)
+    fecha_corte: "2026-10-31"
+    min: 22
+    max: 60
+
+# Nivel 3: reglas entre columnas. 'sql' usa los nombres de la BD; la versión en Python vive en contrato.REGLAS.
+reglas:
+  - id: retiro_coherente
+    descripcion: "#RETIROS=1 si y solo si hay FECHARETIRO, ESTADO=RETIRADO y MOTIVORETIRO"
+    sql: >-
+      (num_retiros = 1) = (fecharetiro is not null)
+      and (num_retiros = 1) = (estado = 'RETIRADO')
+      and (num_retiros = 1) = (motivoretiro is not null)
+  - id: estado_laboral_coherente
+    descripcion: ESTADO=RETIRADO si y solo si ESTADO_LABORAL=RETIRADO
+    sql: (estado = 'RETIRADO') = (estado_laboral = 'RETIRADO')
+  - id: contrato_fijo_con_fecha_fin
+    descripcion: Solo el contrato FIJO tiene FECHATERMINACONTRATO
+    sql: (tipocontrato = 'FIJO') = (fechaterminacontrato is not null)
+  - id: fin_contrato_posterior_ingreso
+    descripcion: FECHATERMINACONTRATO es posterior a FECHAINGRESOLABORA
+    sql: fechaterminacontrato is null or fechaterminacontrato > fechaingresolabora
+  - id: retiro_posterior_ingreso
+    descripcion: FECHARETIRO es posterior a FECHAINGRESOLABORA
+    sql: fecharetiro is null or fecharetiro > fechaingresolabora
+  - id: nombreintegrado_coherente
+    descripcion: NOMBREINTEGRADO es la unión de apellidos y nombres
+    sql: nombreintegrado = concat_ws(' ', primerapellido, segundoapellido, nombres, segundonombre)
+  - id: mayor_de_edad_al_ingreso
+    descripcion: Ingresó a laborar con al menos 18 años
+    sql: fechaingresolabora >= fechanacimiento + interval '18 years'
+  - id: pacto_integral_coherente
+    descripcion: TIPOPACTO, MODALIDADSALARIAL e IDTIPOSALARIO coinciden en integral/convencional
+    sql: >-
+      (tipopacto = 'INTEGRAL') = (modalidadsalarial = 'INTEGRAL')
+      and (tipopacto = 'INTEGRAL') = (idtiposalario = 2)

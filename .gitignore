@@ -71,3 +71,6 @@ desktop.ini
 !data/ejemplo/
 !data/ejemplo/*.parquet
 !data/ejemplo/*.xlsx
+
+# ---------- Formulario web: conexión local a Supabase ----------
+web/config.js

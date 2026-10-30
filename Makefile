@@ -18,6 +18,7 @@ MLFLOW_PORT := 5000
 APP_PORT    := 8501
 DEMO_DATA   := data/processed/sintetico.parquet
 BUNDLE      := rediseno-v3.bundle
+EJEMPLO     := data/ejemplo/asociados_ejemplo.parquet
 
 # Variables opcionales: make train DATA=ruta.parquet ARGS="--pca 0.95 --smote"
 DATA ?=
@@ -34,7 +35,7 @@ help: ## Muestra los objetivos disponibles
 	@echo "  Proyecto I - objetivos disponibles"
 	@echo "  ----------------------------------"
 	@grep -E '^[a-zA-Z_-]+:.*## .*$$' $(MAKEFILE_LIST) \
-	  | awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
+	  | awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 
 # ==============================================================================
@@ -75,6 +76,28 @@ mlflow-ui: ## Abre la interfaz de MLflow en http://localhost:5000
 
 app: ## Lanza la demo de Streamlit en http://localhost:8501
 	$(RUN) streamlit run src/proyecto_ml/app.py --server.port $(APP_PORT)
+
+# ==============================================================================
+# Contrato de datos y Supabase
+# ==============================================================================
+ejemplo: ## Regenera los 50 asociados ficticios de data/ejemplo/
+	$(PY) scripts/generar_asociados_ejemplo.py
+
+contrato: ## Valida un dataset contra el contrato (DATA=..., por defecto el de ejemplo)
+	$(PY) scripts/contrato_datos.py validar $(or $(DATA),$(EJEMPLO))
+
+contrato-sql: ## Regenera supabase/asociados.sql desde contratos/asociados.yaml
+	$(PY) scripts/contrato_datos.py sql
+
+contrato-web: ## Regenera web/contrato.js (campos del formulario) desde el contrato
+	$(PY) scripts/contrato_datos.py web
+
+supabase-subir: ## Sube un dataset a Supabase (DATA=..., por defecto el de ejemplo)
+	$(PY) scripts/contrato_datos.py subir $(or $(DATA),$(EJEMPLO))
+
+formulario: ## Abre el formulario web en el navegador
+	@test -f web/config.js || echo "!! Falta web/config.js (copia web/config.example.js): podrás generar pero no enviar"
+	@start web/formulario.html 2>/dev/null || open web/formulario.html 2>/dev/null || xdg-open web/formulario.html
 
 # ==============================================================================
 # Calidad

@@ -9,6 +9,7 @@ import argparse
 import json
 from pathlib import Path
 
+from proyecto_ml import contrato
 from proyecto_ml.config import PROCESSED_DIR, REPORTS_DIR
 from proyecto_ml.data import load_dataset
 
@@ -29,9 +30,14 @@ def main() -> None:
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--target", required=True)
     parser.add_argument("--output", type=Path, default=PROCESSED_DIR / "dataset.parquet")
+    parser.add_argument("--contrato", type=Path, help="Contrato de datos a exigir (ej. contratos/asociados.yaml)")
     args = parser.parse_args()
 
     df = load_dataset(args.input)
+    if args.contrato:
+        errores = contrato.validar(df, contrato.cargar(args.contrato))
+        if errores:
+            raise SystemExit("El archivo no cumple el contrato:\n  - " + "\n  - ".join(errores))
     if args.target not in df.columns:
         raise SystemExit(f"Falta la columna objetivo '{args.target}'")
     if df[args.target].nunique(dropna=True) != 2:
