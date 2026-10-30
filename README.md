@@ -37,18 +37,18 @@ MLflow y demo en Streamlit.
 
 ```bash
 git clone <url-del-repo> && cd <repo>
-uv sync                      # crea .venv con versiones exactas de uv.lock
-cp .env.example .env         # y ajustar valores
-uv run pre-commit install    # activa los controles antes de cada commit
+make setup                   # uv sync + .env desde .env.example + hooks de pre-commit
+# (ajustar valores del .env)
 
-make demo-data               # dataset sintético
-make train                   # entrena y compara modelos (MLflow)
+make demo                    # genera el dataset sintético y entrena con él (MLflow)
+make train                   # entrena con DATA_PATH del .env (o: make train DATA=... ARGS="--pca 0.95")
 make mlflow-ui               # http://localhost:5000
 make app                     # http://localhost:8501
-make test
+make check                   # lint + pruebas, antes de abrir un PR
 ```
 
-Sin `make`, cada objetivo del `Makefile` muestra el comando `uv run ...` equivalente.
+`make` (sin argumentos) lista todos los objetivos. Sin `make`, cada objetivo del `Makefile` muestra
+el comando `uv run ...` equivalente.
 
 ### Componentes Hugging Face (opcional)
 
