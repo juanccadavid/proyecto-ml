@@ -1,4 +1,7 @@
-"""Pruebas del contrato de datos (contratos/asociados.yaml) y de lo que se genera a partir de él."""
+"""Pruebas de la HERRAMIENTA del contrato: carga del YAML, esquema pandera, SQL, JS y registros para la BD.
+
+Las pruebas de las REGLAS (qué dato es válido y cuál no) están en tests/data/test_contrato_datos.py.
+"""
 
 import importlib.util
 
@@ -6,7 +9,7 @@ import pandas as pd
 import pytest
 
 from proyecto_ml import contrato as k
-from proyecto_ml.config import DATA_DIR, ROOT_DIR
+from proyecto_ml.config import ROOT_DIR
 
 
 @pytest.fixture(scope="module")
@@ -31,6 +34,15 @@ def test_contrato_cubre_el_esquema_del_generador(contrato, asociados):
 
 def test_cada_regla_tiene_implementacion_en_python(contrato):
     assert {r["id"] for r in contrato.reglas} == set(k.REGLAS)
+    assert {d["id"] for d in contrato.distribucion} == set(k.DISTRIBUCION)
+
+
+def test_esquema_pandera_con_los_tres_niveles(contrato):
+    esquema = k.esquema(contrato)
+    assert len(esquema.columns) == 74  # nivel 1
+    nombres = {c.name for c in esquema.checks}
+    assert {"volumen_minimo", "salario_en_pesos"} <= nombres  # nivel 2
+    assert {"retiro_coherente", "nombreintegrado_coherente"} <= nombres  # nivel 3
 
 
 def test_nombres_en_la_bd(contrato):
@@ -44,45 +56,12 @@ def test_datos_generados_cumplen(contrato, asociados):
     assert k.validar(asociados, contrato) == []
 
 
-def test_archivo_de_ejemplo_cumple(contrato):
-    path = DATA_DIR / "ejemplo" / "asociados_ejemplo.parquet"
-    if not path.exists():
-        pytest.skip("data/ejemplo/asociados_ejemplo.parquet no existe")
-    assert k.validar(pd.read_parquet(path), contrato) == []
-
-
-@pytest.mark.parametrize(
-    ("columna", "valor", "esperado"),
-    [
-        ("SEXO", "X", "SEXO: 1 fila(s) fuera de"),
-        ("NOMBRES", "  ", "NOMBRES: 1 fila(s) vacías en columna requerida"),
-        ("TELEFONO1", "12ab", "TELEFONO1: 1 fila(s) no cumplen el patrón"),
-        ("ESTRATO", 7, "ESTRATO: 1 fila(s) mayores que 6"),
-        ("SALARIO", "mucho", "SALARIO: 1 fila(s) no son de tipo entero"),
-        ("FECHANACIMIENTO", "1900-05-01", "FECHANACIMIENTO: 1 fila(s) menores que 1920-01-01"),
-    ],
-)
-def test_detecta_incumplimientos_por_columna(contrato, asociados, columna, valor, esperado):
-    df = asociados.astype({columna: object})
-    df.loc[0, columna] = valor
-    assert any(e.startswith(esperado) for e in k.validar(df, contrato))
-
-
-def test_detecta_duplicados_y_columnas(contrato, asociados):
-    df = asociados.copy()
-    df.loc[1, "CEDULA"] = df.loc[0, "CEDULA"]
-    df["EXTRA"] = 1
-    errores = k.validar(df.drop(columns="CARGO"), contrato)
-    assert any(e.startswith("CEDULA: 2 fila(s) duplicadas") for e in errores)
-    assert "Faltan columnas del contrato: ['CARGO']" in errores
-    assert "Columnas fuera del contrato: ['EXTRA']" in errores
-
-
-def test_detecta_reglas_entre_columnas(contrato, asociados):
-    activo = asociados.index[asociados["#RETIROS"] == 0][0]
-    df = asociados.copy()
-    df.loc[activo, "#RETIROS"] = 1  # retirado sin fecha ni motivo de retiro
-    assert any(e.startswith("Regla retiro_coherente: 1 fila(s)") for e in k.validar(df, contrato))
+def test_un_tipo_invalido_se_reporta_una_sola_vez(contrato, asociados):
+    """Formato de los mensajes: 'mucho' en SALARIO no debe arrastrar fallas en cadena de ge/le."""
+    df = asociados.astype({"SALARIO": object})
+    df.loc[0, "SALARIO"] = "mucho"
+    errores = [e for e in k.validar(df, contrato) if e.startswith("Nivel 1 · SALARIO:")]
+    assert errores == ["Nivel 1 · SALARIO: 1 fila(s) no son de tipo entero (ej. fila 0: 'mucho')"]
 
 
 def test_registros_para_la_bd(contrato, asociados):

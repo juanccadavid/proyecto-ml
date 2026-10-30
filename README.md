@@ -70,8 +70,14 @@ La imagen no contiene datos ni modelos: `data/` y `models/` se montan como volú
 
 ## Contrato de datos y Supabase
 
-[`contratos/asociados.yaml`](contratos/asociados.yaml) define cada columna (tipo, obligatoria, valores
-permitidos, rangos, patrón) y las reglas entre columnas (p. ej. `#RETIROS=1` exige fecha y motivo de retiro).
+[`contratos/asociados.yaml`](contratos/asociados.yaml) se valida con **pandera** en tres niveles:
+
+| Nivel | En el contrato | Qué atrapa | Ejemplos | ¿También en la BD? |
+|---|---|---|---|---|
+| 1. Por fila | `grupos` → `pa.Column` + `Check.ge/le/isin/str_matches` | registros corruptos | `ESTRATO` en 1–6, `SEXO` en F/M | Sí (CHECK) |
+| 2. Distribución | `distribucion` → check sobre el lote | problemas sistemáticos | `salario_en_pesos`, `volumen_minimo` | No: la BD ve fila a fila |
+| 3. Entre columnas | `reglas` → check con varias columnas | incoherencias | `retiro_coherente`, `nombreintegrado_coherente` | Sí (CHECK) |
+
 De ahí salen la validación en Python, la tabla de Supabase y el formulario web:
 
 ```bash
@@ -85,6 +91,8 @@ make contrato-sql contrato-web             # regenerar tras cambiar el contrato
 1. Crear un proyecto gratuito en [supabase.com](https://supabase.com).
 2. *SQL Editor* → pegar [`supabase/asociados.sql`](supabase/asociados.sql) → *Run*. Crea la tabla con todas
    las restricciones del contrato y RLS: la clave pública **solo puede insertar** (no leer, editar ni borrar).
+   Si la tabla ya existía con una versión anterior del contrato, correr en orden los archivos de
+   [`supabase/migraciones/`](supabase/migraciones/) que falten.
 3. *Project Settings → API Keys*: copiar la URL y la clave **pública** (anon / publishable).
    La `service_role` / secret nunca va en el HTML, el `.env` compartido ni Git.
 4. Ponerlas en `.env` (`SUPABASE_URL`, `SUPABASE_KEY`) y en `web/config.js` (copiar `web/config.example.js`).
@@ -93,6 +101,19 @@ make contrato-sql contrato-web             # regenerar tras cambiar el contrato
 make supabase-subir                        # sube los 50 asociados de ejemplo (omite cédulas repetidas)
 make formulario                            # abre web/formulario.html: datos aleatorios + botón Enviar
 ```
+
+### Qué va en el contrato y qué va en el test
+
+| | Contrato | Test |
+|---|---|---|
+| Qué es | La regla: describe el dato válido ("`ESTRATO` está entre 1 y 6") | La prueba de que la regla está encendida ("si llega estrato 7, la validación falla") |
+| Dónde vive | `contratos/asociados.yaml` + `src/proyecto_ml/contrato.py` | `tests/data/test_contrato_datos.py` |
+| Cuándo corre | En la frontera del pipeline: ingesta `--contrato`, `make supabase-subir`, CHECK de la BD | En el CI (`.github/workflows/ci.yml`) y con `make test`; nunca en producción |
+
+Hacen falta los dos: un contrato sin tests se degrada (alguien relaja un rango para desbloquear algo y nadie
+lo nota). Por eso los límites del test están **escritos a mano**, no leídos del YAML: relajar una regla rompe
+un test con nombre propio (p. ej. `test_nivel_1_por_fila[ESTRATO=7]`), y el PR queda en rojo. Si cambias una
+regla a conciencia, actualiza su caso en el mismo PR.
 
 ## Seguridad de datos
 

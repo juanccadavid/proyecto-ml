@@ -5,13 +5,19 @@
 #   - los campos del formulario web (web/contrato.js)                    -> make contrato-web
 # Si cambias algo aquí: sube la versión, regenera SQL/JS y corre make test.
 #
+# Tres niveles de verificación (se ejecutan con pandera, ver src/proyecto_ml/contrato.py):
+#   1. Por fila      (grupos)        registros corruptos individuales.        También como CHECK en la BD.
+#   2. Distribución  (distribucion)  problemas sistemáticos del lote: cambio de unidades, ingesta cortada.
+#                                    Solo en Python: la BD valida fila a fila y no ve el lote completo.
+#   3. Entre columnas (reglas)       incoherencias que no se ven mirando una sola columna. También en la BD.
+#
 # Campos por columna:
 #   tipo: entero | texto | fecha        requerido: no admite nulos ni texto vacío (por defecto false)
 #   unico, min, max (enteros y fechas), valores (lista cerrada), patron (regex), descripcion
 # En la BD los nombres van en minúscula y el prefijo '#' se convierte en 'num_' (#RETIROS -> num_retiros).
 
 nombre: asociados
-version: 1.0.0
+version: 1.1.0
 tabla_db: asociados
 objetivo: "#RETIROS"
 
@@ -103,7 +109,30 @@ grupos:
         - TRASLADO A OTRA ENTIDAD
         - PENSION
 
-# Reglas entre columnas. 'sql' usa los nombres de la BD; la versión en Python vive en contrato.REGLAS.
+# Nivel 2: distribución del lote. Los parámetros se ajustan aquí; la lógica vive en contrato.DISTRIBUCION.
+distribucion:
+  - id: volumen_minimo
+    descripcion: El lote trae al menos min_filas asociados (una ingesta cortada trae muy pocos)
+    min_filas: 30
+  - id: tasa_retiro_plausible
+    descripcion: "La fracción con #RETIROS=1 está entre min y max (fuera de ahí: etiqueta mal calculada o filtro)"
+    min: 0.05
+    max: 0.50
+  - id: salario_en_pesos
+    descripcion: La mediana de SALARIO está entre min y max pesos (otra escala delata miles de pesos o dólares)
+    min: 1000000
+    max: 20000000
+  - id: salarios_atipicos_marginales
+    descripcion: A lo sumo max_fraccion de salarios supera factor veces la mediana
+    factor: 5
+    max_fraccion: 0.05
+  - id: edad_mediana_plausible
+    descripcion: La mediana de edad al corte está entre min y max años (fechas de nacimiento mal leídas la mueven)
+    fecha_corte: "2026-10-31"
+    min: 22
+    max: 60
+
+# Nivel 3: reglas entre columnas. 'sql' usa los nombres de la BD; la versión en Python vive en contrato.REGLAS.
 reglas:
   - id: retiro_coherente
     descripcion: "#RETIROS=1 si y solo si hay FECHARETIRO, ESTADO=RETIRADO y MOTIVORETIRO"
@@ -120,6 +149,12 @@ reglas:
   - id: fin_contrato_posterior_ingreso
     descripcion: FECHATERMINACONTRATO es posterior a FECHAINGRESOLABORA
     sql: fechaterminacontrato is null or fechaterminacontrato > fechaingresolabora
+  - id: retiro_posterior_ingreso
+    descripcion: FECHARETIRO es posterior a FECHAINGRESOLABORA
+    sql: fecharetiro is null or fecharetiro > fechaingresolabora
+  - id: nombreintegrado_coherente
+    descripcion: NOMBREINTEGRADO es la unión de apellidos y nombres
+    sql: nombreintegrado = concat_ws(' ', primerapellido, segundoapellido, nombres, segundonombre)
   - id: mayor_de_edad_al_ingreso
     descripcion: Ingresó a laborar con al menos 18 años
     sql: fechaingresolabora >= fechanacimiento + interval '18 years'

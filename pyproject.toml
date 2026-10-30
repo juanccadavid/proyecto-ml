@@ -16,6 +16,7 @@ dependencies = [
     "mlflow>=2.16",
     "python-dotenv>=1.0",
     "joblib>=1.4",
+    "pandera>=0.24",
 ]
 
 [project.optional-dependencies]
@@ -64,7 +65,11 @@ select = ["E", "F", "I", "B", "UP", "SIM", "PD", "NPY"]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
 markers = ["integration: pruebas de punta a punta (más lentas)"]
-filterwarnings = ["ignore::DeprecationWarning", "ignore::FutureWarning"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::FutureWarning",
+    "ignore:Could not infer format:UserWarning",  # fechas inválidas a propósito en tests/data
+]
 
 [tool.coverage.run]
 source = ["src/proyecto_ml"]

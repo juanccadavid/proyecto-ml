@@ -1,7 +1,7 @@
 // Generado desde contratos/asociados.yaml. No editar a mano: make contrato-web
 window.CONTRATO = {
   "nombre": "asociados",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "tabla_db": "asociados",
   "grupos": {
     "SOCIODEMOGRAFICO": [
