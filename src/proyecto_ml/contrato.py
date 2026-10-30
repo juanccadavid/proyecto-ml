@@ -1,7 +1,7 @@
 """Contrato de datos: carga el YAML de contratos/ y lo aplica.
 
-Del mismo contrato salen la validación de DataFrames, el SQL de Supabase (tabla + CHECK + RLS),
-los registros listos para la API y la configuración del formulario web.
+Del mismo contrato salen la validación de DataFrames en tres niveles (pandera), el SQL de
+Supabase (tabla + CHECK + RLS), los registros listos para la API y la configuración del formulario web.
 """
 
 from __future__ import annotations
@@ -13,7 +13,9 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import pandera.pandas as pa
 import yaml
+from pandera.errors import SchemaErrors
 
 from proyecto_ml.config import ROOT_DIR
 
@@ -48,6 +50,7 @@ class Contrato:
     objetivo: str
     columnas: list[Columna]
     reglas: list[dict] = field(default_factory=list)
+    distribucion: list[dict] = field(default_factory=list)
 
     @property
     def nombres(self) -> list[str]:
@@ -59,10 +62,16 @@ def cargar(path: str | Path = CONTRATO_ASOCIADOS) -> Contrato:
     columnas = [Columna(grupo=grupo, **col) for grupo, cols in raw["grupos"].items() for col in cols]
     if invalidos := {c.tipo for c in columnas} - TIPOS_SQL.keys():
         raise ValueError(f"Tipos no soportados en el contrato: {invalidos}")
-    return Contrato(raw["nombre"], str(raw["version"]), raw["tabla_db"], raw["objetivo"], columnas, raw["reglas"])
+    meta = (raw["nombre"], str(raw["version"]), raw["tabla_db"], raw["objetivo"])
+    return Contrato(*meta, columnas, raw.get("reglas", []), raw.get("distribucion", []))
 
 
-# ---------------------------------------------------------------------------- validación
+# ---------------------------------------------------------------------------- validación (pandera)
+#
+# Nivel 1 (por fila): pa.Column con Check.ge/le/isin/str_matches, generado desde 'grupos' del YAML.
+#   Es lo mismo que escribir pa.Field(ge=..., le=...) en un DataFrameModel, sin repetir 74 columnas a mano.
+# Nivel 2 (distribución) y nivel 3 (entre columnas): checks sobre el DataFrame completo, el equivalente
+#   de @pa.dataframe_check. La lógica vive en DISTRIBUCION y REGLAS; los parámetros, en el YAML.
 
 
 def _vacio(s: pd.Series) -> pd.Series:
@@ -73,8 +82,36 @@ def _fecha(s: pd.Series) -> pd.Series:
     return pd.to_datetime(s.where(~_vacio(s)), errors="coerce")
 
 
-# Versión pandas de las reglas del YAML (mismo id). Cada una devuelve True en las filas que cumplen.
+def _texto(*cols: pd.Series) -> pd.Series:
+    """Une columnas de texto con espacio saltando vacíos (como concat_ws en SQL)."""
+    partes = pd.concat(cols, axis=1).astype("string")
+    return partes.apply(lambda fila: " ".join(x.strip() for x in fila.dropna() if x.strip()), axis=1)
+
+
+# Nivel 2: (medida del lote, condición sobre la medida). Los parámetros p vienen del YAML.
+DISTRIBUCION: dict[str, tuple[Callable[[pd.DataFrame, dict], float], Callable[[float, dict], bool]]] = {
+    "volumen_minimo": (lambda d, p: len(d), lambda v, p: v >= p["min_filas"]),
+    "tasa_retiro_plausible": (lambda d, p: d["#RETIROS"].mean(), lambda v, p: p["min"] <= v <= p["max"]),
+    "salario_en_pesos": (lambda d, p: d["SALARIO"].median(), lambda v, p: p["min"] <= v <= p["max"]),
+    "salarios_atipicos_marginales": (
+        lambda d, p: (d["SALARIO"] > p["factor"] * d["SALARIO"].median()).mean(),
+        lambda v, p: v <= p["max_fraccion"],
+    ),
+    "edad_mediana_plausible": (
+        lambda d, p: ((pd.Timestamp(p["fecha_corte"]) - _fecha(d["FECHANACIMIENTO"])).dt.days / 365.25).median(),
+        lambda v, p: p["min"] <= v <= p["max"],
+    ),
+}
+
+# Nivel 3: versión pandas de las reglas del YAML (mismo id). True en las filas que cumplen.
 REGLAS: dict[str, Callable[[pd.DataFrame], pd.Series]] = {
+    "retiro_posterior_ingreso": lambda d: (
+        _vacio(d["FECHARETIRO"]) | (_fecha(d["FECHARETIRO"]) > _fecha(d["FECHAINGRESOLABORA"]))
+    ),
+    "nombreintegrado_coherente": lambda d: (
+        d["NOMBREINTEGRADO"].astype("string").str.strip()
+        == _texto(d["PRIMERAPELLIDO"], d["SEGUNDOAPELLIDO"], d["NOMBRES"], d["SEGUNDONOMBRE"])
+    ),
     "retiro_coherente": lambda d: (
         ((d["#RETIROS"] == 1) == ~_vacio(d["FECHARETIRO"]))
         & ((d["#RETIROS"] == 1) == (d["ESTADO"] == "RETIRADO"))
@@ -95,67 +132,116 @@ REGLAS: dict[str, Callable[[pd.DataFrame], pd.Series]] = {
 }
 
 
-def _error(col: str, malas: pd.Series, problema: str, valores: pd.Series) -> str:
-    idx = malas[malas].index
-    return f"{col}: {len(idx)} fila(s) {problema} (ej. fila {idx[0]}: {valores.loc[idx[0]]!r})"
+DTYPES_PA = {"entero": "Int64", "fecha": "datetime64[ns]", "texto": None}
 
 
-def _validar_columna(c: Columna, s: pd.Series) -> list[str]:
-    errores = []
-    vacio = _vacio(s)
-    if c.requerido and vacio.any():
-        errores.append(_error(c.nombre, vacio, "vacías en columna requerida", s))
-    s = s[~vacio]
-    falso = pd.Series(False, index=s.index)
-
-    if c.tipo == "entero":
-        v = pd.to_numeric(s, errors="coerce")
-        malos = v.isna() | (v % 1 != 0)
-    elif c.tipo == "fecha":
-        v = pd.to_datetime(s, errors="coerce")
-        malos = v.isna()
-    else:
-        v = s.astype(str)
-        malos = falso
-    if malos.any():
-        errores.append(_error(c.nombre, malos, f"no son de tipo {c.tipo}", s))
-    v, s = v[~malos], s[~malos]
-
+def _columna_pa(c: Columna) -> pa.Column:
+    """Nivel 1: una columna del contrato como pa.Column (tipo con coerce, nulos, único y checks)."""
     limite = pd.Timestamp if c.tipo == "fecha" else (lambda x: x)
-    checks = [
-        (c.valores is not None, lambda: ~v.isin(c.valores), f"fuera de {c.valores}"),
-        (c.min is not None, lambda: v < limite(c.min), f"menores que {c.min}"),
-        (c.max is not None, lambda: v > limite(c.max), f"mayores que {c.max}"),
-        (c.patron is not None, lambda: ~v.str.fullmatch(c.patron), f"no cumplen el patrón {c.patron}"),
-        (c.unico, lambda: v.duplicated(keep=False), "duplicadas en columna única"),
-    ]
-    for aplica, condicion, problema in checks:
-        if aplica and (malas := condicion()).any():
-            errores.append(_error(c.nombre, malas, problema, s))
+    checks = []
+    if c.valores is not None:
+        checks.append(pa.Check.isin(c.valores))
+    if c.min is not None:
+        checks.append(pa.Check.ge(limite(c.min)))
+    if c.max is not None:
+        checks.append(pa.Check.le(limite(c.max)))
+    if c.patron is not None:
+        checks.append(pa.Check.str_matches(c.patron))
+    return pa.Column(DTYPES_PA[c.tipo], checks, nullable=not c.requerido, unique=c.unico, coerce=c.tipo != "texto")
+
+
+def _check_lote(check: Callable[[pd.DataFrame], Any]) -> Callable[[pd.DataFrame], Any]:
+    """Si falta una columna que usa el check o vino corrupta, ya lo reporta el nivel 1: no se duplica."""
+
+    def envuelto(d: pd.DataFrame) -> Any:
+        try:
+            return check(d)
+        except (KeyError, TypeError, ValueError):
+            return True
+
+    return envuelto
+
+
+def esquema(contrato: Contrato | None = None) -> pa.DataFrameSchema:
+    """Esquema pandera con los tres niveles del contrato."""
+    contrato = contrato or cargar()
+    checks = []
+    for d in contrato.distribucion:
+        medida, condicion = DISTRIBUCION[d["id"]]
+        lote = lambda df, d=d, m=medida, ok=condicion: bool(ok(m(df, d), d))  # noqa: E731
+        checks.append(pa.Check(_check_lote(lote), name=d["id"]))
+    for r in contrato.reglas:
+        filas = lambda df, f=REGLAS[r["id"]]: f(df).fillna(False).astype(bool)  # noqa: E731
+        checks.append(pa.Check(_check_lote(filas), name=r["id"]))
+    columnas = {c.nombre: _columna_pa(c) for c in contrato.columnas}
+    return pa.DataFrameSchema(columnas, checks=checks, strict=True, name=f"{contrato.nombre} v{contrato.version}")
+
+
+def _normalizar(df: pd.DataFrame, contrato: Contrato) -> pd.DataFrame:
+    """El texto vacío cuenta como dato faltante (igual que en la BD, donde se guarda como null)."""
+    df = df.copy()
+    for c in contrato.columnas:
+        if c.tipo == "texto" and c.nombre in df:
+            df[c.nombre] = df[c.nombre].astype(object).where(~_vacio(df[c.nombre]), None)
+    return df
+
+
+def _mensajes(fallas: pd.DataFrame, df: pd.DataFrame, contrato: Contrato) -> list[str]:
+    """Traduce los failure_cases de pandera a mensajes ordenados por nivel."""
+    distribucion = {d["id"]: d for d in contrato.distribucion}
+    reglas = {r["id"]: r for r in contrato.reglas}
+    tipos = {c.nombre: c.tipo for c in contrato.columnas}
+    traduccion = {"not_nullable": "vacías en columna requerida", "field_uniqueness": "duplicadas en columna única"}
+    check = fallas["check"].astype(str)
+    errores = []
+
+    # Nivel 1. Si una columna no pudo convertirse a su tipo, solo se reporta eso: sus demás checks
+    # fallan en cadena (comparar texto con números) y serían ruido.
+    por_columna = fallas[~check.isin([*distribucion, *reglas])]
+    sin_tipo = set(fallas.loc[check.str.startswith("coerce_dtype"), "column"])
+    es_tipo = por_columna["check"].astype(str).str.startswith("coerce_dtype")
+    por_columna = por_columna[~por_columna["column"].isin(sin_tipo) | es_tipo]
+    for (columna, nombre), g in por_columna.groupby(["column", "check"], dropna=False, sort=False):
+        if nombre == "column_in_dataframe":
+            errores.append(f"Nivel 1 · Faltan columnas del contrato: {sorted(g['failure_case'])}")
+        elif nombre == "column_in_schema":
+            errores.append(f"Nivel 1 · Columnas fuera del contrato: {sorted(g['failure_case'])}")
+        else:
+            problema = traduccion.get(nombre, f"no cumplen {nombre}")
+            if str(nombre).startswith("coerce_dtype"):
+                problema = f"no son de tipo {tipos.get(columna)}"
+            ej = g.iloc[0]
+            errores.append(
+                f"Nivel 1 · {columna}: {len(g)} fila(s) {problema} (ej. fila {ej['index']}: {ej['failure_case']!r})"
+            )
+
+    # Nivel 2: se informa el valor observado del lote para saber qué tan lejos está del rango.
+    for d in contrato.distribucion:
+        if (check == d["id"]).any():
+            observado = DISTRIBUCION[d["id"]][0](df, d)
+            limites = {k: v for k, v in d.items() if k not in ("id", "descripcion")}
+            errores.append(f"Nivel 2 · {d['id']}: {d['descripcion']} (observado: {observado:.4g}; límites: {limites})")
+
+    # Nivel 3: pandera repite cada fila fallida una vez por columna; se cuentan filas únicas.
+    for r in contrato.reglas:
+        g = fallas[check == r["id"]]
+        if len(g):
+            filas = [int(i) for i in pd.unique(g["index"].dropna())]
+            errores.append(
+                f"Nivel 3 · {r['id']}: {len(filas)} fila(s) no cumplen ({r['descripcion']}); ej. {filas[:5]}"
+            )
     return errores
 
 
 def validar(df: pd.DataFrame, contrato: Contrato | None = None) -> list[str]:
-    """Devuelve la lista de incumplimientos del contrato (vacía si el DataFrame cumple)."""
+    """Devuelve los incumplimientos del contrato en los tres niveles (lista vacía si cumple)."""
     contrato = contrato or cargar()
-    errores = []
-    if faltan := [c for c in contrato.nombres if c not in df.columns]:
-        errores.append(f"Faltan columnas del contrato: {faltan}")
-    if sobran := [c for c in df.columns if c not in contrato.nombres]:
-        errores.append(f"Columnas fuera del contrato: {sobran}")
-    for c in contrato.columnas:
-        if c.nombre in df.columns:
-            errores += _validar_columna(c, df[c.nombre])
-    if faltan:
-        return errores
-    for regla in contrato.reglas:
-        ok = REGLAS[regla["id"]](df).fillna(False)
-        if not ok.all():
-            filas = list(ok[~ok].index[:5])
-            errores.append(
-                f"Regla {regla['id']}: {(~ok).sum()} fila(s) no cumplen ({regla['descripcion']}); ej. {filas}"
-            )
-    return errores
+    normalizado = _normalizar(df, contrato)
+    try:
+        esquema(contrato).validate(normalizado, lazy=True)
+    except SchemaErrors as e:
+        return _mensajes(e.failure_cases, normalizado, contrato)
+    return []
 
 
 # ---------------------------------------------------------------------------- Supabase / web

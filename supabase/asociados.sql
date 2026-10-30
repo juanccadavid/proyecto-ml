@@ -1,4 +1,4 @@
--- Generado desde contratos/asociados.yaml v1.0.0. No editar a mano: make contrato-sql
+-- Generado desde contratos/asociados.yaml v1.1.0. No editar a mano: make contrato-sql
 -- Pegar en Supabase > SQL Editor > Run. Para aplicar un contrato nuevo en desarrollo: drop table public.asociados;
 
 create table if not exists public.asociados (
@@ -83,11 +83,13 @@ create table if not exists public.asociados (
   constraint estado_laboral_coherente check ((estado = 'RETIRADO') = (estado_laboral = 'RETIRADO')),
   constraint contrato_fijo_con_fecha_fin check ((tipocontrato = 'FIJO') = (fechaterminacontrato is not null)),
   constraint fin_contrato_posterior_ingreso check (fechaterminacontrato is null or fechaterminacontrato > fechaingresolabora),
+  constraint retiro_posterior_ingreso check (fecharetiro is null or fecharetiro > fechaingresolabora),
+  constraint nombreintegrado_coherente check (nombreintegrado = concat_ws(' ', primerapellido, segundoapellido, nombres, segundonombre)),
   constraint mayor_de_edad_al_ingreso check (fechaingresolabora >= fechanacimiento + interval '18 years'),
   constraint pacto_integral_coherente check ((tipopacto = 'INTEGRAL') = (modalidadsalarial = 'INTEGRAL') and (tipopacto = 'INTEGRAL') = (idtiposalario = 2))
 );
 
-comment on table public.asociados is 'Contrato asociados v1.0.0';
+comment on table public.asociados is 'Contrato asociados v1.1.0';
 comment on column public.asociados.cedula is 'CEDULA — Número de documento';
 comment on column public.asociados.primerapellido is 'PRIMERAPELLIDO';
 comment on column public.asociados.segundoapellido is 'SEGUNDOAPELLIDO';
