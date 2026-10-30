@@ -5,9 +5,13 @@ Uso:
     uv run python scripts/contrato_datos.py sql       # -> supabase/asociados.sql
     uv run python scripts/contrato_datos.py web       # -> web/contrato.js
     uv run python scripts/contrato_datos.py subir data/ejemplo/asociados_ejemplo.parquet
+    uv run python scripts/contrato_datos.py bajar     # -> data/raw/supabase_asociados.parquet
 
 'subir' usa SUPABASE_URL y SUPABASE_KEY (clave pública anon/publishable) del .env, valida
-contra el contrato antes de enviar y omite las cédulas que ya estén en la tabla.
+contra el contrato antes de enviar y omite los asociados que ya estén en la tabla.
+
+'bajar' usa SUPABASE_SECRET_KEY (clave SECRETA, solo en tu .env: la pública no puede leer por RLS),
+valida el lote con el contrato y guarda la última copia + una copia fechada en data/raw/ (no va a Git).
 """
 
 from __future__ import annotations
@@ -18,11 +22,15 @@ import os
 import sys
 import urllib.error
 import urllib.request
+from collections import Counter
+from datetime import datetime
 from pathlib import Path
 
 from proyecto_ml import contrato as k
-from proyecto_ml.config import ROOT_DIR
+from proyecto_ml.config import DATA_DIR, ROOT_DIR
 from proyecto_ml.data import load_dataset
+
+SUPABASE_BAJADA = DATA_DIR / "raw" / "supabase_asociados.parquet"
 
 
 def _validar(path: Path, contrato: k.Contrato) -> bool:
@@ -75,12 +83,65 @@ def _subir(path: Path, contrato: k.Contrato, lote: int = 500) -> None:
     print(f"{nuevos} registros nuevos en {contrato.tabla_db}; {repetidos} omitidos por cédula/IDASOCIADOS repetidos")
 
 
+def leer_tabla(url: str, key: str, tabla: str, pagina: int = 1000) -> list[dict]:
+    """Lee la tabla completa por la API REST, de a `pagina` filas (Supabase entrega máximo 1000 por consulta)."""
+    filas: list[dict] = []
+    while True:
+        endpoint = f"{url}/rest/v1/{tabla}?select=*&order=id&limit={pagina}&offset={len(filas)}"
+        req = urllib.request.Request(endpoint, headers={"apikey": key, "Accept": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=60) as r:
+                bloque = json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            sys.exit(f"Supabase respondió {e.code}: {e.read().decode('utf-8', 'replace')}")
+        filas += bloque
+        if len(bloque) < pagina:
+            return filas
+
+
+def _bajar(salida: Path, contrato: k.Contrato, forzar: bool = False) -> None:
+    url, key = os.getenv("SUPABASE_URL", "").rstrip("/"), os.getenv("SUPABASE_SECRET_KEY", "")
+    if not url or not key:
+        sys.exit("Faltan SUPABASE_URL y/o SUPABASE_SECRET_KEY en el .env (ver .env.example)")
+    if key.startswith("sb_publishable_"):
+        sys.exit(
+            "SUPABASE_SECRET_KEY es la clave pública: con RLS no puede leer (vería la tabla vacía). Usa la secreta."
+        )
+
+    registros = leer_tabla(url, key, contrato.tabla_db)
+    if not registros:
+        sys.exit(f"La tabla {contrato.tabla_db} está vacía: no se guarda nada.")
+    origenes = Counter(r.get("origen") for r in registros)
+    df = k.desde_registros_db(registros, contrato)
+    print(f"{len(df)} asociados descargados de Supabase ({', '.join(f'{o}: {n}' for o, n in origenes.items())})")
+
+    # Frontera del pipeline: lo que entra a data/ debe cumplir el contrato (incluido el nivel 2, que la BD no ve).
+    errores = k.validar(df, contrato)
+    for e in errores:
+        print(f"  x {e}")
+    if errores and not forzar:
+        sys.exit("No se guarda: el lote no cumple el contrato. Revísalo (o usa --forzar bajo tu responsabilidad).")
+
+    salida.parent.mkdir(parents=True, exist_ok=True)
+    fechada = salida.with_name(f"{salida.stem}_{datetime.now():%Y%m%d_%H%M%S}{salida.suffix}")
+    df.to_parquet(fechada, index=False)  # copia fija: permite repetir un entrenamiento con los mismos datos
+    df.to_parquet(salida, index=False)  # la última, la que apunta DATOS_ASOCIADOS en el .env
+    ruta = salida.resolve().relative_to(ROOT_DIR) if salida.resolve().is_relative_to(ROOT_DIR) else salida
+    print(f"-> {ruta} (última) y {fechada.name} (copia fechada)")
+    print(f"Para entrenar con ella: en el .env DATOS_ASOCIADOS={ruta.as_posix()}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("accion", choices=["validar", "sql", "web", "subir"])
+    parser.add_argument("accion", choices=["validar", "sql", "web", "subir", "bajar"])
     parser.add_argument("archivo", type=Path, nargs="?", help="Dataset (para validar y subir)")
     parser.add_argument("--contrato", type=Path, default=k.CONTRATO_ASOCIADOS)
+    parser.add_argument("--salida", type=Path, default=SUPABASE_BAJADA, help="Destino de 'bajar'")
+    parser.add_argument("--forzar", action="store_true", help="'bajar' guarda aunque el lote no cumpla el contrato")
     args = parser.parse_args()
+    if args.accion == "bajar":
+        _bajar(args.salida, k.cargar(args.contrato), args.forzar)
+        return
     contrato = k.cargar(args.contrato)
 
     if args.accion in ("validar", "subir") and args.archivo is None:

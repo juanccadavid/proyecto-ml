@@ -42,6 +42,7 @@ class Settings:
     test_size: float
     mlflow_tracking_uri: str
     mlflow_experiment: str
+    datos_asociados: Path
 
 
 def get_settings() -> Settings:
@@ -56,4 +57,6 @@ def get_settings() -> Settings:
         test_size=float(os.getenv("TEST_SIZE", "0.2")),
         mlflow_tracking_uri=os.getenv("MLFLOW_TRACKING_URI", default_mlflow),
         mlflow_experiment=os.getenv("MLFLOW_EXPERIMENT_NAME", "proyecto-1"),
+        # Interruptor del .env: datos de ejemplo (por defecto) o la última copia bajada de Supabase.
+        datos_asociados=_resolve(os.getenv("DATOS_ASOCIADOS", "data/ejemplo/asociados_ejemplo.parquet")),
     )

@@ -341,6 +341,25 @@ def a_registros_db(df: pd.DataFrame, contrato: Contrato | None = None, origen: s
     return registros
 
 
+def desde_registros_db(registros: list[dict], contrato: Contrato | None = None) -> pd.DataFrame:
+    """Inverso de a_registros_db: filas de la BD -> DataFrame con los nombres y tipos del contrato.
+
+    Descarta las columnas propias de la BD (id, creado_en, origen): no son parte del contrato.
+    """
+    contrato = contrato or cargar()
+    db = pd.DataFrame(registros, columns=[c.db for c in contrato.columnas])
+    df = pd.DataFrame(index=db.index)
+    for c in contrato.columnas:
+        if c.tipo == "entero":
+            v = pd.to_numeric(db[c.db]).astype("Int64")
+            df[c.nombre] = v.astype("int64") if v.notna().all() else v
+        elif c.tipo == "fecha":
+            df[c.nombre] = pd.to_datetime(db[c.db])
+        else:
+            df[c.nombre] = db[c.db].fillna("")  # vacío como "" (igual que el generador y el formulario)
+    return df
+
+
 def js(contrato: Contrato | None = None) -> str:
     """Contrato como window.CONTRATO para el formulario (funciona abriendo el HTML con doble clic)."""
     contrato = contrato or cargar()
