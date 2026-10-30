@@ -26,7 +26,7 @@ ARGS ?=
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup setup-hf demo-data demo train train-hf mlflow-ui app \
+.PHONY: help setup setup-hf demo-data demo train train-hf abandono mlflow-ui app \
         test test-fast cov lint format check hooks secrets up down logs salt bundle clean clean-all
 
 # ==============================================================================
@@ -64,6 +64,9 @@ train: ## Entrena y compara modelos (DATA del .env; acepta DATA=... ARGS=...)
 
 train-hf: ## Entrena incluyendo TabPFN (requiere make setup-hf)
 	$(UV) run --extra hf python -m proyecto_ml.train --tabpfn $(if $(DATA),--data $(DATA)) $(ARGS)
+
+abandono: ## Ridge + KMeans de abandono, validados con asociados nuevos (acepta DATA=... ARGS=...)
+	$(PY) scripts/modelo_abandono.py $(if $(DATA),--datos $(DATA)) $(ARGS)
 
 # ==============================================================================
 # Servicios locales

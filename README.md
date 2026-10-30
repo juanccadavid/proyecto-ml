@@ -68,6 +68,26 @@ docker compose up --build    # app :8501 + servidor MLflow :5000
 
 La imagen no contiene datos ni modelos: `data/` y `models/` se montan como volúmenes de solo lectura.
 
+## Modelos de abandono (Ridge y KMeans)
+
+`make abandono` responde "¿este asociado abandona el fondo?" con dos enfoques
+([`src/proyecto_ml/abandono.py`](src/proyecto_ml/abandono.py)):
+
+- **Ridge** (supervisado, aprende de `#RETIROS`): métricas en entrenamiento, validación cruzada y datos nuevos.
+- **KMeans** (sin objetivo): agrupa por comportamiento (solicitudes, ahorros, intención de retiro) en 2 grupos;
+  el de "riesgo" se elige por su perfil, no por el objetivo. Después se compara con el abandono real.
+
+Para validar, se generan asociados **que los modelos nunca vieron** (mismo generador, otra semilla):
+
+```bash
+make abandono                                        # entrena con data/ejemplo, valida con 1000 nuevos
+make abandono ARGS="--nuevos 5000 --semilla-nuevos 7 --alpha 10"
+make abandono ARGS="--validar mi_archivo.parquet"    # validar además con otro archivo
+```
+
+Se excluyen las columnas que solo existen porque el asociado ya se fue (fecha/motivo de retiro, `ESTADO`,
+fechas de actualización...): con ellas cualquier modelo acierta el 100 % pero no anticipa nada.
+
 ## Contrato de datos y Supabase
 
 [`contratos/asociados.yaml`](contratos/asociados.yaml) se valida con **pandera** en tres niveles:
