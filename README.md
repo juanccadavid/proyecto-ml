@@ -132,6 +132,18 @@ make supabase-subir                        # sube los 50 asociados de ejemplo (o
 make formulario                            # abre web/formulario.html: datos aleatorios + botón Enviar
 ```
 
+**Formulario en internet (GitHub Pages, gratis):** `https://juanccadavid.github.io/proyecto-ml/`.
+El workflow [`.github/workflows/formulario.yml`](.github/workflows/formulario.yml) lo publica en cada cambio de
+`web/` en `main`, armando `config.js` con variables del repositorio (la clave no está en Git). Activación, una vez:
+
+1. *Settings → Secrets and variables → Actions → Variables*: crear `SUPABASE_URL` y `SUPABASE_KEY`
+   (la clave **publishable**; el workflow se niega a publicar una `sb_secret_` o `service_role`).
+2. *Settings → Pages → Source*: **GitHub Actions**.
+3. *Actions → Formulario (GitHub Pages) → Run workflow*.
+
+Cualquiera con el enlace puede **insertar** asociados (no leer, editar ni borrar): la tabla los valida con el
+contrato. Para cerrarlo: *Settings → Pages → Unpublish site*.
+
 ### Qué va en el contrato y qué va en el test
 
 | | Contrato | Test |

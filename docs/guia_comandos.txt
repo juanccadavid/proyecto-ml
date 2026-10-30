@@ -111,6 +111,8 @@
      make contrato-web     regenera web/contrato.js (campos del formulario)
      make supabase-subir   sube un dataset a Supabase (valida antes; omite cédulas repetidas)
      make formulario       abre el formulario web (datos aleatorios + botón Enviar)
+                           En internet: https://juanccadavid.github.io/proyecto-ml/ (GitHub Pages; se
+                           publica solo al fusionar cambios de web/ en main. Ver README.)
 
  3.3 Modelos
      make abandono         Ridge + KMeans de abandono, validados con 1000 asociados NUEVOS
