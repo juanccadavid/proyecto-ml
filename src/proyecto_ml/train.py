@@ -121,8 +121,10 @@ def run(argv: list[str] | None = None) -> dict[str, dict[str, float]]:
     models_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     (metrics_dir / f"metrics_{stamp}.json").write_text(
-        json.dumps({"best_model": best_name, "selection_metric": SELECTION_METRIC, "results": results}, indent=2),
+        json.dumps({"best_model": best_name, "selection_metric": SELECTION_METRIC, "results": results}, indent=2)
+        + "\n",
         encoding="utf-8",
+        newline="\n",  # LF también en Windows: el JSON se versiona
     )
     joblib.dump(best_pipeline, models_dir / "best_model.joblib")
     metadata = {
@@ -133,7 +135,7 @@ def run(argv: list[str] | None = None) -> dict[str, dict[str, float]]:
         "numeric_defaults": {c: float(X_train[c].median()) for c in numeric},
         "categories": {c: sorted(X_train[c].dropna().astype(str).unique().tolist()) for c in categorical},
     }
-    (models_dir / "best_model.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    (models_dir / "best_model.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8", newline="\n")
     print(f"\nMejor modelo: {best_name} ({SELECTION_METRIC}={best_score:.3f})")
     return results
 
