@@ -65,3 +65,9 @@ desktop.ini
 
 # ---------- Claude Code (config personal) ----------
 .claude/settings.local.json
+
+# ---------- Datos FICTICIOS de ejemplo (única excepción: sí van a Git) ----------
+# Generados con scripts/generar_asociados_ejemplo.py; nunca poner datos reales aquí.
+!data/ejemplo/
+!data/ejemplo/*.parquet
+!data/ejemplo/*.xlsx
