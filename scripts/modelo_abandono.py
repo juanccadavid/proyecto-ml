@@ -1,7 +1,7 @@
 """Entrena los modelos de abandono (Ridge y KMeans) y los valida con asociados que nunca vieron.
 
 Uso:
-    uv run python scripts/modelo_abandono.py                         # entrena con data/ejemplo, valida con 1000 nuevos
+    uv run python scripts/modelo_abandono.py                         # entrena con DATOS_ASOCIADOS del .env
     uv run python scripts/modelo_abandono.py --nuevos 5000 --semilla-nuevos 7
     uv run python scripts/modelo_abandono.py --validar otro_archivo.parquet
     uv run python scripts/modelo_abandono.py --exportar-nuevos data/processed/nuevos.parquet
@@ -24,7 +24,7 @@ import pandas as pd
 from sklearn.model_selection import StratifiedKFold, cross_val_predict
 
 from proyecto_ml import abandono as a
-from proyecto_ml.config import DATA_DIR, METRICS_DIR, MODELS_DIR
+from proyecto_ml.config import METRICS_DIR, MODELS_DIR, get_settings
 from proyecto_ml.data import load_dataset
 from proyecto_ml.evaluate import compute_metrics
 from proyecto_ml.generador import FALTANTES, GeneradorAsociados
@@ -36,7 +36,9 @@ def _tabla(columnas: dict[str, dict]) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--datos", type=Path, default=DATA_DIR / "ejemplo" / "asociados_ejemplo.parquet")
+    parser.add_argument(
+        "--datos", type=Path, default=get_settings().datos_asociados, help="Por defecto DATOS_ASOCIADOS del .env"
+    )
     parser.add_argument("--alpha", type=float, default=1.0, help="Regularización de Ridge (más alto = más simple)")
     parser.add_argument("--nuevos", type=int, default=1000, help="Asociados nuevos para validar")
     parser.add_argument("--semilla-nuevos", type=int, default=2026, help="Distinta de 42 (la de data/ejemplo)")

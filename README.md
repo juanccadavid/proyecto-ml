@@ -129,8 +129,25 @@ make contrato-sql contrato-web             # regenerar tras cambiar el contrato
 
 ```bash
 make supabase-subir                        # sube los 50 asociados de ejemplo (omite cédulas repetidas)
+make supabase-bajar                        # baja la tabla a data/raw/ (requiere SUPABASE_SECRET_KEY)
 make formulario                            # abre web/formulario.html: datos aleatorios + botón Enviar
 ```
+
+**Entrenar con lo que llega a Supabase:**
+
+```
+formulario / supabase-subir ──► Supabase ──► make supabase-bajar ──► data/raw/supabase_asociados.parquet ──► make abandono
+                                              (clave secreta,          (+ copia fechada; valida el contrato)
+                                               solo en tu .env)
+```
+
+1. En Supabase, *Project Settings → API Keys → Secret keys*: crear una y ponerla en el `.env` como
+   `SUPABASE_SECRET_KEY`. Nunca en Git, en la web ni en un chat: salta el RLS.
+2. `make supabase-bajar`: descarga, valida con el contrato (si no cumple, no guarda) y deja la última copia.
+3. En el `.env`, el interruptor `DATOS_ASOCIADOS` elige con qué entrenan los modelos (una línea sin comentar):
+   `data/ejemplo/asociados_ejemplo.parquet` o `data/raw/supabase_asociados.parquet`. Luego `make abandono`.
+
+Se entrena con la copia descargada, no con la BD en vivo: así un entrenamiento se puede repetir con los mismos datos.
 
 **Formulario en internet (GitHub Pages, gratis):** `https://juanccadavid.github.io/proyecto-ml/`.
 El workflow [`.github/workflows/formulario.yml`](.github/workflows/formulario.yml) lo publica en cada cambio de
@@ -150,7 +167,7 @@ contrato. Para cerrarlo: *Settings → Pages → Unpublish site*.
 |---|---|---|
 | Qué es | La regla: describe el dato válido ("`ESTRATO` está entre 1 y 6") | La prueba de que la regla está encendida ("si llega estrato 7, la validación falla") |
 | Dónde vive | `contratos/asociados.yaml` + `src/proyecto_ml/contrato.py` | `tests/data/test_contrato_datos.py` |
-| Cuándo corre | En la frontera del pipeline: ingesta `--contrato`, `make supabase-subir`, CHECK de la BD | En el CI (`.github/workflows/ci.yml`) y con `make test`; nunca en producción |
+| Cuándo corre | En la frontera del pipeline: ingesta `--contrato`, `make supabase-subir`/`supabase-bajar`, CHECK de la BD | En el CI (`.github/workflows/ci.yml`) y con `make test`; nunca en producción |
 
 Hacen falta los dos: un contrato sin tests se degrada (alguien relaja un rango para desbloquear algo y nadie
 lo nota). Por eso los límites del test están **escritos a mano**, no leídos del YAML: relajar una regla rompe

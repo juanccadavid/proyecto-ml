@@ -27,6 +27,7 @@ ARGS ?=
 .DEFAULT_GOAL := help
 
 .PHONY: help setup setup-hf demo-data demo train train-hf abandono mlflow-ui app \
+        ejemplo contrato contrato-sql contrato-web supabase-subir supabase-bajar formulario \
         test test-fast cov lint format check hooks secrets up down logs salt bundle clean clean-all
 
 # ==============================================================================
@@ -94,6 +95,9 @@ contrato-web: ## Regenera web/contrato.js (campos del formulario) desde el contr
 
 supabase-subir: ## Sube un dataset a Supabase (DATA=..., por defecto el de ejemplo)
 	$(PY) scripts/contrato_datos.py subir $(or $(DATA),$(EJEMPLO))
+
+supabase-bajar: ## Descarga la tabla de Supabase a data/raw/ (valida con el contrato)
+	$(PY) scripts/contrato_datos.py bajar $(ARGS)
 
 formulario: ## Abre el formulario web en el navegador
 	@test -f web/config.js || echo "!! Falta web/config.js (copia web/config.example.js): podrás generar pero no enviar"

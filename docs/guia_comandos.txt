@@ -110,6 +110,7 @@
      make contrato-sql     regenera supabase/asociados.sql después de cambiar el contrato
      make contrato-web     regenera web/contrato.js (campos del formulario)
      make supabase-subir   sube un dataset a Supabase (valida antes; omite cédulas repetidas)
+     make supabase-bajar   baja la tabla de Supabase a data/raw/ (valida; ver sección 7.6)
      make formulario       abre el formulario web (datos aleatorios + botón Enviar)
                            En internet: https://juanccadavid.github.io/proyecto-ml/ (GitHub Pages; se
                            publica solo al fusionar cambios de web/ en main. Ver README.)
@@ -313,6 +314,21 @@
                uses la misma semilla); un generador de numpy (np.random.default_rng) en vez de la
                semilla global; y un objetivo CON señal: en la plantilla dar_promocion es aleatorio,
                y con un objetivo aleatorio ningún modelo puede aprender nada.
+
+ 7.6 Entrenar con lo que llega a Supabase (formulario y supabase-subir)
+     Interruptor en el .env (deja UNA línea sin comentar, no se toca el código):
+         DATOS_ASOCIADOS=data/ejemplo/asociados_ejemplo.parquet
+         # DATOS_ASOCIADOS=data/raw/supabase_asociados.parquet
+
+     make supabase-bajar        descarga la tabla, la valida con el contrato y guarda:
+                                  data/raw/supabase_asociados.parquet          (la última)
+                                  data/raw/supabase_asociados_AAAAMMDD_...     (copia fija)
+     make abandono              entrena con lo que diga DATOS_ASOCIADOS
+
+     Necesita SUPABASE_SECRET_KEY en el .env (Supabase > Project Settings > API Keys > Secret keys).
+     La clave pública NO sirve: el RLS no la deja leer (vería la tabla vacía; el script lo detecta).
+     Si el lote no cumple el contrato no se guarda (--forzar lo guarda igual: ARGS="--forzar").
+     Se entrena con la copia, no con la BD en vivo: el resultado se puede repetir.
 
  Nota: los datos los genera un programa con reglas simples, así que los modelos aprenden esas
  reglas. Con datos reales las métricas serán más bajas.
