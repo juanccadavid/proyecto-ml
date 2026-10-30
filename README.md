@@ -102,6 +102,19 @@ make supabase-subir                        # sube los 50 asociados de ejemplo (o
 make formulario                            # abre web/formulario.html: datos aleatorios + botón Enviar
 ```
 
+### Qué va en el contrato y qué va en el test
+
+| | Contrato | Test |
+|---|---|---|
+| Qué es | La regla: describe el dato válido ("`ESTRATO` está entre 1 y 6") | La prueba de que la regla está encendida ("si llega estrato 7, la validación falla") |
+| Dónde vive | `contratos/asociados.yaml` + `src/proyecto_ml/contrato.py` | `tests/data/test_contrato_datos.py` |
+| Cuándo corre | En la frontera del pipeline: ingesta `--contrato`, `make supabase-subir`, CHECK de la BD | En el CI (`.github/workflows/ci.yml`) y con `make test`; nunca en producción |
+
+Hacen falta los dos: un contrato sin tests se degrada (alguien relaja un rango para desbloquear algo y nadie
+lo nota). Por eso los límites del test están **escritos a mano**, no leídos del YAML: relajar una regla rompe
+un test con nombre propio (p. ej. `test_nivel_1_por_fila[ESTRATO=7]`), y el PR queda en rojo. Si cambias una
+regla a conciencia, actualiza su caso en el mismo PR.
+
 ## Seguridad de datos
 
 - `data/`, `models/`, `mlflow.db`, `.env` y `*.bundle` están en `.gitignore`.
