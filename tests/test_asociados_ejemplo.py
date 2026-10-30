@@ -1,25 +1,18 @@
-"""Pruebas del generador de asociados ficticios (scripts/generar_asociados_ejemplo.py)."""
-
-import importlib.util
+"""Pruebas del generador de asociados ficticios (proyecto_ml.generador)."""
 
 import pandas as pd
 import pytest
 
-from proyecto_ml.config import DATA_DIR, ROOT_DIR
+from proyecto_ml import generador as gen
+from proyecto_ml.config import DATA_DIR
 from proyecto_ml.data import load_dataset, split_features_target
-
-# scripts/ no es un paquete: se carga el módulo desde su ruta.
-_SCRIPT = ROOT_DIR / "scripts" / "generar_asociados_ejemplo.py"
-_spec = importlib.util.spec_from_file_location("generar_asociados_ejemplo", _SCRIPT)
-gen = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(gen)
 
 TARGET = "#RETIROS"
 
 
 @pytest.fixture(scope="module")
 def asociados() -> pd.DataFrame:
-    return gen.make_asociados(n=50, seed=42)
+    return gen.GeneradorAsociados(n=50, seed=42).generar()
 
 
 def test_esquema_completo_y_en_orden(asociados):
@@ -36,8 +29,14 @@ def test_diccionario_cubre_todas_las_columnas(asociados):
 
 
 def test_reproducible_con_la_misma_semilla(asociados):
-    pd.testing.assert_frame_equal(asociados, gen.make_asociados(n=50, seed=42))
-    assert not asociados.equals(gen.make_asociados(n=50, seed=7))
+    pd.testing.assert_frame_equal(asociados, gen.GeneradorAsociados(n=50, seed=42).generar())
+    assert not asociados.equals(gen.GeneradorAsociados(n=50, seed=7).generar())
+
+
+def test_guardar_escribe_parquet_y_excel(tmp_path):
+    parquet, xlsx = gen.GeneradorAsociados(n=10, seed=3).guardar(tmp_path, "prueba")
+    assert len(pd.read_parquet(parquet)) == 10
+    assert pd.ExcelFile(xlsx).sheet_names == ["DATOS", "DICCIONARIO"]
 
 
 def test_objetivo_binario_con_ambas_clases(asociados):

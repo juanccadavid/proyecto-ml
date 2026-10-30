@@ -7,6 +7,9 @@ MLflow y demo en Streamlit.
 > **Estado:** estructura base lista y probada con un **dataset sintético**. El dataset definitivo está por
 > definir (ver `sesiones/bitacora.md`). Cambiarlo solo requiere ajustar el `.env`.
 
+> **¿Nuevo en el proyecto?** Empieza por [`docs/guia_comandos.txt`](docs/guia_comandos.txt): Git, uv, Make,
+> imports, contratos, pipeline y generador de datos, con los comandos de este proyecto.
+
 ## Estructura
 
 ```
@@ -17,12 +20,19 @@ MLflow y demo en Streamlit.
 │   ├── models.py         Logística, Random Forest, HistGB, TabPFN (opcional)
 │   ├── evaluate.py       PR-AUC, ROC-AUC, recall@10 %, F1
 │   ├── train.py          Entrenamiento + MLflow + exportación del mejor modelo
+│   ├── abandono.py       Modelos de abandono: Ridge (supervisado) y KMeans (sin objetivo)
+│   ├── contrato.py       Contrato de datos (pandera, 3 niveles) + SQL de Supabase + campos del formulario
+│   ├── generador.py      GeneradorAsociados: asociados ficticios con el esquema real
 │   ├── anonymize.py      Hash con sal, eliminación de PII, agrupación en rangos
-│   ├── synthetic.py      Generador de datos sintéticos
+│   ├── synthetic.py      Generador sintético genérico (make demo)
 │   └── app.py            Demo Streamlit
-├── scripts/              Ingesta, anonimización, datos sintéticos
+├── scripts/              Ingesta, anonimización, generadores, contrato, modelo de abandono
+├── contratos/            Contratos de datos (YAML)
+├── supabase/             SQL de la tabla y migraciones
+├── web/                  Formulario para enviar asociados a Supabase
+├── docs/                 Guía de comandos y conceptos (docs/guia_comandos.txt)
 ├── sesiones/             Notebooks (EDA) y bitácora del equipo
-├── tests/                Pruebas unitarias e integración (pytest)
+├── tests/                Pruebas unitarias e integración (pytest); tests/data: reglas del contrato
 ├── reports/              Métricas y figuras versionables
 ├── data/                 Datos locales — NO van a Git
 └── models/               Modelos exportados — NO van a Git
