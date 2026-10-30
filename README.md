@@ -68,6 +68,32 @@ docker compose up --build    # app :8501 + servidor MLflow :5000
 
 La imagen no contiene datos ni modelos: `data/` y `models/` se montan como volúmenes de solo lectura.
 
+## Contrato de datos y Supabase
+
+[`contratos/asociados.yaml`](contratos/asociados.yaml) define cada columna (tipo, obligatoria, valores
+permitidos, rangos, patrón) y las reglas entre columnas (p. ej. `#RETIROS=1` exige fecha y motivo de retiro).
+De ahí salen la validación en Python, la tabla de Supabase y el formulario web:
+
+```bash
+make contrato                              # valida data/ejemplo (o DATA=...)
+uv run python scripts/ingesta.py --input ... --target "#RETIROS" --contrato contratos/asociados.yaml
+make contrato-sql contrato-web             # regenerar tras cambiar el contrato
+```
+
+**Configurar Supabase (una vez):**
+
+1. Crear un proyecto gratuito en [supabase.com](https://supabase.com).
+2. *SQL Editor* → pegar [`supabase/asociados.sql`](supabase/asociados.sql) → *Run*. Crea la tabla con todas
+   las restricciones del contrato y RLS: la clave pública **solo puede insertar** (no leer, editar ni borrar).
+3. *Project Settings → API Keys*: copiar la URL y la clave **pública** (anon / publishable).
+   La `service_role` / secret nunca va en el HTML, el `.env` compartido ni Git.
+4. Ponerlas en `.env` (`SUPABASE_URL`, `SUPABASE_KEY`) y en `web/config.js` (copiar `web/config.example.js`).
+
+```bash
+make supabase-subir                        # sube los 50 asociados de ejemplo (omite cédulas repetidas)
+make formulario                            # abre web/formulario.html: datos aleatorios + botón Enviar
+```
+
 ## Seguridad de datos
 
 - `data/`, `models/`, `mlflow.db`, `.env` y `*.bundle` están en `.gitignore`.

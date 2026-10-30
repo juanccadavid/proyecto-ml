@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Registro de asociados</title>
+<!-- Campos y reglas: contrato.js (generado desde contratos/asociados.yaml). Conexión: config.js (no va a Git). -->
+<script src="contrato.js"></script>
+<script src="config.js" onerror="window.SUPABASE_CONFIG = null"></script>
+<style>
+  :root {
+    --bg: #f4f5f8;
+    --surface: #ffffff;
+    --surface-2: #f8f9fb;
+    --border: #e3e6ec;
+    --text: #1b1f27;
+    --muted: #667085;
+    --primary: #2f5bea;
+    --primary-hover: #2449c9;
+    --ok: #12805c;
+    --ok-bg: #e5f6ef;
+    --bad: #c4321c;
+    --bad-bg: #fdecea;
+    --warn-bg: #fff6e0;
+    --warn: #8a5a00;
+    --shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 4px 16px rgba(16, 24, 40, .06);
+    --g-sociodemografico: #e8792b;
+    --g-laboral: #2e75b6;
+    --g-productos: #4f9a2c;
+    --g-retiro: #7a3db8;
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1218;
+      --surface: #171b23;
+      --surface-2: #1d222c;
+      --border: #2a303c;
+      --text: #e8ebf1;
+      --muted: #9aa3b2;
+      --primary: #6b8cff;
+      --primary-hover: #8aa4ff;
+      --ok: #4cc79a;
+      --ok-bg: #12291f;
+      --bad: #ff8a75;
+      --bad-bg: #331a16;
+      --warn-bg: #2d2412;
+      --warn: #f0c46b;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 16px rgba(0, 0, 0, .25);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 32px 16px 120px; }
+
+  header h1 { margin: 0; font-size: 26px; letter-spacing: -.01em; }
+  header p { margin: 4px 0 0; color: var(--muted); }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--muted);
+  }
+
+  .banner {
+    margin-top: 20px; padding: 14px 16px; border-radius: 10px;
+    background: var(--warn-bg); color: var(--warn); font-size: 14px;
+  }
+  .banner code { font-size: 13px; }
+
+  .resumen {
+    margin-top: 24px; padding: 22px; border-radius: var(--radius);
+    background: var(--surface); box-shadow: var(--shadow);
+    display: grid; grid-template-columns: auto 1fr auto; gap: 18px; align-items: center;
+  }
+  .avatar {
+    width: 56px; height: 56px; border-radius: 50%;
+    display: grid; place-items: center; font-weight: 700; font-size: 20px;
+    background: linear-gradient(135deg, var(--g-laboral), var(--g-retiro)); color: #fff;
+  }
+  .resumen h2 { margin: 0; font-size: 18px; }
+  .resumen .meta { color: var(--muted); font-size: 14px; display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 2px; }
+  .estado { font-size: 13px; padding: 4px 12px; }
+  .estado.activo { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+  .estado.retirado { background: var(--bad-bg); color: var(--bad); border-color: transparent; }
+
+  .grupo {
+    margin-top: 14px; border-radius: var(--radius); background: var(--surface);
+    box-shadow: var(--shadow); overflow: hidden; border-left: 4px solid var(--color);
+  }
+  .grupo summary {
+    list-style: none; cursor: pointer; padding: 16px 20px;
+    display: flex; align-items: center; gap: 12px; user-select: none;
+  }
+  .grupo summary::-webkit-details-marker { display: none; }
+  .grupo summary h3 { margin: 0; font-size: 15px; letter-spacing: .04em; color: var(--color); }
+  .grupo summary .chip { margin-left: auto; }
+  .grupo summary::after {
+    content: ""; width: 8px; height: 8px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+    transform: rotate(45deg); transition: transform .2s; margin: 0 4px 4px 4px;
+  }
+  .grupo[open] summary::after { transform: rotate(-135deg); margin-bottom: -4px; }
+  .campos {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 14px 16px; padding: 4px 20px 22px;
+  }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+  label .req { color: var(--bad); }
+  label small { font-weight: 400; font-size: 11px; }
+  input, select {
+    font: inherit; font-size: 14px; color: var(--text);
+    padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2);
+    min-width: 0; width: 100%;
+  }
+  input:focus, select:focus { outline: 2px solid var(--primary); outline-offset: -1px; border-color: transparent; }
+  input:user-invalid, select:user-invalid { border-color: var(--bad); background: var(--bad-bg); }
+
+  .acciones {
+    position: fixed; left: 0; right: 0; bottom: 0; padding: 14px 16px;
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    backdrop-filter: blur(10px); border-top: 1px solid var(--border);
+  }
+  .acciones .in { max-width: 980px; margin: 0 auto; display: flex; align-items: center; gap: 12px; }
+  .acciones .contador { color: var(--muted); font-size: 14px; margin-right: auto; }
+  button {
+    font: inherit; font-weight: 600; border-radius: 10px; padding: 11px 20px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  }
+  button:hover { background: var(--surface-2); }
+  button.primario { background: var(--primary); border-color: var(--primary); color: #fff; min-width: 140px; }
+  button.primario:hover { background: var(--primary-hover); }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 88px; transform: translate(-50%, 20px); opacity: 0;
+    max-width: min(560px, calc(100% - 32px)); padding: 12px 18px; border-radius: 10px;
+    font-size: 14px; box-shadow: var(--shadow); transition: all .25s; pointer-events: none;
+  }
+  .toast.ver { opacity: 1; transform: translate(-50%, 0); }
+  .toast.ok { background: var(--ok-bg); color: var(--ok); }
+  .toast.error { background: var(--bad-bg); color: var(--bad); }
+
+  @media (max-width: 600px) {
+    .resumen { grid-template-columns: auto 1fr; }
+    .resumen .estado { grid-column: 1 / -1; justify-self: start; }
+    .acciones .contador { display: none; }
+    .acciones button { flex: 1; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Registro de asociados</h1>
+    <p>Datos ficticios generados según el contrato <span class="chip" id="version"></span></p>
+  </header>
+
+  <div class="banner" id="sin-config" hidden>
+    Falta la conexión a Supabase: copia <code>web/config.example.js</code> como <code>web/config.js</code>
+    y completa la URL y la clave pública. Puedes generar datos, pero no enviarlos.
+  </div>
+
+  <section class="resumen" aria-live="polite">
+    <div class="avatar" id="r-avatar"></div>
+    <div>
+      <h2 id="r-nombre"></h2>
+      <div class="meta">
+        <span id="r-cedula"></span><span id="r-cargo"></span><span id="r-salario"></span><span id="r-contrato"></span>
+      </div>
+    </div>
+    <span class="chip estado" id="r-estado"></span>
+  </section>
+
+  <form id="form" novalidate></form>
+</div>
+
+<div class="acciones">
+  <div class="in">
+    <span class="contador" id="contador">Ningún registro enviado aún</span>
+    <button type="button" id="otro" title="Generar otro asociado aleatorio">🎲 Generar otro</button>
+    <button type="submit" form="form" class="primario" id="enviar">Enviar</button>
+  </div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+const C = window.CONTRATO;
+let CFG = window.SUPABASE_CONFIG;
+const $ = (id) => document.getElementById(id);
+const COLOR = { SOCIODEMOGRAFICO: "--g-sociodemografico", LABORAL: "--g-laboral", PRODUCTOS: "--g-productos", RETIRO: "--g-retiro" };
+const campos = Object.values(C.grupos).flat();
+
+// ---------------------------------------------------------------- formulario desde el contrato
+function control(c) {
+  let el;
+  if (c.valores) {
+    el = document.createElement("select");
+    const opciones = c.requerido ? c.valores : ["", ...c.valores];
+    el.innerHTML = opciones.map((v) => `<option value="${v}">${v === "" ? "—" : v}</option>`).join("");
+  } else {
+    el = document.createElement("input");
+    el.type = c.tipo === "entero" ? "number" : c.tipo === "fecha" ? "date" : "text";
+    if (c.tipo === "entero") el.step = 1;
+    if (c.min !== undefined) el.min = c.min;
+    if (c.max !== undefined) el.max = c.max;
+    if (c.patron) el.pattern = c.patron.replace(/^\^|\$$/g, "");
+  }
+  el.name = c.nombre;
+  el.required = !!c.requerido;
+  return el;
+}
+
+for (const [grupo, cols] of Object.entries(C.grupos)) {
+  const det = document.createElement("details");
+  det.className = "grupo";
+  det.style.setProperty("--color", `var(${COLOR[grupo] || "--primary"})`);
+  det.innerHTML = `<summary><h3>${grupo}</h3><span class="chip">${cols.length} campos</span></summary><div class="campos"></div>`;
+  for (const c of cols) {
+    const label = document.createElement("label");
+    label.innerHTML = `<span>${c.nombre}${c.requerido ? ' <span class="req">*</span>' : ""}</span>`;
+    label.append(control(c));
+    if (c.descripcion) label.insertAdjacentHTML("beforeend", `<small>${c.descripcion}</small>`);
+    det.querySelector(".campos").append(label);
+  }
+  $("form").append(det);
+}
+$("version").textContent = `${C.nombre} v${C.version}`;
+
+// ---------------------------------------------------------------- datos aleatorios coherentes
+const rnd = Math.random;
+const entre = (a, b) => a + Math.floor(rnd() * (b - a + 1));
+const una = (xs) => xs[Math.floor(rnd() * xs.length)];
+const prob = (p) => rnd() < p;
+const poisson = (l) => { let k = 0, p = 1; const L = Math.exp(-l); do { k++; p *= rnd(); } while (p > L); return k - 1; };
+const iso = (d) => d.toISOString().slice(0, 10);
+const fecha = (a, b) => { const t0 = Date.parse(a), t1 = Date.parse(b); return new Date(t0 + rnd() * (t1 - t0)); };
+const masAnios = (d, n) => new Date(Date.UTC(d.getUTCFullYear() + n, d.getUTCMonth(), d.getUTCDate()));
+const digitos = (n) => Array.from({ length: n }, () => entre(0, 9)).join("");
+
+const APELLIDOS = ["PRUEBA", "FICTICIO", "EJEMPLO", "DEMO", "SINTETICO", "MUESTRA", "SIMULADO", "MODELO", "PILOTO", "ENSAYO"];
+const NOMBRES = {
+  F: ["ANA", "LUISA", "MARIA", "SOFIA", "CAMILA", "VALENTINA", "PAULA", "LAURA", "DIANA", "ISABEL"],
+  M: ["CARLOS", "JORGE", "ANDRES", "FELIPE", "DAVID", "JUAN", "MIGUEL", "SANTIAGO", "PABLO", "DANIEL"],
+};
+const CARGOS = ["ANALISTA", "AUXILIAR ADMINISTRATIVO", "MEDICO", "OPERARIO", "DESARROLLADOR", "DOCENTE", "ENFERMERO", "CONTADOR"];
+const CIIU = { 8411: 84, 8512: 85, 8610: 86, 6201: 62, 4711: 47 };
+const MOTIVOS = campos.find((c) => c.nombre === "MOTIVORETIRO").valores;
+
+function asociadoAleatorio() {
+  const retirado = prob(0.3);
+  const fijo = prob(retirado ? 0.6 : 0.25);
+  const sexo = una(["F", "M"]);
+  const [ap1, ap2, nom] = [una(APELLIDOS), una(APELLIDOS), una(NOMBRES[sexo])];
+  const nom2 = prob(0.5) ? una(NOMBRES[sexo]) : "";
+  const ciudad = una([5001, 5266, 5360, 5088, 5631]);
+  const comuna = ciudad === 5001 ? entre(1, 16) : 0;
+  const ciiu = Number(una(Object.keys(CIIU)));
+  const agencia = entre(1, 5);
+  const empresa = entre(101, 110);
+  const cedula = entre(900000051, 999999999);
+
+  const nacimiento = fecha("1962-01-01", "2004-12-31");
+  let ingreso = fecha("1995-01-01", "2024-12-31");
+  if (ingreso < masAnios(nacimiento, 18)) ingreso = masAnios(nacimiento, 18);   // regla mayor_de_edad_al_ingreso
+  const retiro = retirado ? fecha("2025-11-01", "2026-10-15") : null;
+  const finContrato = !fijo ? null : retirado ? retiro : fecha("2026-11-01", "2027-12-31");
+  const ultAct = retirado ? retiro : fecha("2025-06-01", "2026-10-15");
+  const motivo = !retirado ? "" : fijo ? "TERMINACION CONTRATO LABORAL" : una(MOTIVOS);
+
+  const z = Math.sqrt(-2 * Math.log(1 - rnd())) * Math.cos(2 * Math.PI * rnd());
+  const salario = Math.max(Math.round(Math.exp(15 + 0.45 * z) / 10000) * 10000, 1423500);
+  const integral = salario >= 10000000;
+  const p = (activo, ret) => poisson(retirado ? ret : activo);
+
+  return {
+    CEDULA: cedula, PRIMERAPELLIDO: ap1, SEGUNDOAPELLIDO: ap2, NOMBRES: nom, SEGUNDONOMBRE: nom2,
+    NOMBREINTEGRADO: [ap1, ap2, nom, nom2].filter(Boolean).join(" "),
+    DIRECCION: `${una(["CL", "CR", "TV", "DG", "AV"])} ${entre(1, 99)} # ${entre(1, 99)}-${String(entre(1, 98)).padStart(2, "0")}`,
+    TIPOIDENTIFICACION: prob(0.95) ? "CC" : "CE", RELACION: "ASOCIADO", AGENCIA: agencia,
+    TELEFONO1: "300" + digitos(7), EXTENSION1: "", TELEFONO2: prob(0.5) ? "604555" + digitos(4) : "", EXTENSION2: "",
+    APARTADOAEREO: "", SEXO: sexo, CODPAISCEDULA: 169, CODCIUDADCEDULA: ciudad,
+    EMAIL: `asociado${cedula}@example.com`,
+    FECHARETIRO: retiro ? iso(retiro) : "", FECHAULTACTUALIZACION: iso(ultAct), FECHANACIMIENTO: iso(nacimiento),
+    CODPAIS: 169, CODDEPARTAMENTO: 5, CODCIUDAD: ciudad, CODZONA: entre(1, 3), CODCOMUNA: comuna,
+    CODBARRIO: comuna ? comuna * 100 + entre(1, 19) : 0, CODCIIU: ciiu, CODDIVISION: CIIU[ciiu],
+    ESTADO: retirado ? "RETIRADO" : "ACTIVO", ESTRATO: una([1, 2, 2, 3, 3, 3, 4, 4, 5, 6]),
+
+    CODEMPRESA: empresa, CODDEPENDENCIA: entre(10, 49), PERIODODEDUCE: una(["MENSUAL", "QUINCENAL"]),
+    DEDUCEOCACIONAL: prob(0.2) ? "S" : "N", SALARIO: salario, CODEMPRESALABORA: empresa,
+    FECHAINGRESOLABORA: iso(ingreso), TIPOCONTRATO: fijo ? "FIJO" : "INDEFINIDO",
+    FECHATERMINACONTRATO: finContrato ? iso(finContrato) : "", CARGO: una(CARGOS),
+    CODBANCO: una([1, 7, 13, 51, 23]), NUMEROCUENTA: digitos(10), AGENCIA_LABORAL: agencia,
+    CODANALISTA: entre(501, 505), RUTAANALISTA: `R${agencia}`, TIPOCUENTA: prob(0.8) ? "AHORROS" : "CORRIENTE",
+    ESTADO_LABORAL: retirado ? "RETIRADO" : "VIGENTE", ULTIMAACTUALIZACION: iso(ultAct),
+    OPERADORACTUALIZO: `OPER0${entre(1, 5)}`, SZIN: entre(1, 2), IDTIPOSALARIO: integral ? 2 : 1,
+    TIPOPACTO: integral ? "INTEGRAL" : "CONVENCIONAL", IDASOCIADOS: entre(10051, 9999999),
+    CODIGOTIPO: fijo ? 2 : 1, CODPAISOFI: 169, CODDEPARTAMENTOOFI: 5, CODCIUDADOFI: prob(0.7) ? 5001 : ciudad,
+    DIRECCIONEMPRESA: `CL ${empresa - 60} # ${empresa - 50}-${String(empresa % 100).padStart(2, "0")}`,
+    TELOFICINA: `6045550${empresa}`, EXTENSION: prob(0.8) ? String(entre(100, 499)) : "",
+    MODALIDADSALARIAL: integral ? "INTEGRAL" : "FIJO",
+
+    "#SOLICITUD_DISMINUCIONCUOTAS": p(0.3, 1.5), "#SOLICITUD_CANCELACIONAHORROS": p(0.1, 1.2),
+    "#SOLICITUD_RETIROPARCIALAHORROS": p(0.6, 2.0), "#CANTIDAD_AHORROSALAVISTA": entre(1, 3),
+    "#CANTIDAD_AHORROSCONTRACTUALES": p(1.0, 0.3), CANCELACIONCREDITOS_ULT3MESES: p(0.1, 0.8),
+    "#SOLICITUDCREDITOS_ULT3MESES": p(0.9, 0.2), "#CANTIDAD_SERVICIOS": Math.max(entre(1, 6) - (retirado ? 1 : 0), 1),
+
+    "#INTENCIONRETIROS_ULT3MESES": p(0.2, 1.5), "#RETIROS": retirado ? 1 : 0, MOTIVORETIRO: motivo,
+  };
+}
+
+// ---------------------------------------------------------------- llenar, resumir, enviar
+const form = $("form");
+const pesos = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
+
+function llenar(datos) {
+  for (const c of campos) form.elements[c.nombre].value = datos[c.nombre] ?? "";
+  resumen();
+}
+
+function resumen() {
+  const v = (n) => form.elements[n].value;
+  $("r-avatar").textContent = (v("NOMBRES")[0] || "?") + (v("PRIMERAPELLIDO")[0] || "");
+  $("r-nombre").textContent = [v("NOMBRES"), v("SEGUNDONOMBRE"), v("PRIMERAPELLIDO"), v("SEGUNDOAPELLIDO")].filter(Boolean).join(" ");
+  $("r-cedula").textContent = `${v("TIPOIDENTIFICACION")} ${Number(v("CEDULA")).toLocaleString("es-CO")}`;
+  $("r-cargo").textContent = v("CARGO");
+  $("r-salario").textContent = pesos.format(Number(v("SALARIO")));
+  $("r-contrato").textContent = `Contrato ${v("TIPOCONTRATO").toLowerCase()}`;
+  const ret = v("ESTADO") === "RETIRADO";
+  $("r-estado").textContent = ret ? `Retirado · ${v("MOTIVORETIRO").toLowerCase()}` : "Activo";
+  $("r-estado").className = `chip estado ${ret ? "retirado" : "activo"}`;
+}
+
+function registroDb() {
+  const reg = { origen: "formulario" };
+  for (const c of campos) {
+    const v = form.elements[c.nombre].value.trim();
+    reg[c.db] = v === "" ? null : c.tipo === "entero" ? Number(v) : v;
+  }
+  return reg;
+}
+
+function aviso(texto, tipo) {
+  const t = $("toast");
+  t.textContent = texto;
+  t.className = `toast ver ${tipo}`;
+  clearTimeout(aviso.timer);
+  aviso.timer = setTimeout(() => (t.className = "toast"), tipo === "ok" ? 3000 : 7000);
+}
+
+function explicarError(cuerpo) {
+  const msg = cuerpo.message || JSON.stringify(cuerpo);
+  if (cuerpo.code === "23505") return "Ya existe un asociado con esa cédula o IDASOCIADOS. Genera otro.";
+  if (cuerpo.code === "23514") return `La base rechazó el registro por una regla del contrato: ${msg}`;
+  if (cuerpo.code === "42501") return "Sin permiso para insertar: ¿corriste supabase/asociados.sql completo (RLS y grants)?";
+  return msg;
+}
+
+let enviados = 0;
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!form.checkValidity()) {
+    const malo = form.querySelector(":invalid");
+    malo.closest("details").open = true;
+    malo.reportValidity();
+    return;
+  }
+  const btn = $("enviar");
+  btn.disabled = true;
+  btn.textContent = "Enviando…";
+  try {
+    const r = await fetch(`${CFG.url.replace(/\/$/, "")}/rest/v1/${C.tabla_db}`, {
+      method: "POST",
+      headers: { apikey: CFG.key, "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify(registroDb()),
+    });
+    if (!r.ok) throw new Error(explicarError(await r.json().catch(() => ({ message: r.statusText }))));
+    enviados++;
+    $("contador").textContent = `${enviados} registro${enviados === 1 ? "" : "s"} enviado${enviados === 1 ? "" : "s"} en esta sesión`;
+    aviso(`Asociado ${form.elements.CEDULA.value} guardado en Supabase ✓`, "ok");
+    llenar(asociadoAleatorio());
+  } catch (err) {
+    aviso(err.message === "Failed to fetch" ? "No se pudo conectar con Supabase: revisa la URL en config.js y tu conexión." : err.message, "error");
+  } finally {
+    btn.disabled = !CFG;
+    btn.textContent = "Enviar";
+  }
+});
+
+form.addEventListener("input", resumen);
+$("otro").addEventListener("click", () => llenar(asociadoAleatorio()));
+
+if (!CFG || !CFG.url || !CFG.key || CFG.url.includes("TU-PROYECTO")) {
+  CFG = null;
+  $("sin-config").hidden = false;
+  $("enviar").disabled = true;
+}
+llenar(asociadoAleatorio());
+</script>
+</body>
+</html>
