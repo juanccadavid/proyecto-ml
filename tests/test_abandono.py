@@ -1,28 +1,22 @@
 """Pruebas de los modelos de abandono: Ridge (supervisado) y KMeans (sin objetivo)."""
 
-import importlib.util
-
 import numpy as np
 import pandas as pd
 import pytest
 
 from proyecto_ml import abandono as a
-from proyecto_ml.config import ROOT_DIR
-
-_spec = importlib.util.spec_from_file_location("gen", ROOT_DIR / "scripts" / "generar_asociados_ejemplo.py")
-gen = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(gen)
+from proyecto_ml.generador import GeneradorAsociados
 
 
 @pytest.fixture(scope="module")
 def entrenamiento() -> pd.DataFrame:
-    return gen.make_asociados(n=400, seed=1)
+    return GeneradorAsociados(n=400, seed=1).generar()
 
 
 @pytest.fixture(scope="module")
 def nuevos() -> pd.DataFrame:
     """Asociados que los modelos nunca ven al entrenar."""
-    return gen.make_asociados(n=400, seed=2)
+    return GeneradorAsociados(n=400, seed=2).generar()
 
 
 def test_variables_sin_fuga_ni_datos_personales(entrenamiento):

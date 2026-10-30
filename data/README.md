@@ -17,5 +17,5 @@ Reglas:
 
 Contiene `asociados_ejemplo.parquet` / `.xlsx`: 50 asociados **ficticios** con el esquema real
 (SOCIODEMOGRAFICO, LABORAL, PRODUCTOS, RETIRO), para probar ingesta y modelos sin datos reales.
-Se regenera con `uv run python scripts/generar_asociados_ejemplo.py --rows 50`.
+Se regenera con `make ejemplo` (lógica en `src/proyecto_ml/generador.py`).
 Es la única carpeta exceptuada en `.gitignore` y en el hook `bloquear-datos`: **nunca** guardar datos reales aquí.

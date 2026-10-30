@@ -3,13 +3,12 @@
 Las pruebas de las REGLAS (qué dato es válido y cuál no) están en tests/data/test_contrato_datos.py.
 """
 
-import importlib.util
-
 import pandas as pd
 import pytest
 
 from proyecto_ml import contrato as k
 from proyecto_ml.config import ROOT_DIR
+from proyecto_ml.generador import GeneradorAsociados
 
 
 @pytest.fixture(scope="module")
@@ -19,11 +18,7 @@ def contrato() -> k.Contrato:
 
 @pytest.fixture(scope="module")
 def asociados() -> pd.DataFrame:
-    # scripts/ no es un paquete: se carga el generador desde su ruta.
-    spec = importlib.util.spec_from_file_location("gen", ROOT_DIR / "scripts" / "generar_asociados_ejemplo.py")
-    gen = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(gen)
-    return gen.make_asociados(n=200, seed=1)
+    return GeneradorAsociados(n=200, seed=1).generar()
 
 
 def test_contrato_cubre_el_esquema_del_generador(contrato, asociados):

@@ -20,13 +20,13 @@ from pathlib import Path
 
 import joblib
 import pandas as pd
-from generar_asociados_ejemplo import make_asociados  # scripts/ está en sys.path al ejecutar este script
 from sklearn.model_selection import StratifiedKFold, cross_val_predict
 
 from proyecto_ml import abandono as a
 from proyecto_ml.config import DATA_DIR, METRICS_DIR, MODELS_DIR
 from proyecto_ml.data import load_dataset
 from proyecto_ml.evaluate import compute_metrics
+from proyecto_ml.generador import GeneradorAsociados
 
 
 def _tabla(columnas: dict[str, dict]) -> str:
@@ -44,7 +44,7 @@ def main() -> None:
     args = parser.parse_args()
 
     train = load_dataset(args.datos)
-    validaciones = {f"nuevos (n={args.nuevos})": make_asociados(args.nuevos, seed=args.semilla_nuevos)}
+    validaciones = {f"nuevos (n={args.nuevos})": GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos).generar()}
     if args.validar:
         validaciones[args.validar.name] = load_dataset(args.validar)
     if args.exportar_nuevos:
