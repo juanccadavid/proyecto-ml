@@ -79,3 +79,40 @@ def test_compatible_con_ingesta(tmp_path, asociados):
     X, y = split_features_target(load_dataset(path), TARGET)
     assert TARGET not in X.columns
     assert len(X) == len(y) == 50
+
+
+# ---------------------------------------------------------------- datos faltantes
+
+
+@pytest.fixture(scope="module")
+def con_faltantes() -> gen.GeneradorAsociados:
+    generador = gen.GeneradorAsociados(n=4000, seed=11, faltantes=gen.FALTANTES)
+    generador.df_ = generador.generar()
+    return generador
+
+
+def test_faltantes_en_la_proporcion_configurada(con_faltantes):
+    df = con_faltantes.df_
+    for columna, probabilidad in gen.FALTANTES.items():
+        assert df[columna].isna().mean() == pytest.approx(probabilidad, abs=0.015), columna
+        assert con_faltantes.reporte_faltantes_[columna] == df[columna].isna().sum()
+
+
+def test_faltantes_no_tocan_identificadores_ni_objetivo(con_faltantes):
+    df = con_faltantes.df_
+    assert df[["CEDULA", "IDASOCIADOS", TARGET]].notna().all().all()
+    assert str(df["SALARIO"].dtype) == "Int64"  # sigue siendo entero, con vacíos
+
+
+def test_faltantes_solo_vacian_el_dataset_limpio(con_faltantes):
+    """Los faltantes usan otra semilla: lo que no se vació es idéntico al dataset limpio."""
+    limpio = gen.GeneradorAsociados(n=4000, seed=11).generar()
+    sucio = con_faltantes.df_
+    for columna in gen.FALTANTES:
+        presentes = sucio[columna].notna()
+        assert (sucio.loc[presentes, columna].astype(object) == limpio.loc[presentes, columna].astype(object)).all()
+
+
+def test_columna_inexistente_en_faltantes():
+    with pytest.raises(KeyError, match="NO_EXISTE"):
+        gen.GeneradorAsociados(n=10, faltantes={"NO_EXISTE": 0.5}).generar()

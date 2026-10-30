@@ -10,8 +10,12 @@ Uso:
     df = GeneradorAsociados(n=1000, seed=7).generar()       # asociados nuevos para validar
     GeneradorAsociados().guardar()                          # los 50 de data/ejemplo/ (seed 42)
 
+    sucio = GeneradorAsociados(n=1000, faltantes=FALTANTES).generar()  # con datos faltantes
+
 La misma semilla produce siempre el mismo dataset; otra semilla, asociados distintos que siguen
-el mismo comportamiento (datos que un modelo nunca vio).
+el mismo comportamiento (datos que un modelo nunca vio). Las fechas son fijas (no dependen del
+día en que se ejecuta) y el objetivo #RETIROS tiene señal: los que se retiran piden más
+cancelaciones y declaran intención de retiro. Un objetivo aleatorio no le enseñaría nada al modelo.
 """
 
 from __future__ import annotations
@@ -272,19 +276,60 @@ def diccionario() -> pd.DataFrame:
     return pd.DataFrame([(c, g) for g, cols in GRUPOS.items() for c in cols], columns=["COLUMNA", "GRUPO"])
 
 
-class GeneradorAsociados:
-    """Asociados ficticios reproducibles: misma semilla, mismo dataset."""
+# Probabilidad de que falte cada dato, para simular extracciones reales "sucias". Nunca se vacían
+# identificadores (CEDULA, IDASOCIADOS) ni el objetivo (#RETIROS). Casi todas son columnas requeridas
+# por el contrato: un dataset con faltantes NO lo cumple, y eso es lo que se quiere probar.
+FALTANTES = {
+    "SALARIO": 0.05,  # nómina no reportada
+    "ESTRATO": 0.03,
+    "CARGO": 0.02,
+    "FECHANACIMIENTO": 0.02,
+    "EMAIL": 0.03,
+    "TELEFONO2": 0.10,  # opcional en el contrato: este sí se acepta vacío
+    "#CANTIDAD_SERVICIOS": 0.05,
+    "#SOLICITUD_RETIROPARCIALAHORROS": 0.04,
+    "#INTENCIONRETIROS_ULT3MESES": 0.08,  # encuesta sin responder
+}
 
-    def __init__(self, n: int = 50, seed: int = 42, tasa_retiro: float = 0.3):
+
+class GeneradorAsociados:
+    """Asociados ficticios reproducibles: misma semilla, mismo dataset.
+
+    faltantes=None genera datos limpios (cumplen el contrato). faltantes=FALTANTES (o un dict propio
+    {columna: probabilidad}) vacía datos al azar para probar que el contrato los detecta y que el
+    pipeline los imputa. Los faltantes usan otra semilla: el resto del dataset no cambia.
+    """
+
+    def __init__(
+        self, n: int = 50, seed: int = 42, tasa_retiro: float = 0.3, faltantes: dict[str, float] | None = None
+    ):
         self.n = n
         self.seed = seed
         self.tasa_retiro = tasa_retiro
+        self.faltantes = faltantes
+        self.reporte_faltantes_: dict[str, int] = {}
 
     def generar(self) -> pd.DataFrame:
-        return _generar(self.n, self.seed, self.tasa_retiro)
+        df = _generar(self.n, self.seed, self.tasa_retiro)
+        return self.agregar_faltantes(df) if self.faltantes else df
+
+    def agregar_faltantes(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Vacía cada columna de self.faltantes con su probabilidad. Guarda el conteo en reporte_faltantes_."""
+        rng = np.random.default_rng(self.seed + 1)
+        df = df.copy()
+        self.reporte_faltantes_ = {}
+        for columna, probabilidad in (self.faltantes or {}).items():
+            if columna not in df:
+                raise KeyError(f"La columna {columna!r} no existe en el esquema de asociados")
+            vacias = rng.random(len(df)) < probabilidad
+            if pd.api.types.is_integer_dtype(df[columna]):
+                df[columna] = df[columna].astype("Int64")  # entero que admite vacíos (no pasa a float)
+            df.loc[vacias, columna] = None
+            self.reporte_faltantes_[columna] = int(vacias.sum())
+        return df
 
     def guardar(self, carpeta: Path = CARPETA_EJEMPLO, nombre: str = "asociados_ejemplo") -> tuple[Path, Path]:
-        """Escribe <nombre>.parquet y <nombre>.xlsx (hojas DATOS y DICCIONARIO)."""
+        """Genera y escribe <nombre>.parquet y <nombre>.xlsx (hojas DATOS y DICCIONARIO)."""
         df = self.generar()
         carpeta.mkdir(parents=True, exist_ok=True)
         parquet, xlsx = carpeta / f"{nombre}.parquet", carpeta / f"{nombre}.xlsx"
