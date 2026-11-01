@@ -72,3 +72,14 @@ def test_modelos_toleran_datos_faltantes():
     assert a.metricas_ridge(ridge, nuevos_sucios)["roc_auc"] > 0.8
     agrupador = a.AgrupadorAbandono().fit(sucio)
     assert a.metricas_agrupacion(agrupador, nuevos_sucios)["recall"] > 0.7
+
+
+def test_figura_matrices_confusion(entrenamiento, nuevos):
+    ridge = a.modelo_ridge().fit(a.preparar(entrenamiento), entrenamiento[a.TARGET])
+    agrupador = a.AgrupadorAbandono().fit(entrenamiento)
+    fig = a.figura_matrices_confusion(ridge, agrupador, nuevos)
+    ejes = fig.get_axes()
+    assert [ax.get_title() for ax in ejes] == ["Ridge (supervisado)", "KMeans (sin objetivo)"]
+    for ax in ejes:
+        conteos = [int(t.get_text().split("\n")[0]) for t in ax.texts]
+        assert sum(conteos) == len(nuevos)  # las 4 celdas suman todos los asociados
