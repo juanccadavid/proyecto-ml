@@ -18,6 +18,7 @@ dependencies = [
     "joblib>=1.4",
     "matplotlib>=3.8",
     "pandera>=0.24",
+    "polars>=1.0",
 ]
 
 [project.optional-dependencies]
