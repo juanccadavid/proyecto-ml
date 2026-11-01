@@ -8,6 +8,8 @@ pero no sirve para anticipar un retiro.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
@@ -19,6 +21,9 @@ from sklearn.preprocessing import StandardScaler
 
 from proyecto_ml.evaluate import compute_metrics
 from proyecto_ml.features import build_preprocessor
+
+if TYPE_CHECKING:
+    from matplotlib.figure import Figure
 
 TARGET = "#RETIROS"
 FECHA_CORTE = pd.Timestamp("2026-10-31")
@@ -155,3 +160,40 @@ def metricas_agrupacion(agrupador: AgrupadorAbandono, df: pd.DataFrame) -> dict[
         "ari": float(adjusted_rand_score(y, grupo)),  # 0 = azar, 1 = grupos idénticos al abandono real
         "silhouette": float(silhouette_score(X, grupo)) if len(set(grupo)) > 1 else float("nan"),
     }
+
+
+# ---------------------------------------------------------------- gráfico: matrices de confusión
+
+
+def figura_matrices_confusion(ridge: Pipeline, agrupador: AgrupadorAbandono, df: pd.DataFrame) -> Figure:
+    """Matriz de confusión de cada modelo sobre ``df`` (filas = real, columnas = predicción).
+
+    Cada celda muestra el conteo y el % de su fila: en la fila 1, el % de la columna 1 es el recall.
+    """
+    from matplotlib import colormaps
+    from matplotlib.figure import Figure  # sin pyplot: no abre ventanas ni depende del backend
+
+    y = df[TARGET].to_numpy()
+    reales = ["0\nse queda", "1\nabandona"]
+    paneles = {
+        "Ridge (supervisado)": (ridge.predict(preparar(df)), reales),
+        "KMeans (sin objetivo)": (agrupador.predict(df), ["0\nestable", "1\nriesgo"]),
+    }
+    fig = Figure(figsize=(9, 4.4), layout="constrained")
+    fig.suptitle(f"Matriz de confusión (n={len(y)})", fontsize=14)
+    for ax, (titulo, (pred, etiquetas)) in zip(fig.subplots(1, 2), paneles.items(), strict=True):
+        cm = confusion_matrix(y, pred, labels=[0, 1])
+        ax.imshow(cm, cmap=colormaps["Blues"], vmin=0, vmax=cm.max())
+        por_fila = cm / np.maximum(cm.sum(axis=1, keepdims=True), 1)
+        for (i, j), n in np.ndenumerate(cm):
+            color = "white" if n > cm.max() / 2 else "#1f2937"  # texto legible sobre celda oscura o clara
+            ax.text(j, i, f"{n}\n({por_fila[i, j]:.0%})", ha="center", va="center", fontsize=12, color=color)
+        ax.set_title(titulo)
+        ax.set_xticks([0, 1], etiquetas)
+        ax.set_yticks([0, 1], reales)
+        ax.set_xlabel("Predicción")
+        ax.set_ylabel("Real")
+        ax.tick_params(length=0)
+        for borde in ax.spines.values():
+            borde.set_visible(False)
+    return fig

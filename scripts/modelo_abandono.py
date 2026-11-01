@@ -24,7 +24,7 @@ import pandas as pd
 from sklearn.model_selection import StratifiedKFold, cross_val_predict
 
 from proyecto_ml import abandono as a
-from proyecto_ml.config import METRICS_DIR, MODELS_DIR, get_settings
+from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, MODELS_DIR, get_settings
 from proyecto_ml.data import load_dataset
 from proyecto_ml.evaluate import compute_metrics
 from proyecto_ml.generador import FALTANTES, GeneradorAsociados
@@ -89,13 +89,19 @@ def main() -> None:
     # ---- Guardar
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     METRICS_DIR.mkdir(parents=True, exist_ok=True)
+    FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+    grafico = FIGURES_DIR / "abandono_matriz_confusion.png"
+    nombre, nuevos = next(iter(validaciones.items()))  # las predicciones que cuentan: asociados nunca vistos
+    fig = a.figura_matrices_confusion(ridge, agrupador, nuevos)
+    fig.suptitle(f"Matriz de confusión - {nombre}", fontsize=14)
+    fig.savefig(grafico, dpi=150)
     joblib.dump(ridge, MODELS_DIR / "abandono_ridge.joblib")
     joblib.dump(agrupador, MODELS_DIR / "abandono_kmeans.joblib")
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     salida = METRICS_DIR / f"abandono_{stamp}.json"
     resumen = {"datos": str(args.datos.name), "alpha": args.alpha, "ridge": m_ridge, "kmeans": m_kmeans}
     salida.write_text(json.dumps(resumen, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
-    print(f"\nModelos -> {MODELS_DIR / 'abandono_*.joblib'} | métricas -> {salida}")
+    print(f"\nModelos -> {MODELS_DIR / 'abandono_*.joblib'} | métricas -> {salida} | gráfico -> {grafico}")
 
 
 if __name__ == "__main__":
