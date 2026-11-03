@@ -26,7 +26,7 @@ ARGS ?=
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup setup-hf demo-data demo train train-hf abandono campeon pycaret afinar optuna mlflow-ui app \
+.PHONY: help setup setup-hf demo-data demo train train-hf abandono campeon tecnicas pycaret afinar optuna mlflow-ui app \
         simulador ejemplo datos-desarrollo contrato contrato-sql contrato-web supabase-subir supabase-bajar supabase-crear formulario \
         test test-fast cov lint format check hooks secrets up down logs salt bundle clean clean-all
 
@@ -77,6 +77,9 @@ afinar: ## Busca los mejores hiperparámetros de Ridge y pycaret_lr (GridSearchC
 
 campeon: ## Elige el modelo campeón (PR-AUC en CV repetida), su umbral y zonas; lo registra en MLflow
 	$(PY) scripts/elegir_campeon.py $(if $(DATA),--datos $(DATA)) $(ARGS)
+
+tecnicas: ## Compara técnicas de preprocesamiento (SMOTE/ADASYN, imputadores, encoders, escaladores, PCA, RFE...)
+	$(PY) scripts/tecnicas_preprocesamiento.py $(ARGS)
 
 optuna: ## Afina Random Forest y HistGB con Optuna (búsqueda en rangos con poda), validados con nuevos
 	$(PY) scripts/afinar_optuna.py $(if $(DATA),--datos $(DATA)) $(ARGS)

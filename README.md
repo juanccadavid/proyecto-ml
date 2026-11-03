@@ -16,12 +16,14 @@ MLflow y demo en Streamlit.
 ├── src/proyecto_ml/      Código fuente (paquete instalable)
 │   ├── config.py         Rutas y variables de entorno
 │   ├── data.py           Carga, X/y y particiones (estratificada, temporal, por grupos)
-│   ├── features.py       Imputación, escalado, OneHot, PCA (ColumnTransformer)
+│   ├── features.py       Imputación, escalado, codificación, binning, PCA, RFE (ColumnTransformer)
 │   ├── models.py         Logística, Random Forest, HistGB, TabPFN (opcional)
 │   ├── evaluate.py       PR-AUC, ROC-AUC, recall@10 %, F1
 │   ├── train.py          Entrenamiento + MLflow + exportación del mejor modelo
 │   ├── abandono.py       Modelos de abandono: supervisados (Ridge, logística, bagging, boosting) y KMeans
 │   ├── busqueda_optuna.py  Optuna para afinar Random Forest y HistGB (make optuna)
+│   ├── tecnicas.py       Compara técnicas de preprocesamiento y feature engineering (make tecnicas)
+│   ├── correlacion.py    Correlación entre variables y con el objetivo (Spearman, V de Cramér)
 │   ├── contrato.py       Contrato de datos (pandera, 3 niveles) + SQL de Supabase + campos del formulario
 │   ├── generador.py      GeneradorAsociados: asociados ficticios con el esquema real
 │   ├── anonymize.py      Hash con sal, eliminación de PII, agrupación en rangos
@@ -346,6 +348,89 @@ make optuna ARGS="--metrica F1"                     # o Recall, MCC... (columnas
 make optuna ARGS="--modelos hist_gb --intentos 200" # un solo modelo, más intentos
 make optuna ARGS="--timeout 60"                     # máximo 60 segundos por modelo
 make optuna ARGS="--storage sqlite:///optuna.db"    # guarda el estudio; al repetir, continúa donde quedó
+```
+
+### Técnicas de preprocesamiento y feature engineering: `make tecnicas`
+
+`make tecnicas` compara las técnicas de preprocesamiento sobre la foto del asociado, con los mismos datos que
+`make campeon`. Cada técnica cambia **una sola cosa** respecto a la base (el preprocesador de los supervisados
+con una logística con `class_weight="balanced"`). Todas se miden con PR-AUC en las mismas particiones
+(5 × 3), así que la diferencia con la base es lo que aporta esa técnica. Todo se aprende dentro de cada
+partición de entrenamiento: SMOTE y ADASYN solo re-muestrean en `fit`, y TargetEncoder usa validación cruzada
+interna. Así nada se filtra de la validación.
+
+Los datos generados no traen vacíos, así que para comparar imputadores el script pone un 10 % de vacíos al azar
+(`--vacios`) en SALARIO, ESTRATO, EDAD, ANTIGUEDAD y #CANTIDAD_SERVICIOS.
+
+| Técnica | Dónde | PR-AUC | Dif. con la base |
+|---|---|---|---|
+| **Base**: mediana, OneHot, StandardScaler, recorte IQR, `class_weight` | `features.build_preprocessor` | 0.893 | — |
+| Sin balancear | `tecnicas.clasificador` | 0.902 | +0.008 |
+| SMOTE | `imblearn` (también `make train ARGS="--smote"`) | 0.888 | −0.006 |
+| ADASYN | `imblearn` | 0.887 | −0.006 |
+| SimpleImputer(mean) | `numeric_strategy="mean"` | 0.898 | +0.005 |
+| KNNImputer | `numeric_strategy="knn"` | 0.891 | −0.003 |
+| IterativeImputer | `numeric_strategy="iterative"` | 0.897 | +0.004 |
+| SimpleImputer + MissingIndicator | `missing_indicator=True` | 0.914 | +0.021 |
+| OrdinalEncoder | `encoding="ordinal"` | 0.883 | −0.010 |
+| TargetEncoder | `encoding="target"` | 0.871 | −0.022 |
+| MinMaxScaler | `scaler="minmax"` | 0.848 | −0.046 |
+| MaxAbsScaler | `scaler="maxabs"` | 0.851 | −0.042 |
+| RobustScaler | `scaler="robust"` | 0.888 | −0.005 |
+| Normalizer | `scaler="normalizer"` | 0.821 | −0.073 |
+| Variables nuevas (creación y transformación) | `abandono.CrearVariables` | **0.925** | **+0.032** |
+| Binning (KBinsDiscretizer, 5 rangos) | `bins=5, bin_columns=...` | 0.894 | +0.001 |
+| PCA (95 % de la varianza) | `pca_components=0.95` | 0.888 | −0.005 |
+| RFE (15 columnas) | `rfe_features=15` | 0.876 | −0.018 |
+
+*Datos de desarrollo, foto a 3 meses: 1.845 asociados, de los que 40 se retiran. Logística, 5 particiones × 3
+repeticiones.*
+
+**Cómo leerlo.** Con 40 retirados, la PR-AUC varía ±0.077 entre particiones, así que casi todas las diferencias
+caben en el azar. El indicador de vacíos es un ejemplo: aquí los vacíos se pusieron al azar, así que no pueden
+anunciar un retiro, y aun así sube 0.021. Eso es ruido. Lo que sí se sostiene:
+
+- **Las variables nuevas son lo que más suma.** SENALES_SALIDA junta en una columna las cinco solicitudes que
+  anuncian un retiro.
+- **Algunos escaladores perjudican a la logística.** Min-max y max-abs son sensibles a los atípicos, y
+  Normalizer escala cada fila y no cada columna. A los árboles el escalado no les cambia nada (pruébalo con
+  `--clasificador hist_gb`).
+- **SMOTE y ADASYN no le ganan a `class_weight`.** Con una logística, reponderar las clases y re-muestrear hacen
+  casi lo mismo.
+
+**Feature engineering** (`abandono.CrearVariables`, opcional; no cambia el campeón):
+
+- **Creación por agregación:** `SENALES_SALIDA` (suma de las solicitudes de salida) y `PRODUCTOS` (ahorros a la
+  vista + contractuales + servicios).
+- **Creación por interacción:** `SALIDA_POR_PRODUCTO = SENALES_SALIDA / (1 + PRODUCTOS)`, es decir, pedir salir
+  teniendo poco que perder.
+- **Transformación logarítmica:** `SALARIO_LOG = log(1 + SALARIO)`. Antes estaban EDAD y ANTIGUEDAD, que se
+  calculan desde las fechas.
+
+**Correlación de variables** (`correlacion.py`):
+
+- **Entre numéricas:** Spearman, guardada en `reports/figures/correlaciones.html`, y los pares redundantes con
+  |r| ≥ 0,8 (por ejemplo, SALARIO y SALARIO_LOG: sobra una).
+- **Con el retiro:** Spearman para las numéricas y V de Cramér para las categóricas. La más fuerte es
+  #SOLICITUD_CANCELACIONAHORROS (0.29). Las categóricas casi no se relacionan, salvo TIPOCONTRATO.
+
+**Lo que no se agregó, y por qué:**
+
+- **LabelEncoder** es para el objetivo (y), no para las variables: scikit-learn lo advierte, porque le pondría
+  un orden falso a las categorías. Nuestro objetivo ya es 0/1. Para las variables están OrdinalEncoder (si hay un
+  orden real) y OneHotEncoder.
+- **Embeddings** se aprenden con una red neuronal y sirven con miles de categorías (texto, productos). Aquí la
+  categórica más grande es CARGO, con unas decenas de valores: TargetEncoder y OneHot cubren eso sin entrenar
+  una red.
+
+Salidas: `reports/figures/tecnicas.html` (un punto por técnica con su desviación; la línea punteada es la base),
+`reports/figures/correlaciones.html`, `reports/metrics/tecnicas_<fecha>.json` y la corrida "tecnicas" en MLflow.
+
+```bash
+make tecnicas                                           # logística, 5 x 3, 10 % de vacíos
+make tecnicas ARGS="--clasificador hist_gb"             # con árboles (el escalado ya no importa)
+make tecnicas ARGS="--vacios 0 --repeticiones 1"        # sin vacíos, más rápido
+make tecnicas ARGS="--datos data/raw/supabase_asociados.parquet --sin-mlflow"
 ```
 
 ## Contrato de datos y Supabase
