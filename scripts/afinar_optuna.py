@@ -70,7 +70,7 @@ def main() -> None:
 
     train = a.cargar(args.datos)  # con limpiar_extracto
     nuevos = GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos).generar()
-    X, y = a.preparar(train), train[a.TARGET]
+    X, y = a.separar(train)
     print(f"Entrenamiento: {args.datos} ({len(train)} filas, {train[a.TARGET].mean():.0%} abandono)")
     print(f"Maximiza: {args.metrica} (validación cruzada, {args.folds} particiones) · {args.intentos} intentos\n")
 

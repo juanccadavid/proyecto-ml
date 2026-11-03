@@ -71,7 +71,7 @@ def elegir_campeon_aqui():
     df, fuente = c.datos_eleccion()
     h = a.HORIZONTE_MESES
     elegido = c.elegir(a.foto(df, h), repeticiones=1, info={"datos": fuente, "horizonte_meses": h})
-    return elegido.modelo, elegido.agrupador, c.resumen(elegido)
+    return elegido.con_zonas(), elegido.agrupador, c.resumen(elegido)
 
 
 @st.cache_data
@@ -172,7 +172,7 @@ for col, columna in zip(columnas, UBICACION, strict=True):
 asociado = pd.DataFrame([valores])[a.NUMERICAS + a.CATEGORICAS]
 asociado[a.NUMERICAS] = asociado[a.NUMERICAS].astype(float)  # como en preparar: los conteos son float
 puntaje = float(a.puntaje(modelo, asociado)[0])
-zona = c.zona(puntaje, umbral, umbral_alto)
+zona = modelo.predict(asociado)[0]
 emoji, tipo, texto = ZONA[zona]
 
 st.divider()

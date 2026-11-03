@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.cluster import KMeans
+from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import RidgeClassifier
 from sklearn.metrics import adjusted_rand_score, confusion_matrix, silhouette_score
@@ -26,7 +27,7 @@ from proyecto_ml.cleaning import ColumnDropper
 from proyecto_ml.contrato import limpiar_extracto
 from proyecto_ml.data import load_dataset
 from proyecto_ml.evaluate import compute_metrics
-from proyecto_ml.features import build_preprocessor
+from proyecto_ml.features import Preprocesador, build_preprocessor
 from proyecto_ml.models import get_models
 
 if TYPE_CHECKING:
@@ -146,6 +147,29 @@ def preparar(df: pd.DataFrame) -> pd.DataFrame:
     return X[NUMERICAS + CATEGORICAS]
 
 
+def separar(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
+    """X (las filas sin el objetivo, tal cual: el pipeline las prepara) e y (#RETIROS)."""
+    return df.drop(columns=TARGET), df[TARGET]
+
+
+class PrepararVariables(TransformerMixin, BaseEstimator):
+    """``preparar`` como primer paso del pipeline: el modelo recibe la fila tal como llega (extracto, Supabase,
+    formulario) y calcula él mismo EDAD y ANTIGUEDAD. Sin estado: no aprende nada de train.
+
+    Si ``X`` ya viene preparada (no trae FECHANACIMIENTO), solo ordena sus columnas: así el mismo modelo
+    sirve con ``preparar(df)`` (importancia por permutación, simulador, vacíos simulados).
+    """
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        return preparar(X) if "FECHANACIMIENTO" in X else X[NUMERICAS + CATEGORICAS]
+
+    def get_feature_names_out(self, input_features=None):
+        return np.array(NUMERICAS + CATEGORICAS, dtype=object)
+
+
 # Feature engineering (creación y transformación): variables nuevas a partir de las de ``preparar``.
 SALIDA = [c for c, signo in SENAL_RIESGO.items() if signo > 0]  # solicitudes que anuncian un retiro
 PRODUCTOS = ["#CANTIDAD_AHORROSALAVISTA", "#CANTIDAD_AHORROSCONTRACTUALES", "#CANTIDAD_SERVICIOS"]
@@ -202,6 +226,67 @@ def cargar(path, limpiar: bool = True) -> pd.DataFrame:
     return limpiar_extracto(df) if limpiar else df
 
 
+def _muestreador(nombre: str, random_state: int):
+    from imblearn.over_sampling import ADASYN, SMOTE
+
+    if nombre not in ("smote", "adasyn"):
+        raise ValueError(f"muestreo debe ser 'smote' o 'adasyn', no '{nombre}'")
+    return {"smote": SMOTE, "adasyn": ADASYN}[nombre](random_state=random_state)
+
+
+def armar_pipeline(
+    modelo,
+    *,
+    crear_variables: bool = False,
+    muestreo: str | None = None,
+    buscable: bool = False,
+    random_state: int = 42,
+    **preproceso,
+) -> Pipeline:
+    """El pipeline del abandono, el mismo para todos los scripts::
+
+        preparar -> [crear variables] -> preprocess -> [SMOTE/ADASYN] -> model
+
+    - ``preparar`` (PrepararVariables): recibe la fila cruda o ya preparada.
+    - ``crear_variables``: agrega VARIABLES_NUEVAS (CrearVariables) y las preprocesa como numéricas.
+    - ``preproceso``: parámetros de ``features.Preprocesador`` que cambian respecto al de los supervisados
+      (mediana, OneHot, StandardScaler, recorte IQR de COLUMNAS_RECORTE, ColumnDropper al ``MAX_NULOS``), p. ej.
+      ``numeric_strategy="knn"``, ``encoding="target"``, ``scaler="robust"``, ``pca=0.95``, ``rfe_features=15``.
+    - ``muestreo`` ("smote"/"adasyn"): re-muestrea solo en ``fit`` (Pipeline de imblearn).
+    - ``buscable``: el preprocesamiento queda como ``Preprocesador``, para buscar sus opciones con
+      ``preprocess__<opción>`` (GridSearchCV, Optuna). Si no, es el preprocesador ya armado (ramas a la vista).
+      Con ``muestreo`` siempre es ``Preprocesador``: imblearn no admite un Pipeline anidado como paso intermedio.
+    """
+    p = {
+        "numeric": [*NUMERICAS, *VARIABLES_NUEVAS] if crear_variables else NUMERICAS,
+        "categorical": CATEGORICAS,
+        "clip_outliers": CLIP_OUTLIERS,
+        "clip_columns": COLUMNAS_RECORTE,
+        "max_nulos": MAX_NULOS,
+        "random_state": random_state,
+        **preproceso,
+    }
+    if buscable or muestreo is not None:
+        pre = Preprocesador(**p)
+    else:
+        max_nulos, pca = p.pop("max_nulos"), p.pop("pca", None)
+        pre = build_preprocessor(
+            p.pop("numeric"),
+            p.pop("categorical"),
+            drop_columns=ColumnDropper(max_missing=max_nulos) if max_nulos is not None else None,
+            pca_components=pca,
+            **p,
+        )
+    pasos = [("preparar", PrepararVariables())]
+    pasos += [("crear", CrearVariables())] if crear_variables else []
+    pasos.append(("preprocess", pre))
+    if muestreo is None:
+        return Pipeline([*pasos, ("model", modelo)])
+    from imblearn.pipeline import Pipeline as ImbPipeline
+
+    return ImbPipeline([*pasos, ("sampler", _muestreador(muestreo, random_state)), ("model", modelo)])
+
+
 def preprocesador(clip_outliers: str | None = CLIP_OUTLIERS, max_nulos: float | None = MAX_NULOS):
     """El preprocesador de los supervisados, con la limpieza con estado de cleaning.py.
 
@@ -225,12 +310,8 @@ def modelo_ridge(
     class_weight="balanced" compensa que los retiros son minoría. El puntaje
     (decision_function) es positivo cuando el modelo predice abandono.
     """
-    return Pipeline(
-        [
-            ("preprocess", preprocesador(clip_outliers, max_nulos)),
-            ("model", RidgeClassifier(alpha=alpha, class_weight="balanced")),
-        ]
-    )
+    modelo = RidgeClassifier(alpha=alpha, class_weight="balanced")
+    return armar_pipeline(modelo, clip_outliers=clip_outliers, max_nulos=max_nulos)
 
 
 def modelos_supervisados(
@@ -245,10 +326,8 @@ def modelos_supervisados(
     que votan. HistGradientBoosting es *boosting*: árboles en secuencia, cada uno corrige los errores
     de los anteriores (la versión de scikit-learn inspirada en LightGBM).
     """
-    catalogo = {
-        # Mismo esqueleto que Ridge (preprocess -> model). build_pipeline aplanaría el preprocesador
-        # (lo necesita imblearn para SMOTE, que aquí no se usa) y cada modelo quedaría con pasos distintos.
-        nombre: Pipeline([("preprocess", preprocesador(clip_outliers, max_nulos)), ("model", modelo)])
+    catalogo = {  # mismo esqueleto que Ridge: preparar -> preprocess -> model
+        nombre: armar_pipeline(modelo, clip_outliers=clip_outliers, max_nulos=max_nulos, random_state=random_state)
         for nombre, modelo in get_models(random_state).items()
     }
     return {"ridge": modelo_ridge(alpha, clip_outliers, max_nulos), **catalogo}
@@ -266,17 +345,17 @@ def puntaje(modelo: Pipeline, X: pd.DataFrame) -> np.ndarray:
 
 
 def metricas_supervisado(modelo: Pipeline, df: pd.DataFrame) -> dict[str, float]:
-    return compute_metrics(df[TARGET], puntaje(modelo, preparar(df)), threshold=UMBRAL[metodo_puntaje(modelo)])
+    return compute_metrics(df[TARGET], puntaje(modelo, df), threshold=UMBRAL[metodo_puntaje(modelo)])
 
 
 def guardar_modelo(pipeline: Pipeline, carpeta: Path, nombre: str) -> dict[str, Path]:
     """Guarda en .joblib el pipeline completo y, por separado, su preprocesamiento y su modelo.
 
-    - ``<nombre>.joblib``: preprocesamiento + modelo. Es el que se usa para predecir: ``.predict(preparar(df))``.
+    - ``<nombre>.joblib``: preparar + preprocesamiento + modelo. Es el que se usa para predecir: ``.predict(df)``.
     - ``<nombre>_preprocesamiento.joblib``: solo el preprocesamiento ya ajustado (imputación, escalado,
       codificación), para transformar datos nuevos o revisar lo que aprendió (medianas, categorías...).
     - ``<nombre>_modelo.joblib``: solo el estimador (coeficientes, hiperparámetros). Recibe datos ya
-      transformados: ``modelo.predict(preprocesamiento.transform(preparar(df)))``.
+      transformados: ``modelo.predict(preprocesamiento.transform(df))``.
     """
     carpeta.mkdir(parents=True, exist_ok=True)
     rutas = {
@@ -327,6 +406,8 @@ class AgrupadorAbandono:
     def __init__(self, random_state: int = 42):
         self.pipeline = Pipeline(
             [
+                ("preparar", PrepararVariables()),  # fila cruda o ya preparada
+                ("comportamiento", ColumnTransformer([("c", "passthrough", COMPORTAMIENTO)])),
                 ("imputer", SimpleImputer(strategy="median")),  # KMeans no admite vacíos; mediana de train
                 ("scaler", StandardScaler()),
                 ("kmeans", KMeans(n_clusters=2, n_init=20, random_state=random_state)),
@@ -334,7 +415,7 @@ class AgrupadorAbandono:
         )
 
     def fit(self, df: pd.DataFrame) -> AgrupadorAbandono:
-        self.pipeline.fit(preparar(df)[COMPORTAMIENTO])
+        self.pipeline.fit(df)
         centros = pd.DataFrame(self.pipeline.named_steps["kmeans"].cluster_centers_, columns=COMPORTAMIENTO)
         senal = sum(centros[c] * peso for c, peso in SENAL_RIESGO.items())
         self.grupo_riesgo_ = int(senal.idxmax())
@@ -344,18 +425,20 @@ class AgrupadorAbandono:
         return self
 
     def predict(self, df: pd.DataFrame) -> np.ndarray:
-        """1 = grupo de riesgo de abandono, 0 = grupo estable."""
-        return self.grupos(preparar(df))
+        """1 = grupo de riesgo de abandono, 0 = grupo estable. ``df`` crudo o ya preparado."""
+        if "preparar" not in self.pipeline.named_steps:  # guardado antes de que el pipeline preparara solo
+            df = preparar(df)[COMPORTAMIENTO] if "FECHANACIMIENTO" in df else df[COMPORTAMIENTO]
+        return (self.pipeline.predict(df) == self.grupo_riesgo_).astype(int)
 
     def grupos(self, X: pd.DataFrame) -> np.ndarray:
-        """Como ``predict``, pero con las variables ya preparadas (``preparar``), p. ej. en el simulador."""
-        return (self.pipeline.predict(X[COMPORTAMIENTO]) == self.grupo_riesgo_).astype(int)
+        """Igual que ``predict`` (se conserva por compatibilidad)."""
+        return self.predict(X)
 
 
 def metricas_agrupacion(agrupador: AgrupadorAbandono, df: pd.DataFrame) -> dict[str, float]:
     """Compara los grupos con el abandono real (que el modelo nunca vio)."""
     y, grupo = df[TARGET].to_numpy(), agrupador.predict(df)
-    X = agrupador.pipeline[:-1].transform(preparar(df)[COMPORTAMIENTO])  # imputado y escalado, sin KMeans
+    X = agrupador.pipeline[:-1].transform(df)  # preparado, imputado y escalado, sin KMeans
     tn, fp, fn, tp = confusion_matrix(y, grupo, labels=[0, 1]).ravel()
     return {
         "base_rate": float(y.mean()),

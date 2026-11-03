@@ -28,9 +28,11 @@ from typing import TYPE_CHECKING
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.base import clone
+from sklearn.base import BaseEstimator, clone
 from sklearn.metrics import average_precision_score, precision_recall_curve, roc_auc_score
 from sklearn.model_selection import StratifiedKFold, cross_val_predict
+from sklearn.utils.metaestimators import available_if
+from sklearn.utils.validation import check_is_fitted
 
 from proyecto_ml import abandono as a
 
@@ -111,6 +113,50 @@ def zona(puntaje: float, umbral: float, umbral_alto: float | None) -> str:
     return "zona gris" if puntaje >= umbral else "se queda"
 
 
+class ModeloZonas(BaseEstimator):
+    """El campeón listo para usar: su pipeline y sus dos umbrales en un solo objeto.
+
+    ``predict(df)`` da la zona de cada asociado ("se retira", "zona gris" o "se queda") a partir de la fila cruda
+    (o ya preparada). ``alerta(df)`` da 1 desde el umbral de alerta. ``predict_proba`` o ``decision_function``
+    (el que tenga el modelo) dan el puntaje, así que ``abandono.puntaje`` también funciona con él. Es lo que se
+    guarda en models/ y en MLflow (``models:/abandono@campeon``).
+    """
+
+    def __init__(self, modelo=None, umbral: float = 0.5, umbral_alto: float | None = None):
+        self.modelo = modelo
+        self.umbral = umbral
+        self.umbral_alto = umbral_alto
+
+    def fit(self, X, y):
+        """Reentrena el pipeline con los mismos umbrales (normalmente llega ya entrenado)."""
+        self.modelo.fit(X, y)
+        return self
+
+    def __sklearn_is_fitted__(self) -> bool:
+        return check_is_fitted(self.modelo) is None
+
+    @property
+    def metodo(self) -> str:
+        return a.metodo_puntaje(self.modelo)
+
+    def puntaje(self, X) -> np.ndarray:
+        return a.puntaje(self.modelo, X)
+
+    def predict(self, X) -> np.ndarray:
+        return np.array([zona(p, self.umbral, self.umbral_alto) for p in self.puntaje(X)], dtype=object)
+
+    def alerta(self, X) -> np.ndarray:
+        return (self.puntaje(X) >= self.umbral).astype(int)
+
+    @available_if(lambda self: hasattr(self.modelo, "predict_proba"))
+    def predict_proba(self, X):
+        return self.modelo.predict_proba(X)
+
+    @available_if(lambda self: hasattr(self.modelo, "decision_function"))
+    def decision_function(self, X):
+        return self.modelo.decision_function(X)
+
+
 @dataclass
 class Candidato:
     nombre: str
@@ -153,8 +199,12 @@ class Campeon:
         tabla = pd.DataFrame({n: c.metricas for n, c in self.candidatos.items()}).T
         return tabla.sort_values(CRITERIO, ascending=False)
 
+    def con_zonas(self) -> ModeloZonas:
+        """El pipeline entrenado con sus dos umbrales: lo que se guarda y se registra en MLflow."""
+        return ModeloZonas(self.modelo, self.umbral, self.umbral_alto)
+
     def zona(self, X: pd.DataFrame) -> list[str]:
-        return [zona(p, self.umbral, self.umbral_alto) for p in a.puntaje(self.modelo, X)]
+        return self.con_zonas().predict(X).tolist()
 
 
 def perfil_grupos(agrupador: a.AgrupadorAbandono, df: pd.DataFrame) -> dict:
@@ -181,7 +231,7 @@ def elegir(
     info: dict | None = None,
 ) -> Campeon:
     """Evalúa los candidatos (por defecto los 4 supervisados), elige el de mejor PR-AUC y lo entrena con todo."""
-    X, y = a.preparar(df), df[a.TARGET]
+    X, y = a.separar(df)  # filas crudas: el pipeline prepara las variables (PrepararVariables)
     candidatos = candidatos or a.modelos_supervisados()
     evaluados = {
         n: evaluar(n, m, X, y, folds, repeticiones, beta=beta, precision_min=precision_min)
@@ -231,14 +281,14 @@ def resumen(campeon: Campeon) -> dict:
 
 
 def guardar(campeon: Campeon, carpeta: Path, extra: dict | None = None) -> dict[str, Path]:
-    """``abandono_campeon.joblib`` (pipeline), ``abandono_kmeans.joblib`` y ``campeon.json`` en ``carpeta``."""
+    """``abandono_campeon.joblib`` (ModeloZonas), ``abandono_kmeans.joblib`` y ``campeon.json`` en ``carpeta``."""
     carpeta.mkdir(parents=True, exist_ok=True)
     rutas = {
         "modelo": carpeta / ARCHIVO_MODELO,
         "grupos": carpeta / ARCHIVO_GRUPOS,
         "info": carpeta / ARCHIVO_INFO,
     }
-    joblib.dump(campeon.modelo, rutas["modelo"])
+    joblib.dump(campeon.con_zonas(), rutas["modelo"])
     joblib.dump(campeon.agrupador, rutas["grupos"])
     texto = json.dumps({**resumen(campeon), **(extra or {})}, indent=2, ensure_ascii=False, default=str)
     rutas["info"].write_text(texto + "\n", encoding="utf-8", newline="\n")
@@ -246,11 +296,18 @@ def guardar(campeon: Campeon, carpeta: Path, extra: dict | None = None) -> dict[
 
 
 def cargar(carpeta: Path):
-    """(modelo, agrupador, info) desde ``carpeta``; None si falta alguno de los tres archivos."""
+    """(modelo, agrupador, info) desde ``carpeta``; None si falta alguno de los tres archivos.
+
+    ``modelo`` es un ModeloZonas. Un campeón guardado antes (solo el pipeline) se envuelve con los umbrales de
+    ``campeon.json``.
+    """
     rutas = [carpeta / ARCHIVO_MODELO, carpeta / ARCHIVO_GRUPOS, carpeta / ARCHIVO_INFO]
     if not all(r.exists() for r in rutas):
         return None
-    return joblib.load(rutas[0]), joblib.load(rutas[1]), json.loads(rutas[2].read_text(encoding="utf-8"))
+    modelo, info = joblib.load(rutas[0]), json.loads(rutas[2].read_text(encoding="utf-8"))
+    if not isinstance(modelo, ModeloZonas):
+        modelo = ModeloZonas(modelo, info["umbral"], info["umbral_alto"])
+    return modelo, joblib.load(rutas[1]), info
 
 
 def figura_umbrales(campeon: Campeon):

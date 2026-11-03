@@ -32,7 +32,7 @@ def test_grillas_validas_y_el_afinado_generaliza():
             clone(modelo).set_params(**params)
 
     # Grilla reducida (L1 y L2) para que la prueba sea rápida.
-    grilla = {**cli.GRILLAS["pycaret_lr"], "lr__C": [0.01, 1.0]}
+    grilla = {**cli.GRILLAS["pycaret_lr"], "model__C": [0.01, 1.0]}
     busqueda = afinar(base["pycaret_lr"], grilla, a.preparar(train), train[a.TARGET], folds=3)
     assert a.metricas_supervisado(busqueda.best_estimator_, nuevos)["roc_auc"] > 0.8
 

@@ -142,9 +142,28 @@ y las mismas particiones para todos. Se guarda en `reports/figures/abandono_comp
 de cada columna en amarillo. Se ordena con `make abandono ARGS="--ordenar Recall"` (o `"--ordenar 'TT (Sec)'"`).
 En un notebook: `resaltar(tabla_comparativa(modelos, X, y))` de `proyecto_ml.evaluate`.
 
+**Un solo pipeline para todos** (`abandono.armar_pipeline`). Supervisados, campeón, Optuna, `make afinar` y
+`make tecnicas` arman el modelo con la misma fábrica:
+
+```
+preparar → [crear variables] → preprocess → [SMOTE/ADASYN] → model
+```
+
+El primer paso (`PrepararVariables`) calcula EDAD y ANTIGUEDAD y elige las columnas. Por eso el modelo recibe la
+**fila tal como llega** (extracto, Supabase, formulario): `modelo.predict(df)`, sin llamar a `preparar()` antes.
+Eso vale también para el campeón guardado y para `models:/abandono@campeon` en MLflow. Si la fila ya viene
+preparada, la deja igual; así siguen funcionando el simulador y la importancia por permutación.
+
+```python
+X, y = a.separar(vista)  # quita #RETIROS; el pipeline prepara el resto
+modelo = a.armar_pipeline(LogisticRegression(class_weight="balanced"), crear_variables=True, scaler="robust")
+modelo.fit(X, y).predict_proba(fila_de_supabase)
+a.armar_pipeline(modelo_rf, buscable=True)  # preprocess__<opción> para GridSearchCV u Optuna
+```
+
 **Diagrama de los pipelines.** `make abandono` guarda `reports/figures/abandono_pipelines.html` con el diagrama
-interactivo de cada modelo (el mismo de Jupyter): el `ColumnTransformer` con su rama numérica (SimpleImputer →
-StandardScaler) y su rama categórica (SimpleImputer → OneHotEncoder), y luego el modelo. Cada caja se despliega con
+interactivo de cada modelo (el mismo de Jupyter): `PrepararVariables`, el `ColumnTransformer` con su rama
+numérica (SimpleImputer → StandardScaler) y su rama categórica (SimpleImputer → OneHotEncoder), y luego el modelo. Cada caja se despliega con
 un clic para ver parámetros y columnas. `make afinar` hace lo mismo con los afinados en
 `afinamiento_pipelines.html`: ahí se ve que PyCaret usa OrdinalEncoder en la rama categórica. En un notebook basta
 con dejar el pipeline al final de una celda; desde código: `pagina_pipelines({"ridge": modelo})` de
@@ -165,7 +184,7 @@ en la práctica predice "¿se retiró en el último año?". El diseño correcto 
 
 ```python
 vista = a.foto(df, horizonte_meses=3)  # t0 = 2026-07-31
-X, y = a.preparar(vista), vista[a.TARGET]
+X, y = a.separar(vista)  # el pipeline calcula EDAD y ANTIGUEDAD a t0
 a.resumen_foto(df)  # por horizonte: asociados, retiros y tasa en la foto
 ```
 
@@ -215,10 +234,27 @@ Zonas del campeón con 925 asociados nuevos (foto a 3 meses): **se retira** 19 (
 **zona gris** 13 (ninguno), **se queda** 893 (1 se retira). KMeans: en el grupo "riesgo" se retira el 12,9 %;
 en el "estable", el 1,0 %.
 
-Guarda solo el campeón en `models/` (`abandono_campeon.joblib`, `abandono_kmeans.joblib` y `campeon.json`
-con modelo, umbrales, métricas de todos los candidatos, grupos, datos y fecha), los gráficos
-`reports/figures/campeon_umbrales.html` y `campeon_escenarios.html`, y lo registra en MLflow con el alias
-`campeon`: `mlflow.sklearn.load_model("models:/abandono@campeon")`.
+Guarda solo el campeón en `models/`:
+
+- `abandono_campeon.joblib`, con el pipeline y sus dos umbrales juntos (`campeon.ModeloZonas`);
+- `abandono_kmeans.joblib`;
+- `campeon.json`, con el modelo, los umbrales, las métricas de todos los candidatos, los grupos, los datos y la
+  fecha.
+
+También guarda los gráficos `reports/figures/campeon_umbrales.html` y `campeon_escenarios.html`, y registra el
+campeón en MLflow con el alias `campeon`.
+
+El modelo guardado recibe la fila cruda y **devuelve la zona**. Lo mismo hace el registrado en MLflow:
+
+```python
+campeon = mlflow.sklearn.load_model("models:/abandono@campeon")  # o: c.cargar(MODELS_DIR)[0]
+campeon.predict(filas)  # ["se queda", "zona gris", "se retira", ...]
+campeon.predict_proba(filas)  # el puntaje (decision_function si es Ridge)
+campeon.alerta(filas)  # 1 desde el umbral de alerta
+```
+
+Un campeón guardado antes de este cambio (solo el pipeline) se carga igual: `c.cargar` lo envuelve con los
+umbrales de `campeon.json`. KMeans también recibe la fila cruda (`agrupador.predict(filas)`).
 
 ```bash
 make campeon                                     # foto a 3 meses, datos de desarrollo

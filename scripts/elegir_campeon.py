@@ -85,13 +85,13 @@ def main() -> None:
     print(f"\nCampeón: {a.TITULOS[campeon.nombre]} · umbral {campeon.umbral:.3f} · umbral_alto {alto}")
 
     # Todos los candidatos entrenados con todo, cada uno con su umbral, para nuevos y escenarios.
-    X, y = a.preparar(df), df[a.TARGET]
+    X, y = a.separar(df)
     entrenados = {n: clone(cand.modelo).fit(X, y) for n, cand in campeon.candidatos.items()}
     umbrales = {n: cand.umbrales["umbral"] for n, cand in campeon.candidatos.items()}
     nuevos = GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos, tasa_retiro=DESARROLLO["tasa_retiro"])
     nuevos = nuevos.generar()
     nuevos = a.foto(nuevos, h) if h else nuevos
-    Xn, yn = a.preparar(nuevos), nuevos[a.TARGET]
+    Xn, yn = a.separar(nuevos)
     en_nuevos = {n: compute_metrics(yn, a.puntaje(m, Xn), threshold=umbrales[n]) for n, m in entrenados.items()}
     print(f"\n=== Asociados nuevos ({len(nuevos)}, {yn.mean():.1%} retiro), cada uno con su umbral ===")
     print(pd.DataFrame(en_nuevos).T.round(3).to_string())
@@ -154,7 +154,7 @@ def main() -> None:
         r.registrar_modelos(entrenados, params, metricas_mlflow, titulos=a.TITULOS, guardar_modelo=False)
         propios = {**params, "modelo": campeon.nombre, "umbral": campeon.umbral, "umbral_alto": campeon.umbral_alto}
         with r.corrida(f"campeon_{campeon.nombre}", propios, metricas_mlflow[campeon.nombre], anidada=True):
-            info = r.registrar_modelo(campeon.modelo, registrar_como=r.MODELO_REGISTRADO)
+            info = r.registrar_modelo(campeon.con_zonas(), registrar_como=r.MODELO_REGISTRADO)
     r.asignar_alias(info.registered_model_version)
     print(f"MLflow: experimento '{r.EXPERIMENTO}', modelo models:/{r.MODELO_REGISTRADO}@{r.ALIAS_CAMPEON}")
     print("        (versión " + str(info.registered_model_version) + "). Ver con: make mlflow-ui")
