@@ -1,0 +1,853 @@
+{
+  "datos": "asociados_ejemplo.parquet",
+  "alpha": 1.0,
+  "limpieza": true,
+  "clip_outliers": "iqr",
+  "max_nulos": 0.5,
+  "ridge": {
+    "entrenamiento": {
+      "base_rate": 0.24,
+      "roc_auc": 1.0,
+      "pr_auc": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "recall_at_10pct": 0.4166666666666667
+    },
+    "validación cruzada (5)": {
+      "base_rate": 0.24,
+      "roc_auc": 0.8574561403508771,
+      "pr_auc": 0.7637430337861373,
+      "precision": 0.75,
+      "recall": 0.75,
+      "f1": 0.75,
+      "recall_at_10pct": 0.3333333333333333
+    },
+    "nuevos (n=1000)": {
+      "base_rate": 0.268,
+      "roc_auc": 0.8541615692031646,
+      "pr_auc": 0.7298784965195522,
+      "precision": 0.5833333333333334,
+      "recall": 0.7313432835820896,
+      "f1": 0.6490066225165563,
+      "recall_at_10pct": 0.332089552238806
+    }
+  },
+  "logreg": {
+    "entrenamiento": {
+      "base_rate": 0.24,
+      "roc_auc": 1.0,
+      "pr_auc": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "recall_at_10pct": 0.4166666666666667
+    },
+    "validación cruzada (5)": {
+      "base_rate": 0.24,
+      "roc_auc": 0.8662280701754386,
+      "pr_auc": 0.810527958965459,
+      "precision": 0.75,
+      "recall": 0.75,
+      "f1": 0.75,
+      "recall_at_10pct": 0.4166666666666667
+    },
+    "nuevos (n=1000)": {
+      "base_rate": 0.268,
+      "roc_auc": 0.9477204143218335,
+      "pr_auc": 0.8996624114750137,
+      "precision": 0.7928571428571428,
+      "recall": 0.8283582089552238,
+      "f1": 0.8102189781021898,
+      "recall_at_10pct": 0.373134328358209
+    }
+  },
+  "random_forest": {
+    "entrenamiento": {
+      "base_rate": 0.24,
+      "roc_auc": 1.0,
+      "pr_auc": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "recall_at_10pct": 0.4166666666666667
+    },
+    "validación cruzada (5)": {
+      "base_rate": 0.24,
+      "roc_auc": 0.8399122807017544,
+      "pr_auc": 0.6548916452102727,
+      "precision": 0.6666666666666666,
+      "recall": 0.16666666666666666,
+      "f1": 0.26666666666666666,
+      "recall_at_10pct": 0.3333333333333333
+    },
+    "nuevos (n=1000)": {
+      "base_rate": 0.268,
+      "roc_auc": 0.9661146113693826,
+      "pr_auc": 0.9320124415125584,
+      "precision": 1.0,
+      "recall": 0.44402985074626866,
+      "f1": 0.6149870801033591,
+      "recall_at_10pct": 0.373134328358209
+    }
+  },
+  "hist_gb": {
+    "entrenamiento": {
+      "base_rate": 0.24,
+      "roc_auc": 0.8936403508771931,
+      "pr_auc": 0.6266920511405805,
+      "precision": 0.6111111111111112,
+      "recall": 0.9166666666666666,
+      "f1": 0.7333333333333333,
+      "recall_at_10pct": 0.25
+    },
+    "validación cruzada (5)": {
+      "base_rate": 0.24,
+      "roc_auc": 0.2697368421052631,
+      "pr_auc": 0.18066889537477773,
+      "precision": 0.15384615384615385,
+      "recall": 0.3333333333333333,
+      "f1": 0.21052631578947367,
+      "recall_at_10pct": 0.0
+    },
+    "nuevos (n=1000)": {
+      "base_rate": 0.268,
+      "roc_auc": 0.8532720618220374,
+      "pr_auc": 0.6749713597033612,
+      "precision": 0.6128048780487805,
+      "recall": 0.75,
+      "f1": 0.674496644295302,
+      "recall_at_10pct": 0.30223880597014924
+    }
+  },
+  "kmeans": {
+    "entrenamiento": {
+      "base_rate": 0.24,
+      "pct_en_grupo_riesgo": 0.32,
+      "precision": 0.6875,
+      "recall": 0.9166666666666666,
+      "accuracy": 0.88,
+      "ari": 0.5563006947721959,
+      "silhouette": 0.23350259896819878
+    },
+    "nuevos (n=1000)": {
+      "base_rate": 0.268,
+      "pct_en_grupo_riesgo": 0.291,
+      "precision": 0.8556701030927835,
+      "recall": 0.9291044776119403,
+      "accuracy": 0.939,
+      "ari": 0.7617679000559816,
+      "silhouette": 0.2740762339663659
+    }
+  },
+  "comparativa": {
+    "random_forest": {
+      "Model": "RandomForestClassifier",
+      "Accuracy": 0.78,
+      "AUC": 0.8711309523809524,
+      "Recall": 0.16666666666666666,
+      "Prec.": 0.4,
+      "F1": 0.2333333333333333,
+      "Kappa": 0.17466063348416294,
+      "MCC": 0.2018350154434631,
+      "TT (Sec)": 0.32290921211242674
+    },
+    "ridge": {
+      "Model": "RidgeClassifier",
+      "Accuracy": 0.8800000000000001,
+      "AUC": 0.8678571428571429,
+      "Recall": 0.7333333333333333,
+      "Prec.": 0.75,
+      "F1": 0.7314285714285715,
+      "Kappa": 0.6538901601830663,
+      "MCC": 0.6631092683126493,
+      "TT (Sec)": 0.011974859237670898
+    },
+    "logreg": {
+      "Model": "LogisticRegression",
+      "Accuracy": 0.8800000000000001,
+      "AUC": 0.8648809523809524,
+      "Recall": 0.7333333333333333,
+      "Prec.": 0.7833333333333333,
+      "F1": 0.7247619047619047,
+      "Kappa": 0.649335504312621,
+      "MCC": 0.6741951248111773,
+      "TT (Sec)": 0.014365816116333007
+    },
+    "hist_gb": {
+      "Model": "HistGradientBoostingClassifier",
+      "Accuracy": 0.4,
+      "AUC": 0.22321428571428573,
+      "Recall": 0.3333333333333333,
+      "Prec.": 0.17333333333333334,
+      "F1": 0.22142857142857145,
+      "Kappa": -0.13939090362652787,
+      "MCC": -0.20879976994337776,
+      "TT (Sec)": 0.0419766902923584
+    }
+  },
+  "importancia": [
+    {
+      "modelo": "ridge",
+      "variable": "#SOLICITUD_DISMINUCIONCUOTAS",
+      "importancia": 0.0700569896419542,
+      "std": 0.004694167344736358
+    },
+    {
+      "modelo": "ridge",
+      "variable": "#SOLICITUD_CANCELACIONAHORROS",
+      "importancia": 0.04702766903188974,
+      "std": 0.0020980605560842525
+    },
+    {
+      "modelo": "ridge",
+      "variable": "#SOLICITUD_RETIROPARCIALAHORROS",
+      "importancia": -0.022232077318326347,
+      "std": 0.0018179618875465938
+    },
+    {
+      "modelo": "ridge",
+      "variable": "#CANTIDAD_AHORROSALAVISTA",
+      "importancia": -4.1799200717662635e-05,
+      "std": 2.9792919003774365e-05
+    },
+    {
+      "modelo": "ridge",
+      "variable": "#CANTIDAD_AHORROSCONTRACTUALES",
+      "importancia": 0.10882625805399238,
+      "std": 0.008685686051000497
+    },
+    {
+      "modelo": "ridge",
+      "variable": "CANCELACIONCREDITOS_ULT3MESES",
+      "importancia": 0.0018789250468967179,
+      "std": 0.00013103951776300256
+    },
+    {
+      "modelo": "ridge",
+      "variable": "#SOLICITUDCREDITOS_ULT3MESES",
+      "importancia": 0.009352316287415407,
+      "std": 0.000981499488722638
+    },
+    {
+      "modelo": "ridge",
+      "variable": "#CANTIDAD_SERVICIOS",
+      "importancia": -0.0084663771307397,
+      "std": 0.0019118824301757335
+    },
+    {
+      "modelo": "ridge",
+      "variable": "#INTENCIONRETIROS_ULT3MESES",
+      "importancia": 0.041222677595628476,
+      "std": 0.002388458884566213
+    },
+    {
+      "modelo": "ridge",
+      "variable": "SALARIO",
+      "importancia": 0.0002859677024713347,
+      "std": 0.000775255156980025
+    },
+    {
+      "modelo": "ridge",
+      "variable": "ESTRATO",
+      "importancia": 0.0031818367180491804,
+      "std": 0.0044097277316654465
+    },
+    {
+      "modelo": "ridge",
+      "variable": "EDAD",
+      "importancia": 0.00011775140689995744,
+      "std": 6.0204043663213997e-05
+    },
+    {
+      "modelo": "ridge",
+      "variable": "ANTIGUEDAD",
+      "importancia": 0.0009241701329418817,
+      "std": 0.000566424538590497
+    },
+    {
+      "modelo": "ridge",
+      "variable": "SEXO",
+      "importancia": -0.00012947557295487356,
+      "std": 0.0011253490894061369
+    },
+    {
+      "modelo": "ridge",
+      "variable": "TIPOCONTRATO",
+      "importancia": 0.06068326400782973,
+      "std": 0.0033386340665202186
+    },
+    {
+      "modelo": "ridge",
+      "variable": "TIPOPACTO",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "ridge",
+      "variable": "PERIODODEDUCE",
+      "importancia": 0.004136591632003972,
+      "std": 0.004478356680223255
+    },
+    {
+      "modelo": "ridge",
+      "variable": "TIPOCUENTA",
+      "importancia": -0.001827440665524782,
+      "std": 0.002146425910635395
+    },
+    {
+      "modelo": "ridge",
+      "variable": "CARGO",
+      "importancia": -0.0013151455835575421,
+      "std": 0.004672093791798065
+    },
+    {
+      "modelo": "ridge",
+      "variable": "CODCIUDAD",
+      "importancia": -0.0022535886143054463,
+      "std": 0.0016981003666090753
+    },
+    {
+      "modelo": "ridge",
+      "variable": "AGENCIA",
+      "importancia": 0.0012223717478183072,
+      "std": 0.0022902794032370025
+    },
+    {
+      "modelo": "logreg",
+      "variable": "#SOLICITUD_DISMINUCIONCUOTAS",
+      "importancia": 0.05281889731669529,
+      "std": 0.0036933385377075313
+    },
+    {
+      "modelo": "logreg",
+      "variable": "#SOLICITUD_CANCELACIONAHORROS",
+      "importancia": 0.03605894706793904,
+      "std": 0.0024592051635300744
+    },
+    {
+      "modelo": "logreg",
+      "variable": "#SOLICITUD_RETIROPARCIALAHORROS",
+      "importancia": 0.002965194519207326,
+      "std": 0.00029070785639518455
+    },
+    {
+      "modelo": "logreg",
+      "variable": "#CANTIDAD_AHORROSALAVISTA",
+      "importancia": -0.0010577236766983965,
+      "std": 0.0005062335634194378
+    },
+    {
+      "modelo": "logreg",
+      "variable": "#CANTIDAD_AHORROSCONTRACTUALES",
+      "importancia": 0.05193601663812088,
+      "std": 0.0038415793116639177
+    },
+    {
+      "modelo": "logreg",
+      "variable": "CANCELACIONCREDITOS_ULT3MESES",
+      "importancia": 0.010035376396705042,
+      "std": 0.0010465306100082557
+    },
+    {
+      "modelo": "logreg",
+      "variable": "#SOLICITUDCREDITOS_ULT3MESES",
+      "importancia": 0.013372685751570057,
+      "std": 0.001934421513736178
+    },
+    {
+      "modelo": "logreg",
+      "variable": "#CANTIDAD_SERVICIOS",
+      "importancia": -0.006743434467009179,
+      "std": 0.0019230054553861088
+    },
+    {
+      "modelo": "logreg",
+      "variable": "#INTENCIONRETIROS_ULT3MESES",
+      "importancia": 0.05629434793246886,
+      "std": 0.0037233495304665075
+    },
+    {
+      "modelo": "logreg",
+      "variable": "SALARIO",
+      "importancia": 0.0027424353641628428,
+      "std": 0.0016983643800868216
+    },
+    {
+      "modelo": "logreg",
+      "variable": "ESTRATO",
+      "importancia": -5.454285947307236e-05,
+      "std": 0.001362921143124572
+    },
+    {
+      "modelo": "logreg",
+      "variable": "EDAD",
+      "importancia": 6.116956202597556e-05,
+      "std": 4.978841630812952e-05
+    },
+    {
+      "modelo": "logreg",
+      "variable": "ANTIGUEDAD",
+      "importancia": 0.0036752711850583596,
+      "std": 0.002018950793355767
+    },
+    {
+      "modelo": "logreg",
+      "variable": "SEXO",
+      "importancia": 0.0005021001549629367,
+      "std": 0.0007073187529281367
+    },
+    {
+      "modelo": "logreg",
+      "variable": "TIPOCONTRATO",
+      "importancia": 0.01920520349074307,
+      "std": 0.002033084449066664
+    },
+    {
+      "modelo": "logreg",
+      "variable": "TIPOPACTO",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "logreg",
+      "variable": "PERIODODEDUCE",
+      "importancia": 0.0012738561291901318,
+      "std": 0.002881740390501997
+    },
+    {
+      "modelo": "logreg",
+      "variable": "TIPOCUENTA",
+      "importancia": -0.0012402128700758409,
+      "std": 0.0009767837453007542
+    },
+    {
+      "modelo": "logreg",
+      "variable": "CARGO",
+      "importancia": -0.0009042900252833608,
+      "std": 0.0010641355219384396
+    },
+    {
+      "modelo": "logreg",
+      "variable": "CODCIUDAD",
+      "importancia": -0.001188728488703994,
+      "std": 0.0014965666700328302
+    },
+    {
+      "modelo": "logreg",
+      "variable": "AGENCIA",
+      "importancia": 0.0015781747002691637,
+      "std": 0.0005746412907588291
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "#SOLICITUD_DISMINUCIONCUOTAS",
+      "importancia": 0.023855109697414566,
+      "std": 0.0016601814148127431
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "#SOLICITUD_CANCELACIONAHORROS",
+      "importancia": 0.03250474064105703,
+      "std": 0.003347236134225532
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "#SOLICITUD_RETIROPARCIALAHORROS",
+      "importancia": 0.006109564880515461,
+      "std": 0.0007106259493539439
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "#CANTIDAD_AHORROSALAVISTA",
+      "importancia": -0.0007735400864529951,
+      "std": 0.0003907252326307594
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "#CANTIDAD_AHORROSCONTRACTUALES",
+      "importancia": 0.012860135796427719,
+      "std": 0.0023093298912060323
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "CANCELACIONCREDITOS_ULT3MESES",
+      "importancia": 0.00594083883859392,
+      "std": 0.0007914125644670563
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "#SOLICITUDCREDITOS_ULT3MESES",
+      "importancia": 0.01221148356577766,
+      "std": 0.001829304093188135
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "#CANTIDAD_SERVICIOS",
+      "importancia": -6.346342060189469e-05,
+      "std": 0.000349677172174985
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "#INTENCIONRETIROS_ULT3MESES",
+      "importancia": 0.058342508767637205,
+      "std": 0.005439869991936012
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "SALARIO",
+      "importancia": 0.0007156838757034322,
+      "std": 0.001246915427913834
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "ESTRATO",
+      "importancia": -0.0001470618220373643,
+      "std": 0.0008378903203229232
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "EDAD",
+      "importancia": -0.0002492659652557183,
+      "std": 0.000874599667881931
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "ANTIGUEDAD",
+      "importancia": -0.0005365080336025118,
+      "std": 0.0007211435952734307
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "SEXO",
+      "importancia": 4.8171030095411904e-05,
+      "std": 0.0007116134360355493
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "TIPOCONTRATO",
+      "importancia": 0.01629531645053419,
+      "std": 0.0023242145327706564
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "TIPOPACTO",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "PERIODODEDUCE",
+      "importancia": 0.00031527811760866386,
+      "std": 0.0012989268487548142
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "TIPOCUENTA",
+      "importancia": -0.0005438993556806104,
+      "std": 0.0006749888634269577
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "CARGO",
+      "importancia": -1.5037517331395467e-05,
+      "std": 0.0007011555488373024
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "CODCIUDAD",
+      "importancia": -0.0007939299404615907,
+      "std": 0.000992690445904043
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "AGENCIA",
+      "importancia": 0.0002617547508359741,
+      "std": 0.0008722555842859357
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "#SOLICITUD_DISMINUCIONCUOTAS",
+      "importancia": 0.11578021776364085,
+      "std": 0.009449004914317856
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "#SOLICITUD_CANCELACIONAHORROS",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "#SOLICITUD_RETIROPARCIALAHORROS",
+      "importancia": 0.05328353111491724,
+      "std": 0.004457761771758408
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "#CANTIDAD_AHORROSALAVISTA",
+      "importancia": -0.00012004526547584326,
+      "std": 0.0016158362107690667
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "#CANTIDAD_AHORROSCONTRACTUALES",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "CANCELACIONCREDITOS_ULT3MESES",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "#SOLICITUDCREDITOS_ULT3MESES",
+      "importancia": 0.11161329622379909,
+      "std": 0.010445056102367236
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "#CANTIDAD_SERVICIOS",
+      "importancia": -0.000851276404860879,
+      "std": 0.00036061987442453827
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "#INTENCIONRETIROS_ULT3MESES",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "SALARIO",
+      "importancia": -0.00222504281869339,
+      "std": 0.0036455888641756143
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "ESTRATO",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "EDAD",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "ANTIGUEDAD",
+      "importancia": 0.0015119076747410975,
+      "std": 0.0029671508809390244
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "SEXO",
+      "importancia": -0.00021613245249156864,
+      "std": 0.0004358894661797789
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "TIPOCONTRATO",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "TIPOPACTO",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "PERIODODEDUCE",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "TIPOCUENTA",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "CARGO",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "CODCIUDAD",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "AGENCIA",
+      "importancia": 0.0,
+      "std": 0.0
+    }
+  ],
+  "importancia_rf": [
+    {
+      "variable": "num__#INTENCIONRETIROS_ULT3MESES",
+      "importancia": 0.11952900244040016
+    },
+    {
+      "variable": "num__#SOLICITUD_CANCELACIONAHORROS",
+      "importancia": 0.0911014756683852
+    },
+    {
+      "variable": "num__#CANTIDAD_AHORROSCONTRACTUALES",
+      "importancia": 0.07407955153413481
+    },
+    {
+      "variable": "num__#SOLICITUD_DISMINUCIONCUOTAS",
+      "importancia": 0.07269610751060837
+    },
+    {
+      "variable": "num__#SOLICITUDCREDITOS_ULT3MESES",
+      "importancia": 0.05907372598312706
+    },
+    {
+      "variable": "clip__SALARIO",
+      "importancia": 0.055057864635124715
+    },
+    {
+      "variable": "clip__EDAD",
+      "importancia": 0.05171741093754194
+    },
+    {
+      "variable": "clip__ANTIGUEDAD",
+      "importancia": 0.045420364237440704
+    },
+    {
+      "variable": "num__ESTRATO",
+      "importancia": 0.0383078874604981
+    },
+    {
+      "variable": "cat__TIPOCONTRATO_FIJO",
+      "importancia": 0.03623106865662582
+    },
+    {
+      "variable": "num__#CANTIDAD_SERVICIOS",
+      "importancia": 0.03374521565652068
+    },
+    {
+      "variable": "cat__TIPOCONTRATO_INDEFINIDO",
+      "importancia": 0.030449813888229097
+    },
+    {
+      "variable": "num__#SOLICITUD_RETIROPARCIALAHORROS",
+      "importancia": 0.029634359141177378
+    },
+    {
+      "variable": "cat__AGENCIA_3",
+      "importancia": 0.02576484787800401
+    },
+    {
+      "variable": "num__CANCELACIONCREDITOS_ULT3MESES",
+      "importancia": 0.021947649520903636
+    },
+    {
+      "variable": "cat__CODCIUDAD_5360",
+      "importancia": 0.01939092780650518
+    },
+    {
+      "variable": "cat__PERIODODEDUCE_QUINCENAL",
+      "importancia": 0.018407908526371995
+    },
+    {
+      "variable": "num__#CANTIDAD_AHORROSALAVISTA",
+      "importancia": 0.015550963899674638
+    },
+    {
+      "variable": "cat__TIPOCUENTA_AHORROS",
+      "importancia": 0.0147761529834552
+    },
+    {
+      "variable": "cat__PERIODODEDUCE_MENSUAL",
+      "importancia": 0.014740590005081504
+    },
+    {
+      "variable": "cat__CARGO_AUXILIAR ADMINISTRATIVO",
+      "importancia": 0.014581002044755055
+    },
+    {
+      "variable": "cat__SEXO_M",
+      "importancia": 0.010990893971413063
+    },
+    {
+      "variable": "cat__CARGO_ANALISTA",
+      "importancia": 0.010768516037174198
+    },
+    {
+      "variable": "cat__AGENCIA_1",
+      "importancia": 0.01075620187689462
+    },
+    {
+      "variable": "cat__SEXO_F",
+      "importancia": 0.009368445901498861
+    },
+    {
+      "variable": "cat__CODCIUDAD_5088",
+      "importancia": 0.008977701514206581
+    },
+    {
+      "variable": "cat__CODCIUDAD_5001",
+      "importancia": 0.008266520595003197
+    },
+    {
+      "variable": "cat__TIPOCUENTA_CORRIENTE",
+      "importancia": 0.008129150894106396
+    },
+    {
+      "variable": "cat__CODCIUDAD_5631",
+      "importancia": 0.0077121907455483755
+    },
+    {
+      "variable": "cat__CARGO_MEDICO",
+      "importancia": 0.007135684330630759
+    },
+    {
+      "variable": "cat__AGENCIA_5",
+      "importancia": 0.007075424588922532
+    },
+    {
+      "variable": "cat__AGENCIA_2",
+      "importancia": 0.0054483337638126985
+    },
+    {
+      "variable": "cat__CARGO_DOCENTE",
+      "importancia": 0.005373236113697804
+    },
+    {
+      "variable": "cat__AGENCIA_4",
+      "importancia": 0.004583047680043217
+    },
+    {
+      "variable": "cat__CARGO_OPERARIO",
+      "importancia": 0.004166679200383459
+    },
+    {
+      "variable": "cat__CARGO_CONTADOR",
+      "importancia": 0.003278840127519071
+    },
+    {
+      "variable": "cat__CODCIUDAD_5266",
+      "importancia": 0.0030941660336035915
+    },
+    {
+      "variable": "cat__CARGO_ENFERMERO",
+      "importancia": 0.002112630115144913
+    },
+    {
+      "variable": "cat__CARGO_DESARROLLADOR",
+      "importancia": 0.0005584460958312956
+    }
+  ]
+}
