@@ -107,3 +107,38 @@ def test_figura_matrices_confusion(entrenamiento, nuevos, supervisados):
     for ax in ejes:
         conteos = [int(t.get_text().split("\n")[0]) for t in ax.texts]
         assert sum(conteos) == len(nuevos)  # las 4 celdas suman todos los asociados
+
+
+def test_tabla_predicciones_como_predict_model(supervisados, nuevos):
+    modelos = {n: supervisados[n] for n in ("ridge", "logreg")}
+    tabla = a.tabla_predicciones(modelos, nuevos)
+
+    assert list(tabla.columns) == [
+        *a.NUMERICAS,
+        *a.CATEGORICAS,
+        a.TARGET,
+        "ridge_label",
+        "ridge_score",
+        "logreg_label",
+        "logreg_score",
+    ]
+    assert len(tabla) == len(nuevos)
+    assert tabla["logreg_score"].between(0, 1).all()  # probabilidad de abandono
+    # Ridge no da probabilidad: su score es la distancia a la frontera, y > 0 es exactamente "abandona".
+    assert ((tabla["ridge_score"] > 0).astype(int) == tabla["ridge_label"]).all()
+    # Sin la columna objetivo (asociados actuales, sin desenlace) también funciona.
+    assert a.TARGET not in a.tabla_predicciones(modelos, nuevos.drop(columns=a.TARGET))
+
+
+def test_guardar_modelo_en_joblib_por_partes(supervisados, nuevos, tmp_path):
+    import joblib
+
+    rutas = a.guardar_modelo(supervisados["ridge"], tmp_path, "ridge")
+    assert {r.name for r in rutas.values()} == {"ridge.joblib", "ridge_preprocesamiento.joblib", "ridge_modelo.joblib"}
+
+    X = a.preparar(nuevos)
+    pipeline = joblib.load(rutas["pipeline"])
+    preprocesamiento, modelo = joblib.load(rutas["preprocesamiento"]), joblib.load(rutas["modelo"])
+    # Por partes da exactamente lo mismo que el pipeline completo.
+    assert np.array_equal(modelo.predict(preprocesamiento.transform(X)), pipeline.predict(X))
+    assert type(modelo).__name__ == "RidgeClassifier"

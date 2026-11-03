@@ -103,6 +103,12 @@ make abandono ARGS="--nuevos 5000 --semilla-nuevos 7 --alpha 10"
 make abandono ARGS="--validar mi_archivo.parquet"    # validar además con otro archivo
 ```
 
+Al final imprime una **tabla comparativa** al estilo de `compare_models` de PyCaret: Accuracy, AUC, Recall,
+Prec., F1, Kappa, MCC y **TT (Sec)** (tiempo promedio de entrenamiento por partición), con validación cruzada
+y las mismas particiones para todos. Se guarda en `reports/figures/abandono_comparativa.html` con el mejor
+de cada columna en amarillo. Se ordena con `make abandono ARGS="--ordenar Recall"` (o `"--ordenar 'TT (Sec)'"`).
+En un notebook: `resaltar(tabla_comparativa(modelos, X, y))` de `proyecto_ml.evaluate`.
+
 Se excluyen las columnas que solo existen porque el asociado ya se fue (fecha/motivo de retiro, `ESTADO`,
 fechas de actualización...): con ellas cualquier modelo acierta el 100 % pero no anticipa nada.
 
@@ -110,17 +116,51 @@ fechas de actualización...): con ellas cualquier modelo acierta el 100 % pero n
 
 `make pycaret` ([`scripts/comparar_pycaret.py`](scripts/comparar_pycaret.py)) le da las mismas variables a
 **PyCaret**, que arma solo el preprocesamiento (imputación, codificación, escalado) y compara con validación
-cruzada `lr`, `rf`, `et` (bagging), `ada`, `gbc` y `lightgbm` (boosting). Luego valida sus mejores modelos y
-los nuestros con los mismos asociados nuevos.
+cruzada `lr`, `rf`, `et` (bagging), `ada`, `gbc` y `lightgbm` (boosting). La tabla comparativa junta esos 6
+y nuestros 4 (con tiempo; PyCaret 4.0 ya no lo entrega) en `reports/figures/pycaret_comparativa.html`, y luego
+todos se validan con los mismos asociados nuevos.
 
 ```bash
 make pycaret                                   # instala el extra la primera vez (uv sync --extra pycaret)
-make pycaret ARGS="--ordenar Recall --top 5"
+make pycaret ARGS="--ordenar Recall"
 ```
 
 Usa **PyCaret 4.0 alfa**: la estable (3.3) exige pandas < 2.2 y no es compatible con el proyecto. Por eso es un
 extra opcional (no lo instala `make setup` ni el CI). A diferencia de nuestro preprocesador, PyCaret codifica
 las categóricas con OrdinalEncoder (no OneHot) y no compensa el desbalance (`class_weight`).
+
+### Afinar hiperparámetros: Ridge y `pycaret_lr`
+
+`make afinar` ([`scripts/afinar_modelos.py`](scripts/afinar_modelos.py)) busca en grilla (`GridSearchCV`) los
+mejores hiperparámetros de los dos mejores de la tabla comparativa, con las mismas particiones y métricas:
+
+| Modelo | Hiperparámetros | Valores |
+|---|---|---|
+| Ridge | `alpha` (más alto = más regularización), `class_weight` | 0.001 … 1000 (13, escala log) × None/balanced |
+| `pycaret_lr` | `C` (más alto = menos regularización), `l1_ratio` (0 = L2, 1 = L1), `class_weight` | 0.001 … 1000 × L2/L1 × None/balanced |
+
+Imprime las 5 mejores combinaciones de cada uno, la tabla "por defecto vs. afinado" y, lo que cuenta,
+la comparación con asociados **nuevos** (el puntaje de validación cruzada del mejor es optimista: se
+eligió mirando esos mismos datos). Guarda las curvas en `reports/figures/afinamiento_curvas.png` y cada
+modelo afinado en tres `.joblib` (`a.guardar_modelo`):
+
+| Archivo en `models/` | Contenido | Uso |
+|---|---|---|
+| `abandono_<m>_afinado.joblib` | pipeline completo | predecir: `joblib.load(...).predict(a.preparar(df))` |
+| `abandono_<m>_afinado_preprocesamiento.joblib` | solo el preprocesamiento ajustado | transformar datos / ver medianas y categorías |
+| `abandono_<m>_afinado_modelo.joblib` | solo el estimador | ver coeficientes; recibe datos ya transformados |
+
+También arma una **tabla de predicciones** de los dos afinados (como `predict_model` de PyCaret) sobre los
+asociados nuevos: variables, abandono real y, por modelo, `<modelo>_label` (1 = abandona) y `<modelo>_score`
+(riesgo de abandono: probabilidad en la logística; en Ridge, distancia a la frontera, > 0 = abandona). Muestra
+unas filas en la terminal (`ARGS="--muestra 10"`) y guarda todas en `data/processed/predicciones_afinados.csv`
+(no va a Git). Con regularización fuerte las probabilidades se acercan a 0.5: sirven para **ordenar** el riesgo,
+no como probabilidad literal. En código: `a.tabla_predicciones({"ridge": modelo}, df)`.
+
+```bash
+make afinar                         # elige por AUC
+make afinar ARGS="--metrica F1"     # o Recall, MCC... (las columnas de la tabla comparativa)
+```
 
 ## Contrato de datos y Supabase
 
