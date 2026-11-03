@@ -51,6 +51,44 @@ MLflow y demo en Streamlit.
 └── models/               Solo el campeón (y best_model de make train) — NO van a Git
 ```
 
+## Flujo del proyecto
+
+Del dato crudo a la predicción, en orden. Cada caja es un paso con su comando (`make <objetivo>`) y el módulo
+que lo hace.
+
+```mermaid
+flowchart TD
+    subgraph datos["Paso 1: Datos"]
+        EXT["Extracto del fondo"] -->|"scripts/anonimizar.py"| RAW["data/raw: anonimizado"]
+        FORM["Formulario web del equipo"] --> SUPA[("Supabase: asociados")]
+        RAW -->|"make supabase-subir"| SUPA
+        SUPA -->|"make supabase-bajar"| RAW
+        GEN["GeneradorAsociados (sintético)"] -->|"make datos-desarrollo"| DEV["data/processed: 5.000 de desarrollo"]
+    end
+    RAW --> CONTRATO
+    DEV --> CONTRATO
+    CONTRATO{"Paso 2: Contrato de datos<br/>make contrato"} -->|cumple| FOTO["Paso 3: Foto del asociado<br/>a.foto: t0 = corte − 3 meses"]
+    FOTO --> SUP["Paso 4a: Supervisado: candidatos<br/>preparar → preprocesar → modelo"]
+    FOTO --> NOSUP["Paso 4b: No supervisado<br/>make segmentos: KMeans y DBSCAN"]
+    SUP --> CAMP["Paso 5: Campeón: make campeon<br/>PR-AUC en CV repetida, empates,<br/>umbrales anidados, zonas"]
+    CAMP --> MOD[("models/ + MLflow<br/>abandono@campeon")]
+    MOD --> PRED["Paso 6: make predecir<br/>zona, alerta, grupo"]
+    MOD --> APP["Simulador Streamlit<br/>SHAP + mapa de segmentos"]
+    NOSUP --> APP
+    CI["Paso 7: CI en cada push<br/>pruebas + make pipeline"] -.-> CAMP
+```
+
+| Paso | Qué pasa | Comando | Dónde |
+|---|---|---|---|
+| **1. Datos** | Tres fuentes con el mismo esquema. El extracto real se anonimiza **antes** de compartirlo. El equipo carga asociados desde el formulario a Supabase. Mientras llega el extracto, se trabaja con 5.000 asociados sintéticos. | `scripts/anonimizar.py`, `make supabase-bajar`, `make datos-desarrollo` | `anonymize.py`, `contrato.py`, `generador.py` |
+| **2. Contrato** | Columnas, tipos, rangos y reglas del negocio. Un lote que no cumple no sigue. | `make contrato DATA=...` (o `scripts/ingesta.py --contrato contratos/asociados.yaml`) | `contratos/asociados.yaml`, `contrato.py` |
+| **3. Foto** | Cada asociado activo en t0 (corte − 3 meses): ¿se retira antes del corte? EDAD y ANTIGUEDAD se calculan a t0, sin fuga. | (dentro de todos los comandos) | `abandono.foto`, `abandono.preparar` |
+| **4a. Supervisado** | Un solo pipeline para todos los modelos: preparar → preprocesar (imputar, codificar, escalar, recortar) → modelo. Los candidatos son los 4 supervisados y las técnicas que ganan de forma concluyente. | `make tecnicas`, `make optuna`, `make validacion` | `abandono.armar_pipeline`, `features.py`, `tecnicas.py` |
+| **4b. No supervisado** | Segmentos por comportamiento, sin ver el retiro. Los atípicos de DBSCAN concentran el retiro. | `make segmentos` | `segmentacion.py` |
+| **5. Campeón** | Gana la mejor PR-AUC en validación cruzada repetida (5 × 3), con su incertidumbre: ± entre particiones, intervalo bootstrap y empates. Los umbrales (F2 y precisión ≥ 0,8) se miden también en validación anidada. Se valida además con asociados nuevos y con escenarios de señal débil. | `make campeon` | `campeon.py`, `validacion.py`, `explicar.py` (SHAP) |
+| **6. Uso** | El campeón guardado recibe la fila cruda y devuelve la zona: se retira, zona gris o se queda. | `make predecir DATA=...`, `make simulador` | `predict.py`, `app_abandono.py` |
+| **7. CI** | En cada push: lint, pruebas y el flujo completo, con el resumen del campeón y los resultados como artefacto. | `make pipeline` (lo mismo en local) | `.github/workflows/ci.yml`, `scripts/resumen_campeon.py` |
+
 ## Requisitos
 
 - [uv](https://docs.astral.sh/uv/) (gestiona Python 3.12 y dependencias)
