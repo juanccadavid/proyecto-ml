@@ -25,7 +25,6 @@ import warnings
 from datetime import datetime
 from pathlib import Path
 
-import joblib
 import numpy as np
 import pandas as pd
 from sklearn.base import clone
@@ -134,7 +133,7 @@ def main() -> None:
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     for nombre, busqueda in busquedas.items():
-        joblib.dump(busqueda.best_estimator_, MODELS_DIR / f"abandono_{nombre}_afinado.joblib")
+        a.guardar_modelo(busqueda.best_estimator_, MODELS_DIR, f"abandono_{nombre}_afinado")
     tabla_csv = PROCESSED_DIR / "predicciones_afinados.csv"  # todas las filas y variables; ignorado por Git
     predicciones.to_csv(tabla_csv, index_label="fila", encoding="utf-8-sig")  # -sig: tildes bien en Excel
     grafico = FIGURES_DIR / "afinamiento_curvas.png"
@@ -152,7 +151,8 @@ def main() -> None:
         f"nuevos (n={args.nuevos})": en_nuevos.to_dict(orient="index"),
     }
     salida.write_text(json.dumps(resumen, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
-    print(f"\nModelos -> {MODELS_DIR / 'abandono_*_afinado.joblib'} | métricas -> {salida}")
+    print(f"\nModelos (pipeline, _preprocesamiento y _modelo) -> {MODELS_DIR / 'abandono_*_afinado*.joblib'}")
+    print(f"Métricas -> {salida}")
     print(f"Curvas -> {grafico} | tabla comparativa -> {tabla_html}")
     print(f"Predicciones ({len(predicciones)} asociados nuevos) -> {tabla_csv}")
 

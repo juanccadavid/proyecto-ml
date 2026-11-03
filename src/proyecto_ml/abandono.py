@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import joblib
 import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
@@ -25,6 +26,8 @@ from proyecto_ml.features import build_preprocessor
 from proyecto_ml.models import build_pipeline, get_models
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from matplotlib.figure import Figure
 
 TARGET = "#RETIROS"
@@ -137,6 +140,27 @@ def puntaje(modelo: Pipeline, X: pd.DataFrame) -> np.ndarray:
 
 def metricas_supervisado(modelo: Pipeline, df: pd.DataFrame) -> dict[str, float]:
     return compute_metrics(df[TARGET], puntaje(modelo, preparar(df)), threshold=UMBRAL[metodo_puntaje(modelo)])
+
+
+def guardar_modelo(pipeline: Pipeline, carpeta: Path, nombre: str) -> dict[str, Path]:
+    """Guarda en .joblib el pipeline completo y, por separado, su preprocesamiento y su modelo.
+
+    - ``<nombre>.joblib``: preprocesamiento + modelo. Es el que se usa para predecir: ``.predict(preparar(df))``.
+    - ``<nombre>_preprocesamiento.joblib``: solo el preprocesamiento ya ajustado (imputación, escalado,
+      codificación), para transformar datos nuevos o revisar lo que aprendió (medianas, categorías...).
+    - ``<nombre>_modelo.joblib``: solo el estimador (coeficientes, hiperparámetros). Recibe datos ya
+      transformados: ``modelo.predict(preprocesamiento.transform(preparar(df)))``.
+    """
+    carpeta.mkdir(parents=True, exist_ok=True)
+    rutas = {
+        "pipeline": carpeta / f"{nombre}.joblib",
+        "preprocesamiento": carpeta / f"{nombre}_preprocesamiento.joblib",
+        "modelo": carpeta / f"{nombre}_modelo.joblib",
+    }
+    joblib.dump(pipeline, rutas["pipeline"])
+    joblib.dump(pipeline[:-1], rutas["preprocesamiento"])  # todos los pasos menos el último
+    joblib.dump(pipeline[-1], rutas["modelo"])
+    return rutas
 
 
 def tabla_predicciones(modelos: dict[str, Pipeline], df: pd.DataFrame) -> pd.DataFrame:
