@@ -6,16 +6,9 @@ Uso:
     uv run python scripts/contrato_datos.py web       # -> web/contrato.js
     uv run python scripts/contrato_datos.py subir data/ejemplo/asociados_ejemplo.parquet
     uv run python scripts/contrato_datos.py bajar     # -> data/raw/supabase_asociados.parquet
-    uv run python scripts/contrato_datos.py revisar   # qué entradas del formulario pasarían (no escribe)
-    uv run python scripts/contrato_datos.py revisar --aplicar
 
-'subir' usa SUPABASE_SECRET_KEY (la clave pública ya no puede insertar en la tabla: solo el equipo, en
-<tabla>_entrada, desde el formulario), valida contra el contrato antes de enviar y omite los asociados
-que ya estén en la tabla.
-
-'revisar' lee las entradas pendientes del formulario (<tabla>_entrada), las valida una a una con el
-contrato (por fila y entre columnas) y contra las cédulas/IDASOCIADOS ya guardados, y muestra la decisión.
-Con --aplicar inserta las aprobadas en la tabla y marca cada entrada como aprobada o rechazada (con el motivo).
+'subir' usa SUPABASE_SECRET_KEY (la clave pública sola no puede insertar: solo el equipo con sesión, desde
+el formulario), valida contra el contrato antes de enviar y omite los asociados que ya estén en la tabla.
 
 'bajar' usa SUPABASE_SECRET_KEY (clave SECRETA, solo en tu .env: la pública no puede leer por RLS),
 valida el lote con el contrato y guarda la última copia + una copia fechada en data/raw/ (no va a Git).
@@ -103,15 +96,11 @@ def _subir(path: Path, contrato: k.Contrato, lote: int = 500) -> None:
     print(f"{nuevos} registros nuevos en {contrato.tabla_db}; {repetidos} omitidos por cédula/IDASOCIADOS repetidos")
 
 
-def leer_tabla(url: str, key: str, tabla: str, pagina: int = 1000, filtro: str = "") -> list[dict]:
-    """Lee la tabla completa por la API REST, de a `pagina` filas (Supabase entrega máximo 1000 por consulta).
-
-    ``filtro`` se agrega a la consulta como en PostgREST, ej. ``"revision=eq.pendiente"``.
-    """
+def leer_tabla(url: str, key: str, tabla: str, pagina: int = 1000) -> list[dict]:
+    """Lee la tabla completa por la API REST, de a `pagina` filas (Supabase entrega máximo 1000 por consulta)."""
     filas: list[dict] = []
     while True:
         endpoint = f"{url}/rest/v1/{tabla}?select=*&order=id&limit={pagina}&offset={len(filas)}"
-        endpoint += f"&{filtro}" if filtro else ""
         req = urllib.request.Request(endpoint, headers={"apikey": key, "Accept": "application/json"})
         try:
             with urllib.request.urlopen(req, timeout=60) as r:
@@ -148,51 +137,14 @@ def _bajar(salida: Path, contrato: k.Contrato, forzar: bool = False) -> None:
     print(f"Para entrenar con ella: en el .env DATOS_ASOCIADOS={ruta.as_posix()}")
 
 
-def _revisar(contrato: k.Contrato, aplicar: bool = False) -> list[dict]:
-    """Revisa las entradas pendientes del formulario; con ``aplicar``, las pasa a la tabla y las marca."""
-    url, key = _credenciales_secretas()
-    entrada = f"{contrato.tabla_db}_entrada"
-    pendientes = leer_tabla(url, key, entrada, filtro="revision=eq.pendiente")
-    if not pendientes:
-        print(f"No hay entradas pendientes en {entrada}.")
-        return []
-    existentes = leer_tabla(url, key, contrato.tabla_db)
-    decisiones = k.revisar_entradas(pendientes, existentes, contrato)
-    for d in decisiones:
-        estado = "aprueba " if d["aprobado"] else "rechaza "
-        cedula = d["registro"].get("cedula")
-        print(
-            f"  {estado} #{d['id']} cédula {cedula} (de {d['enviado_por']})"
-            + (f": {d['motivo']}" if d["motivo"] else "")
-        )
-    aprobadas = [d for d in decisiones if d["aprobado"]]
-    print(f"{len(aprobadas)} de {len(decisiones)} entradas cumplen el contrato y no están repetidas.")
-    if not aplicar:
-        print("Nada se escribió. Para pasarlas a la tabla y marcarlas: revisar --aplicar")
-        return decisiones
-    ahora = datetime.now().astimezone().isoformat(timespec="seconds")
-    for d in decisiones:
-        if d["aprobado"] and _peticion(url, key, "POST", contrato.tabla_db, [d["registro"]]) == 409:
-            d.update(aprobado=False, motivo="cédula o IDASOCIADOS ya existe (al insertar)")
-        revision = "aprobada" if d["aprobado"] else "rechazada"
-        cambio = {"revision": revision, "revisado_en": ahora, "motivo_revision": d["motivo"]}
-        _peticion(url, key, "PATCH", f"{entrada}?id=eq.{d['id']}", cambio)
-    print(f"-> {sum(d['aprobado'] for d in decisiones)} insertadas en {contrato.tabla_db}; {entrada} actualizada.")
-    return decisiones
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("accion", choices=["validar", "sql", "web", "subir", "bajar", "revisar"])
+    parser.add_argument("accion", choices=["validar", "sql", "web", "subir", "bajar"])
     parser.add_argument("archivo", type=Path, nargs="?", help="Dataset (para validar y subir)")
     parser.add_argument("--contrato", type=Path, default=k.CONTRATO_ASOCIADOS)
     parser.add_argument("--salida", type=Path, default=SUPABASE_BAJADA, help="Destino de 'bajar'")
     parser.add_argument("--forzar", action="store_true", help="'bajar' guarda aunque el lote no cumpla el contrato")
-    parser.add_argument("--aplicar", action="store_true", help="'revisar' escribe en Supabase (si no, solo muestra)")
     args = parser.parse_args()
-    if args.accion == "revisar":
-        _revisar(k.cargar(args.contrato), args.aplicar)
-        return
     if args.accion == "bajar":
         _bajar(args.salida, k.cargar(args.contrato), args.forzar)
         return

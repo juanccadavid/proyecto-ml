@@ -370,10 +370,10 @@ make contrato-sql contrato-web             # regenerar tras cambiar el contrato
 
 1. Crear un proyecto gratuito en [supabase.com](https://supabase.com).
 2. *SQL Editor* → pegar [`supabase/asociados.sql`](supabase/asociados.sql) → *Run*. Crea `asociados` con todas
-   las restricciones del contrato, cerrada con RLS (la clave pública no lee, inserta, edita ni borra), y la
-   parte del formulario: `equipo`, `asociados_entrada` y sus políticas (ver abajo). Si la tabla ya existía,
-   correr en orden los archivos de [`supabase/migraciones/`](supabase/migraciones/) que falten (la **002**
-   cierra el formulario al equipo).
+   las restricciones del contrato, cerrada con RLS (la clave pública sola no lee, inserta, edita ni borra), y
+   la parte del formulario: `equipo` y la política que deja insertar al equipo (ver abajo). Si la tabla ya
+   existía, correr en orden los archivos de [`supabase/migraciones/`](supabase/migraciones/) que falten (la
+   **003** deja que el equipo inserte directo en `asociados`).
 3. *Project Settings → API Keys*: copiar la URL, la clave **pública** (anon / publishable) y crear una
    **secreta** (*Secret keys*). La secreta va solo en tu `.env` (`SUPABASE_SECRET_KEY`): nunca en el HTML,
    Git ni un chat, porque salta el RLS.
@@ -383,45 +383,40 @@ make contrato-sql contrato-web             # regenerar tras cambiar el contrato
 ```bash
 make supabase-subir                        # sube los 50 de ejemplo con la clave secreta (omite repetidos)
 make supabase-bajar                        # baja la tabla a data/raw/ (clave secreta; valida el contrato)
-make supabase-revisar                      # qué entradas del formulario pasarían (no escribe nada)
-make supabase-revisar ARGS="--aplicar"     # pasa las válidas a asociados y marca cada entrada
 make formulario                            # abre web/formulario.html: sesión del equipo + Enviar
 ```
 
-**Formulario solo para el equipo** ([migración 002](supabase/migraciones/002_formulario_equipo.sql)):
+**Formulario solo para el equipo** ([migración 003](supabase/migraciones/003_formulario_directo.sql)):
 
 ```
-formulario ──(correo y contraseña: Supabase Auth)► asociados_entrada ──► make supabase-revisar ──► asociados
-              solo correos de public.equipo          pendiente            valida fila a fila,      (la que baja
-                                                                          sin repetidos            supabase-bajar)
+formulario ──(correo y contraseña: Supabase Auth)──► asociados ──► make supabase-bajar
+              solo correos de public.equipo          de una vez, con las restricciones del contrato
 ```
 
 - **Una sola entrada con correo y contraseña.** Se entra una vez por navegador y se envían todos los registros
   que se quiera: la sesión se guarda y se renueva sola hasta *Salir*. Supabase no envía correos (sin SMTP
   propio solo permite unos pocos por hora). Sin registro abierto: solo cuentas creadas en el panel.
-- **Lista de correos permitidos.** La tabla `public.equipo`; la política de `asociados_entrada` exige
-  `public.es_del_equipo()` (el correo del token está en `equipo`), `revision = 'pendiente'` y
-  `enviado_por` = el correo del token (nadie envía a nombre de otro).
-- **Tabla de entrada separada.** Lo que llega del formulario no toca `asociados`: la basura no bloquea
-  `supabase-bajar` ni ocupa cédulas reales. `make supabase-revisar` valida cada entrada con el contrato (por
-  fila y entre columnas; las reglas de lote no aplican a una fila) y contra las cédulas/IDASOCIADOS ya
-  guardados. Sin `--aplicar` solo muestra; con `--aplicar` inserta las válidas en `asociados` y marca cada
-  entrada `aprobada` o `rechazada` con su `motivo_revision`.
+- **Lista de correos permitidos.** La tabla `public.equipo`; la política `equipo_inserta` de `asociados` exige
+  `public.es_del_equipo()` (el correo del token está en `equipo`). La clave pública sola, sin sesión, no
+  inserta; y con sesión el equipo solo inserta (no lee, edita ni borra).
+- **Directo a la tabla.** Cada envío queda de una vez en `asociados`. La base aplica todas las restricciones del
+  contrato por fila y no deja repetir cédula ni IDASOCIADOS: si algo no cumple, el formulario muestra el motivo
+  y no se guarda.
 
 Activarlo en Supabase (una vez, en el panel):
 
-1. *SQL Editor*: correr la migración **002** (o `asociados.sql` completo en una base nueva).
+1. *SQL Editor*: correr la migración **003** (si falta, antes la 002; o `asociados.sql` completo en una base nueva).
 2. *Authentication → Sign In / Providers → Email*: activo, y **desactivar "Allow new users to sign up"**.
 3. *Authentication → Users → Add user → **Create new user***: correo y contraseña de cada integrante, con
    **Auto Confirm User** marcado (así no se envía ningún correo). La contraseña se le pasa a cada uno en persona.
 4. *Table Editor → equipo → Insert row*: el mismo correo **en minúsculas** (y el nombre).
 
-Para probar en tu PC: `make formulario` (o la dirección de Pages, `https://<usuario>.github.io/<repo>/`).
+Para probar en tu PC: `make formulario` (o la dirección de Pages, `https://<usuario>.github.io/<repo>/formulario.html`).
 
 **Entrenar con lo que llega a Supabase:**
 
 ```
-supabase-revisar / supabase-subir ──► asociados ──► make supabase-bajar ──► data/raw/supabase_asociados.parquet ──► make abandono
+formulario / supabase-subir ──► asociados ──► make supabase-bajar ──► data/raw/supabase_asociados.parquet ──► make abandono
                                               (clave secreta,          (+ copia fechada; valida el contrato)
                                                solo en tu .env)
 ```
@@ -434,7 +429,8 @@ supabase-revisar / supabase-subir ──► asociados ──► make supabase-ba
 
 Se entrena con la copia descargada, no con la BD en vivo: así un entrenamiento se puede repetir con los mismos datos.
 
-**Formulario en internet (GitHub Pages, gratis):** `https://juanccadavid.github.io/proyecto-ml/`.
+**Formulario en internet (GitHub Pages, gratis):** `https://juanccadavid.github.io/proyecto-ml/formulario.html`
+(la raíz del sitio redirige ahí).
 El workflow [`.github/workflows/formulario.yml`](.github/workflows/formulario.yml) lo publica en cada cambio de
 `web/` en `main`, armando `config.js` con variables del repositorio (la clave no está en Git). Activación, una vez:
 
@@ -443,8 +439,8 @@ El workflow [`.github/workflows/formulario.yml`](.github/workflows/formulario.ym
 2. *Settings → Pages → Source*: **GitHub Actions**.
 3. *Actions → Formulario (GitHub Pages) → Run workflow*.
 
-Con la migración 002, quien abra el enlace sin ser del equipo no puede enviar nada: no recibe código (no hay
-registro abierto) y, aunque lo tuviera, su correo no está en `equipo`. Si la 002 aún no está aplicada en la
+Quien abra el enlace sin ser del equipo no puede enviar nada: no tiene cuenta (no hay registro abierto) y,
+aunque la tuviera, su correo no está en `equipo`. Si las migraciones 002 y 003 aún no están aplicadas en la
 base, lo mínimo es despublicar: *Settings → Pages → Unpublish site*, y publicarlo solo el día de la demo.
 
 ### Qué va en el contrato y qué va en el test

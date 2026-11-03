@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -295,18 +295,13 @@ def _checks_sql(c: Columna) -> list[str]:
     return checks
 
 
-REVISION = ("pendiente", "aprobada", "rechazada")  # columna revision de <tabla>_entrada
-# Columnas propias de <tabla>_entrada (no pueden llamarse como una del contrato: ESTADO ya es "estado").
-COLUMNAS_ENTRADA = ("id", "creado_en", "enviado_por", "revision", "revisado_en", "motivo_revision")
-
-
-def _columnas_sql(contrato: Contrato, unicos: bool = True) -> list[str]:
-    """Columnas del contrato con sus restricciones (y las reglas entre columnas). Sin ``unicos``, sin UNIQUE."""
+def _columnas_sql(contrato: Contrato) -> list[str]:
+    """Columnas del contrato con sus restricciones, y las reglas entre columnas."""
     cols = []
     for c in contrato.columnas:
         partes = [c.db, TIPOS_SQL[c.tipo]]
         partes += ["not null"] if c.requerido else []
-        partes += ["unique"] if c.unico and unicos else []
+        partes += ["unique"] if c.unico else []
         if checks := _checks_sql(c):
             partes.append(f"check ({' and '.join(checks)})")
         cols.append(" ".join(partes))
@@ -314,29 +309,17 @@ def _columnas_sql(contrato: Contrato, unicos: bool = True) -> list[str]:
 
 
 def sql_formulario(contrato: Contrato | None = None) -> str:
-    """Solo el equipo inserta, y en una tabla de entrada: ``<tabla>_entrada`` + ``equipo`` + RLS.
+    """Solo el equipo inserta desde el formulario: ``equipo`` + ``es_del_equipo()`` + política en ``<tabla>``.
 
-    - La clave pública (anon) ya no puede insertar en ``<tabla>``: la basura del formulario no bloquea
-      ``supabase-bajar`` ni ocupa cédulas reales.
-    - El formulario inicia sesión con correo y contraseña (Supabase Auth) e inserta en ``<tabla>_entrada``
-      solo si el correo está en ``public.equipo``. ``make supabase-revisar`` pasa a ``<tabla>`` lo válido.
+    - La clave pública (anon) sola no puede insertar: hay que iniciar sesión (Supabase Auth, correo y
+      contraseña) con un correo de ``public.equipo``. Lo enviado queda de una vez en ``<tabla>``, con
+      todas las restricciones del contrato (y sin repetir cédula ni IDASOCIADOS).
     """
     contrato = contrato or cargar()
-    t, e = f"public.{contrato.tabla_db}", f"public.{contrato.tabla_db}_entrada"
+    t = f"public.{contrato.tabla_db}"
     correo = "lower(coalesce(auth.jwt() ->> 'email', ''))"
-    revision = ", ".join(_literal(x) for x in REVISION)
-    cols = [
-        "id bigint generated always as identity primary key",
-        "creado_en timestamptz not null default now()",
-        f"enviado_por text not null default {correo}",
-        f"revision text not null default 'pendiente' check (revision in ({revision}))",
-        "revisado_en timestamptz",
-        "motivo_revision text",
-        *_columnas_sql(contrato, unicos=False),  # los repetidos se resuelven al revisar
-    ]
-    cuerpo = ",\n  ".join(cols)
-    return f"""-- Formulario: solo el equipo puede insertar, y en una tabla de entrada que se revisa.
--- 1) La clave pública (anon) ya no inserta en {t}.
+    return f"""-- Formulario: solo el equipo puede insertar (con sesión), directo en {t}.
+-- 1) La clave pública sola (anon, sin sesión) no inserta.
 drop policy if exists anon_solo_inserta on {t};
 revoke insert on {t} from anon;
 revoke usage on sequence {t}_id_seq from anon;
@@ -357,31 +340,26 @@ $$;
 revoke all on function public.es_del_equipo() from public;
 grant execute on function public.es_del_equipo() to authenticated;
 
--- 3) Tabla de entrada: mismas columnas y reglas que {t}, sin UNIQUE. make supabase-revisar pasa lo
---    válido a {t} y marca cada fila (revision) como aprobada o rechazada, con motivo_revision.
-create table if not exists {e} (
-  {cuerpo}
-);
-comment on table {e} is {_literal(f"Entrada del formulario (contrato {contrato.nombre} v{contrato.version})")};
-alter table {e} enable row level security;
-grant insert on {e} to authenticated;
-grant usage on sequence {e}_id_seq to authenticated;
-drop policy if exists equipo_inserta on {e};
-create policy equipo_inserta on {e} for insert to authenticated
-  with check (public.es_del_equipo() and revision = 'pendiente' and enviado_por = {correo});
+-- 3) Con sesión y correo del equipo: insertar (no leer, editar ni borrar) en {t}.
+grant insert on {t} to authenticated;
+grant usage on sequence {t}_id_seq to authenticated;
+drop policy if exists equipo_inserta on {t};
+create policy equipo_inserta on {t} for insert to authenticated
+  with check (public.es_del_equipo() and origen = 'formulario');
 """
 
 
 def migracion_formulario(contrato: Contrato | None = None) -> str:
-    """supabase/migraciones/002_formulario_equipo.sql: lo mismo que ``sql_formulario``, para una base ya creada."""
+    """supabase/migraciones/003_formulario_directo.sql: para una base que ya corrió la 002."""
     contrato = contrato or cargar()
-    return f"""-- Migración 002: formulario solo para el equipo, en una tabla de entrada (contrato v{contrato.version}).
--- Para una base ya creada con supabase/asociados.sql anterior. Pegar en Supabase > SQL Editor > Run.
+    t = contrato.tabla_db
+    return f"""-- Migración 003: el equipo inserta directo en public.{t}, sin revisión (contrato v{contrato.version}).
+-- Para una base que ya corrió la 002. Pegar en Supabase > SQL Editor > Run.
 -- Generado con contrato.migracion_formulario(); una base nueva lo trae en supabase/asociados.sql.
--- Después: agregar los correos del equipo (Table Editor > equipo, o en SQL):
---   insert into public.equipo (email, nombre) values ('correo@dominio.com', 'Nombre');
+-- Ojo: borra public.{t}_entrada (y lo que hubiera pendiente: son datos de prueba del formulario).
 
-alter table public.{contrato.tabla_db} enable row level security;
+alter table public.{t} enable row level security;
+drop table if exists public.{t}_entrada;
 
 {sql_formulario(contrato)}"""
 
@@ -412,44 +390,11 @@ create table if not exists {t} (
 comment on table {t} is {_literal(f"Contrato {contrato.nombre} v{contrato.version}")};
 {chr(10).join(comentarios)}
 
--- Seguridad: con RLS y sin políticas, nadie con la clave pública lee, inserta, edita ni borra {t}.
--- Solo la clave secreta (scripts subir/bajar/revisar, nunca en el HTML ni en Git) y el panel de Supabase.
+-- Seguridad: con RLS, la clave pública sola no lee, inserta, edita ni borra {t}. Inserta solo el equipo con
+-- sesión (abajo); leer, la clave secreta (scripts subir/bajar, nunca en el HTML ni en Git) y el panel de Supabase.
 alter table {t} enable row level security;
 
 {sql_formulario(contrato)}"""
-
-
-def revisar_entradas(entradas: list[dict], existentes: list[dict], contrato: Contrato | None = None) -> list[dict]:
-    """Decide qué filas de ``<tabla>_entrada`` pasan a ``<tabla>``: una decisión por entrada, en orden de id.
-
-    Aprueba si la fila cumple el contrato por fila y entre columnas (niveles 1 y 3; la distribución, nivel 2,
-    es de lotes y no aplica a una fila) y si sus columnas únicas (CEDULA, IDASOCIADOS) no están ni en
-    ``existentes`` (filas de ``<tabla>``) ni en una entrada aprobada antes. Devuelve, por entrada:
-    ``id``, ``enviado_por``, ``aprobado``, ``motivo`` y ``registro`` (la fila lista para ``<tabla>``).
-    """
-    contrato = contrato or cargar()
-    por_fila = replace(contrato, distribucion=[])
-    unicas = [c for c in contrato.columnas if c.unico]
-    usados = {c.db: {fila.get(c.db) for fila in existentes} for c in unicas}
-    decisiones = []
-    for entrada in sorted(entradas, key=lambda f: f["id"]):
-        motivos = validar(desde_registros_db([entrada], contrato), por_fila)
-        motivos += [f"{c.nombre} {entrada.get(c.db)} ya existe" for c in unicas if entrada.get(c.db) in usados[c.db]]
-        aprobado = not motivos
-        if aprobado:
-            for c in unicas:
-                usados[c.db].add(entrada.get(c.db))
-        registro = {"origen": "formulario", **{c.db: entrada.get(c.db) for c in contrato.columnas}}
-        decisiones.append(
-            {
-                "id": entrada["id"],
-                "enviado_por": entrada.get("enviado_por"),
-                "aprobado": aprobado,
-                "motivo": "; ".join(motivos) or None,
-                "registro": registro,
-            }
-        )
-    return decisiones
 
 
 def a_registros_db(df: pd.DataFrame, contrato: Contrato | None = None, origen: str = "script") -> list[dict]:
@@ -499,7 +444,7 @@ def js(contrato: Contrato | None = None) -> str:
         campo = {k: v for k, v in vars(c).items() if v not in (None, False) and k != "grupo"}
         grupos.setdefault(c.grupo, []).append({**campo, "db": c.db})
     data = {"nombre": contrato.nombre, "version": contrato.version, "tabla_db": contrato.tabla_db}
-    data |= {"tabla_entrada": f"{contrato.tabla_db}_entrada", "grupos": grupos}
+    data |= {"grupos": grupos}
     return (
         f"// Generado desde contratos/{contrato.nombre}.yaml. No editar a mano: make contrato-web\n"
         f"window.CONTRATO = {json.dumps(data, ensure_ascii=False, indent=2)};\n"
