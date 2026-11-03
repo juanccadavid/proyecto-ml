@@ -16,9 +16,10 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
-# 2) Código del proyecto
+# 2) Código del proyecto (y el contrato de datos: el código lo lee para validar y para la huella)
 COPY README.md ./
 COPY src ./src
+COPY contratos ./contratos
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 

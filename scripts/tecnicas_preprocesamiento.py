@@ -39,6 +39,7 @@ from proyecto_ml import correlacion as k
 from proyecto_ml import registro as r
 from proyecto_ml import tecnicas as t
 from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, aviso_origen
+from proyecto_ml.figuras import marcar_origen
 
 
 def _slug(texto: str) -> str:
@@ -98,9 +99,11 @@ def main() -> None:
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     METRICS_DIR.mkdir(parents=True, exist_ok=True)
     fig_tecnicas = FIGURES_DIR / "tecnicas.html"
-    t.figura(tabla, f"PR-AUC por técnica · {args.clasificador}").write_html(fig_tecnicas, include_plotlyjs="cdn")
+    marcar_origen(t.figura(tabla, f"PR-AUC por técnica · {args.clasificador}")).write_html(
+        fig_tecnicas, include_plotlyjs="cdn"
+    )
     fig_corr = FIGURES_DIR / "correlaciones.html"
-    k.figura_matriz(m).write_html(fig_corr, include_plotlyjs="cdn")
+    marcar_origen(k.figura_matriz(m)).write_html(fig_corr, include_plotlyjs="cdn")
     params = {
         **r.parametros_datos(df),
         "datos": fuente,

@@ -31,6 +31,7 @@ from proyecto_ml import campeon as c
 from proyecto_ml import registro as r
 from proyecto_ml import validacion as v
 from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, aviso_origen
+from proyecto_ml.figuras import marcar_origen
 
 
 def main() -> None:
@@ -66,7 +67,7 @@ def main() -> None:
     METRICS_DIR.mkdir(parents=True, exist_ok=True)
     figura = FIGURES_DIR / "validacion_cruzada.html"
     titulo = f"PR-AUC por partición · {a.TITULOS[args.modelo]} · {args.folds} particiones"
-    v.figura_validaciones(por_particion, titulo).write_html(figura, include_plotlyjs="cdn")
+    marcar_origen(v.figura_validaciones(por_particion, titulo)).write_html(figura, include_plotlyjs="cdn")
     params = {"datos": fuente, "filas": len(df), "horizonte_meses": h, "modelo": args.modelo, "folds": args.folds}
     params |= r.parametros_datos(df)
     resultado = {

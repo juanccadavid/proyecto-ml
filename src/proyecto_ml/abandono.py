@@ -24,6 +24,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from proyecto_ml.cleaning import ColumnDropper
+from proyecto_ml.config import fecha_corte
 from proyecto_ml.contrato import limpiar_extracto
 from proyecto_ml.data import load_dataset
 from proyecto_ml.evaluate import compute_metrics
@@ -36,7 +37,7 @@ if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
 TARGET = "#RETIROS"
-FECHA_CORTE = pd.Timestamp("2026-10-31")
+FECHA_CORTE = pd.Timestamp(fecha_corte())  # FECHA_CORTE del .env; por defecto la de los sintéticos
 # Foto del asociado: se observa en t0 = FECHA_CORTE - HORIZONTE_MESES y se predice si se retira entre t0 y el
 # corte. La columna FECHA_OBSERVACION (la agrega ``foto``) le dice a ``preparar`` a qué fecha calcular.
 HORIZONTE_MESES = 3

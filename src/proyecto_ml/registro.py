@@ -150,7 +150,9 @@ def registrar_datos(
     from mlflow.data.code_dataset_source import CodeDatasetSource
 
     digest = huella(df)
-    with warnings.catch_warnings():  # aviso de MLflow: las columnas enteras no admiten vacíos al inferir el esquema
+    # Aviso de MLflow: "las columnas enteras no admiten vacíos". Aquí es solo el esquema descriptivo del dataset
+    # (no el del modelo). MLflow lo calcula dentro de log_input, así que el bloque debe cubrirlo también.
+    with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         dataset = mlflow.data.from_pandas(
             df,
@@ -159,7 +161,7 @@ def registrar_datos(
             name=nombre,
             digest=digest,
         )
-    mlflow.log_input(dataset, context=contexto)
+        mlflow.log_input(dataset, context=contexto)
     return digest
 
 
@@ -198,7 +200,13 @@ def _tipos_confiables(pipeline) -> list[str] | None:
 
 
 def registrar_modelo(pipeline, registrar_como: str | None = None):
-    """Guarda el modelo en la corrida activa (y en el registro, si ``registrar_como``). Devuelve ModelInfo."""
+    """Guarda el modelo en la corrida activa (y en el registro, si ``registrar_como``). Devuelve ModelInfo.
+
+    Sin firma (``signature``), a propósito: el modelo recibe la fila cruda del extracto, con conteos enteros que a
+    veces traen vacíos. Una firma con enteros rechaza los vacíos y una con decimales rechaza los enteros (MLflow
+    no convierte int64 a float64): el pyfunc fallaría con extractos válidos. Lo que entra lo valida el contrato de
+    datos antes de entrenar y de predecir (``contrato.validar``).
+    """
     import mlflow
     import mlflow.sklearn
 

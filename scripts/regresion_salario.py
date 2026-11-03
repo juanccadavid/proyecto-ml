@@ -30,6 +30,7 @@ from proyecto_ml import campeon as c
 from proyecto_ml import registro as r
 from proyecto_ml import regresion as g
 from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, aviso_origen, es_experimental
+from proyecto_ml.figuras import marcar_origen
 from proyecto_ml.generador import DESARROLLO, FALTANTES, GeneradorAsociados
 
 EXPERIMENTO = "salario"
@@ -88,11 +89,17 @@ def main() -> None:
     METRICS_DIR.mkdir(parents=True, exist_ok=True)
     figura = FIGURES_DIR / "regresion_salario.html"
     prediccion = g.prediccion_fuera_de_particion(candidatos[mejor], X, y, folds=args.folds)
-    titulo = f"Salario real vs. predicho · {g.TITULOS[mejor]} · R² {tabla.loc[mejor, 'R2']:.3f} (KFold)"
-    g.figura_real_vs_predicho(y, prediccion, titulo).write_html(figura, include_plotlyjs="cdn")
+    veredicto = "le gana al promedio" if gana else "NO le gana al promedio"
+    titulo = f"Salario real vs. predicho · {g.TITULOS[mejor]} · R² {tabla.loc[mejor, 'R2']:.3f} (KFold) · {veredicto}"
+    marcar_origen(g.figura_real_vs_predicho(y, prediccion, titulo)).write_html(figura, include_plotlyjs="cdn")
     params = {"datos": fuente, "filas": len(X), "objetivo": g.OBJETIVO, "folds": args.folds}
     params |= r.parametros_datos(X)
-    resultado = {**params, "cv": tabla.reset_index(names="modelo").to_dict(orient="records"), "nuevos": en_nuevos}
+    resultado = {
+        **params,
+        "supera_referencia": bool(gana),  # si el mejor modelo le gana a predecir siempre el promedio (MAE)
+        "cv": tabla.reset_index(names="modelo").to_dict(orient="records"),
+        "nuevos": en_nuevos,
+    }
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     metricas = METRICS_DIR / f"regresion_{stamp}.json"
     texto = json.dumps(resultado, ensure_ascii=False, indent=2) + "\n"
@@ -102,7 +109,12 @@ def main() -> None:
     if args.sin_mlflow:
         return
     r.configurar(EXPERIMENTO)
-    with r.corrida("regresion_salario", params, artefactos=[metricas, figura], tags={"mejor": mejor}):
+    with r.corrida(
+        "regresion_salario",
+        params,
+        artefactos=[metricas, figura],
+        tags={"mejor": mejor, "supera_referencia": str(bool(gana)).lower()},
+    ):
         r.registrar_datos(X, fuente, "entrenamiento", fuente, objetivo=g.OBJETIVO)  # solo quienes reportan salario
         for nombre, fila in tabla.iterrows():
             propias = r.con_prefijo("cv", fila.to_dict())

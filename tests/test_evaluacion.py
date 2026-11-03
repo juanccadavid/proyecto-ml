@@ -46,8 +46,10 @@ def test_matriz_de_confusion_cuadra_con_precision_y_recall(campeon):
     assert tn + fp + fn + tp == len(campeon.y) and tp + fn == campeon.y.sum()
     assert tp / (tp + fp) == pytest.approx(metricas["precision"])
     assert tp / (tp + fn) == pytest.approx(metricas["recall"])
-    if campeon.umbral_alto is not None:  # el umbral alto alerta a menos: nunca más alertas que el de alerta
-        assert matrices["se retira"][:, 1].sum() <= matrices["alerta"][:, 1].sum()
+    if campeon.umbral_alto is not None and campeon.umbral_alto > campeon.umbral:  # si coinciden, una sola matriz
+        assert matrices["se retira"][:, 1].sum() <= matrices["alerta"][:, 1].sum()  # el alto alerta a menos
+    else:
+        assert list(matrices) == ["alerta"]
     assert c.resumen(campeon)["confusion_cv"]["alerta"] == {"tn": tn, "fp": fp, "fn": fn, "tp": tp}
 
 
