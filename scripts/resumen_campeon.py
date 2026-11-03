@@ -16,15 +16,18 @@ import json
 from pathlib import Path
 
 from proyecto_ml import campeon as c
-from proyecto_ml.config import MODELS_DIR
+from proyecto_ml.config import MODELS_DIR, ORIGEN_SINTETICO, aviso_origen, es_experimental
 
 ESCENARIO_DEBIL = "tasa 10 %, señal 25 %"
 
 
 def resumen(info: dict) -> str:
     cv, h = info["metricas_cv"], info.get("horizonte_meses") or 0
+    origen = info.get("origen_datos", ORIGEN_SINTETICO)  # campeones guardados antes: todos eran sintéticos
     lineas = [
         f"## Campeón: {info['titulo']}",
+        f"> {'⚠️ ' if es_experimental(origen) else ''}{aviso_origen(origen)}",
+        "",
         f"Foto a {h} meses · {info['filas']} asociados · {info['tasa_retiro']:.1%} se retira "
         f"({round(info['filas'] * info['tasa_retiro'])} retiros)"
         + (

@@ -38,7 +38,7 @@ from proyecto_ml import campeon as c
 from proyecto_ml import correlacion as k
 from proyecto_ml import registro as r
 from proyecto_ml import tecnicas as t
-from proyecto_ml.config import FIGURES_DIR, METRICS_DIR
+from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, aviso_origen
 
 
 def _slug(texto: str) -> str:
@@ -68,6 +68,7 @@ def main() -> None:
     if args.vacios:
         X = t.con_vacios(X, args.vacios, seed=args.semilla)
     print(f"Datos: {fuente} · foto a {h or 0} meses · {len(X)} asociados, {int(y.sum())} se retiran ({y.mean():.1%})")
+    print(aviso_origen())
     print(f"Modelo: {args.clasificador} · {args.folds} particiones x {args.repeticiones} repeticiones")
 
     # ---- Correlación

@@ -18,6 +18,12 @@ Los modelos ya no se guardan sueltos en ``models/``: ahí solo queda el campeón
 contenido completo (``huella``: cambia si cambia una sola celda). No se guarda una copia de los datos: el
 extracto real es sensible y los sintéticos se reconstruyen con el generador, la semilla y el commit. La huella
 del contrato de datos (``huella_contrato``) va como parámetro.
+
+**Origen de los datos** (``config.origen_datos``): con datos reales anonimizados, los experimentos y el modelo
+registrado llevan el sufijo ``_real`` (``abandono_real``, ``models:/abandono_real@campeon``). Las métricas
+sintéticas y las reales nunca quedan en la misma tabla de MLflow. Cada corrida principal lleva como tags el
+origen, si es experimental y las versiones de Python y de las librerías principales (``contexto_reproducible``);
+MLflow agrega solo el commit de Git y la fecha.
 """
 
 from __future__ import annotations
@@ -30,7 +36,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from proyecto_ml.config import get_settings
+from proyecto_ml.config import ORIGEN_REAL, es_experimental, get_settings, origen_datos
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -44,12 +50,40 @@ ALIAS_CAMPEON = "campeon"
 PREFIJOS_CONFIABLES = ("proyecto_ml.", "sklearn.", "numpy.", "builtins.", "collections.")
 
 
-def configurar(experimento: str = EXPERIMENTO) -> None:
-    """Apunta a ``MLFLOW_TRACKING_URI`` (como train.py) y crea o elige el experimento."""
+PAQUETES = ("scikit-learn", "imbalanced-learn", "pandas", "numpy", "scipy", "mlflow", "shap", "optuna")
+
+
+def con_origen(nombre: str, origen: str | None = None) -> str:
+    """``abandono`` -> ``abandono_real`` con datos reales: experimentos y modelos separados por origen."""
+    return f"{nombre}_real" if origen_datos(origen) == ORIGEN_REAL else nombre
+
+
+def modelo_registrado(origen: str | None = None) -> str:
+    """El nombre del campeón en el registro de MLflow según el origen: ``abandono`` o ``abandono_real``."""
+    return con_origen(MODELO_REGISTRADO, origen)
+
+
+def contexto_reproducible(origen: str | None = None) -> dict[str, str]:
+    """Tags de reproducibilidad: origen de los datos, si es experimental y versiones de Python y librerías."""
+    import platform
+    from importlib import metadata
+
+    tags = {"origen_datos": origen_datos(origen), "experimental": str(es_experimental(origen)).lower()}
+    tags["version.python"] = platform.python_version()
+    for paquete in PAQUETES:
+        try:
+            tags[f"version.{paquete}"] = metadata.version(paquete)
+        except metadata.PackageNotFoundError:
+            continue
+    return tags
+
+
+def configurar(experimento: str = EXPERIMENTO, origen: str | None = None) -> None:
+    """Apunta a ``MLFLOW_TRACKING_URI`` (como train.py) y crea o elige el experimento del origen de los datos."""
     import mlflow
 
     mlflow.set_tracking_uri(get_settings().mlflow_tracking_uri)
-    mlflow.set_experiment(experimento)
+    mlflow.set_experiment(con_origen(experimento, origen))
 
 
 def nombre_metrica(texto: str) -> str:
@@ -99,9 +133,9 @@ def huella_contrato(ruta: Path | None = None) -> str:
     return hashlib.sha256(Path(ruta or CONTRATO_ASOCIADOS).read_bytes()).hexdigest()[:12]
 
 
-def parametros_datos(df: pd.DataFrame) -> dict[str, str]:
-    """``{"datos_huella", "contrato_huella"}``: para los parámetros de la corrida y los JSON de métricas."""
-    return {"datos_huella": huella(df), "contrato_huella": huella_contrato()}
+def parametros_datos(df: pd.DataFrame, origen: str | None = None) -> dict[str, str]:
+    """Huella de los datos y del contrato, y el origen: para los parámetros de la corrida y los JSON de métricas."""
+    return {"origen_datos": origen_datos(origen), "datos_huella": huella(df), "contrato_huella": huella_contrato()}
 
 
 def registrar_datos(
@@ -181,11 +215,11 @@ def registrar_modelo(pipeline, registrar_como: str | None = None):
     )
 
 
-def asignar_alias(version, alias: str = ALIAS_CAMPEON, modelo: str = MODELO_REGISTRADO) -> None:
-    """``models:/abandono@campeon`` pasa a apuntar a ``version``."""
+def asignar_alias(version, alias: str = ALIAS_CAMPEON, modelo: str | None = None) -> None:
+    """``models:/abandono@campeon`` (o ``abandono_real@campeon``) pasa a apuntar a ``version``."""
     from mlflow import MlflowClient
 
-    MlflowClient().set_registered_model_alias(modelo, alias, str(version))
+    MlflowClient().set_registered_model_alias(modelo or modelo_registrado(), alias, str(version))
 
 
 def _registrar(params: dict | None, metricas: dict | None, artefactos: Iterable[Path] | None, tags: dict | None):
@@ -211,11 +245,14 @@ def corrida(
     tags: dict | None = None,
     anidada: bool = False,
 ) -> Iterator[str]:
-    """Abre una corrida, registra lo que se le pase y devuelve su ``run_id`` (con ``with``)."""
+    """Abre una corrida, registra lo que se le pase y devuelve su ``run_id`` (con ``with``).
+
+    Las corridas principales (no anidadas) llevan además ``contexto_reproducible``: origen y versiones.
+    """
     import mlflow
 
     with mlflow.start_run(run_name=nombre, nested=anidada) as run:
-        _registrar(params, metricas, artefactos, tags)
+        _registrar(params, metricas, artefactos, tags if anidada else {**contexto_reproducible(), **(tags or {})})
         yield run.info.run_id
 
 

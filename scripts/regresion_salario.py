@@ -29,7 +29,7 @@ from sklearn.base import clone
 from proyecto_ml import campeon as c
 from proyecto_ml import registro as r
 from proyecto_ml import regresion as g
-from proyecto_ml.config import FIGURES_DIR, METRICS_DIR
+from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, aviso_origen, es_experimental
 from proyecto_ml.generador import DESARROLLO, FALTANTES, GeneradorAsociados
 
 EXPERIMENTO = "salario"
@@ -47,6 +47,7 @@ def main() -> None:
     df, fuente = c.datos_eleccion(args.datos)
     X, y = g.separar(df)
     print(f"Datos: {fuente} · {len(X)} asociados con salario (de {len(df)}) · objetivo {g.OBJETIVO}")
+    print(aviso_origen())
     print(f"Salario: mediana ${y.median():,.0f} · promedio ${y.mean():,.0f} · desviación ${y.std():,.0f}\n")
 
     candidatos = g.modelos()
@@ -62,23 +63,26 @@ def main() -> None:
         + f" a predecir siempre el promedio (MAE ${tabla.loc['media', 'MAE']:,.0f})."
     )
 
-    # Asociados nuevos (con vacíos): el mejor y la referencia, entrenados con todo.
-    nuevos = GeneradorAsociados(
-        args.nuevos, seed=args.semilla_nuevos, tasa_retiro=DESARROLLO["tasa_retiro"], faltantes=FALTANTES
-    ).generar()
-    Xn, yn = g.separar(nuevos)
-    entrenados = {n: clone(candidatos[n]).fit(X, y) for n in (mejor, "media")}
-    en_nuevos = {n: g.metricas(yn, m.predict(Xn)) for n, m in entrenados.items()}
-    print(f"\n=== Asociados nuevos ({len(Xn)} con salario) ===")
-    with pd.option_context("display.float_format", "{:,.3f}".format):
-        print(pd.DataFrame(en_nuevos).T.to_string())
-    sin_salario = nuevos[pd.to_numeric(nuevos[g.OBJETIVO], errors="coerce").isna()]
-    if len(sin_salario):
-        estimado = entrenados[mejor].predict(sin_salario)
-        print(
-            f"\n{len(sin_salario)} nuevos no reportan salario: "
-            f"estimado entre ${estimado.min():,.0f} y ${estimado.max():,.0f}"
-        )
+    # Asociados nuevos (con vacíos): el mejor y la referencia, entrenados con todo. Salen del generador: con datos
+    # reales serían de otro origen, así que solo se usan en modo sintético.
+    en_nuevos = {}
+    if es_experimental():
+        nuevos = GeneradorAsociados(
+            args.nuevos, seed=args.semilla_nuevos, tasa_retiro=DESARROLLO["tasa_retiro"], faltantes=FALTANTES
+        ).generar()
+        Xn, yn = g.separar(nuevos)
+        entrenados = {n: clone(candidatos[n]).fit(X, y) for n in (mejor, "media")}
+        en_nuevos = {n: g.metricas(yn, m.predict(Xn)) for n, m in entrenados.items()}
+        print(f"\n=== Asociados nuevos ({len(Xn)} con salario) ===")
+        with pd.option_context("display.float_format", "{:,.3f}".format):
+            print(pd.DataFrame(en_nuevos).T.to_string())
+        sin_salario = nuevos[pd.to_numeric(nuevos[g.OBJETIVO], errors="coerce").isna()]
+        if len(sin_salario):
+            estimado = entrenados[mejor].predict(sin_salario)
+            print(
+                f"\n{len(sin_salario)} nuevos no reportan salario: "
+                f"estimado entre ${estimado.min():,.0f} y ${estimado.max():,.0f}"
+            )
 
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     METRICS_DIR.mkdir(parents=True, exist_ok=True)

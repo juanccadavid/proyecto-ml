@@ -7,6 +7,7 @@ Supabase (tabla + CHECK + RLS), los registros listos para la API y la configurac
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -252,6 +253,12 @@ def validar(df: pd.DataFrame, contrato: Contrato | None = None) -> list[str]:
     except SchemaErrors as e:
         return _mensajes(e.failure_cases, normalizado, contrato)
     return []
+
+
+def sin_valores(errores: list[str]) -> list[str]:
+    """Los mensajes de ``validar`` sin los valores de ejemplo (``ej. fila 3: '...'``) ni números de fila: para
+    mostrarlos con datos reales sin que un dato personal termine en la consola o en un log."""
+    return [re.sub(r"\s*[(;]\s*ej\.[^)]*\)?$", "", e).strip() for e in errores]
 
 
 def limpiar_extracto(df: pd.DataFrame, contrato: Contrato | None = None, *, verbose: bool = False) -> pd.DataFrame:

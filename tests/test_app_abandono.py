@@ -23,7 +23,9 @@ def carpeta_campeon(tmp_path, monkeypatch):
 
 
 def _mensaje(app) -> str:
-    return (app.success or app.warning or app.error)[0].value
+    """El mensaje de la zona (el banner del modo sintético también es un aviso, así que se busca por su texto)."""
+    textos = [m.value for m in (*app.success, *app.warning, *app.error)]
+    return next(t for t in textos if t.startswith(("Se queda", "Zona gris", "Se retira")))
 
 
 def test_simulador_usa_el_campeon_y_sus_zonas(carpeta_campeon):
@@ -32,6 +34,7 @@ def test_simulador_usa_el_campeon_y_sus_zonas(carpeta_campeon):
     assert app.metric[0].label == "Probabilidad de retiro"
     assert app.header[0].value == "Riesgo de abandono: 😀" and _mensaje(app).startswith("Se queda")
     assert any(s.value == "Grupo de comportamiento: estable" for s in app.subheader)
+    assert any("MODO SINTÉTICO" in w.value for w in app.warning)  # el simulador dice que los datos son sintéticos
 
     for columna in ("#INTENCIONRETIROS_ULT3MESES", "#SOLICITUD_CANCELACIONAHORROS", "#SOLICITUD_DISMINUCIONCUOTAS"):
         app.slider(key=columna).set_value(3).run()

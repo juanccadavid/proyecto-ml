@@ -24,16 +24,23 @@ campeón en el registro de modelos con el alias ``campeon`` (models:/abandono@ca
 Datos: --datos, o data/processed/asociados_desarrollo.parquet (make datos-desarrollo), o los mismos 5.000
 generados en memoria (semilla 7, 10 % de retiro).
 
+Origen de los datos (``ORIGEN_DATOS`` del .env o --origen): con **sintetico** (por defecto) los resultados son
+EXPERIMENTALES y se validan además con asociados nuevos y escenarios del generador. Con **real_anonimizado** hay
+que dar --datos; el archivo debe cumplir el contrato, los nuevos y los escenarios (sintéticos) se omiten para no
+mezclar orígenes, y MLflow usa el experimento ``abandono_real`` y el modelo ``abandono_real``.
+
 Uso:
     uv run python scripts/elegir_campeon.py                    # foto a 3 meses
     uv run python scripts/elegir_campeon.py --horizonte 12 --precision-min 0.9
     uv run python scripts/elegir_campeon.py --optuna 30         # + Random Forest y HistGB afinados
+    uv run python scripts/elegir_campeon.py --origen real_anonimizado --datos data/raw/extracto_anon.parquet
     uv run python scripts/elegir_campeon.py --datos data/raw/supabase_asociados.parquet --sin-mlflow
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -46,7 +53,15 @@ from proyecto_ml import campeon as c
 from proyecto_ml import explicar as e
 from proyecto_ml import registro as r
 from proyecto_ml import validacion as v
-from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, MODELS_DIR
+from proyecto_ml.config import (
+    FIGURES_DIR,
+    METRICS_DIR,
+    MODELS_DIR,
+    ORIGENES,
+    aviso_origen,
+    es_experimental,
+    origen_datos,
+)
 from proyecto_ml.evaluate import compute_metrics
 from proyecto_ml.generador import DESARROLLO, GeneradorAsociados
 
@@ -69,8 +84,13 @@ def main() -> None:
     parser.add_argument("--optuna", type=int, default=0, help="Intentos de Optuna para sumar RF y HistGB afinados")
     parser.add_argument("--semilla-nuevos", type=int, default=2026)
     parser.add_argument("--shap", type=int, default=100, help="Asociados nuevos a explicar con SHAP (0 = ninguno)")
+    parser.add_argument("--semilla", type=int, default=42, help="De los modelos (bosques, boosting, KMeans)")
+    parser.add_argument("--origen", choices=ORIGENES, help="Por defecto ORIGEN_DATOS del .env, o sintetico")
     parser.add_argument("--sin-mlflow", action="store_true", help="No registrar en MLflow")
     args = parser.parse_args()
+    if args.origen:
+        os.environ["ORIGEN_DATOS"] = args.origen  # lo leen datos_eleccion, MLflow y los reportes
+    origen, experimental = origen_datos(), es_experimental()
 
     df, fuente = c.datos_eleccion(args.datos)
     h = args.horizonte or None
@@ -81,12 +101,20 @@ def main() -> None:
         raise SystemExit(f"La clase minoritaria tiene {minimo} asociados (mínimo {args.folds}): usa más filas.")
     t0 = a.fecha_observacion(h).date() if h else a.FECHA_CORTE.date()
     print(
-        f"Datos: {fuente} · foto a {h or 0} meses (t0 = {t0}) · {len(df)} asociados, {df[a.TARGET].mean():.1%} retiro"
+        f"Datos ({origen}): {fuente} · foto a {h or 0} meses (t0 = {t0}) · {len(df)} asociados, "
+        f"{df[a.TARGET].mean():.1%} retiro"
     )
-    print(f"Validación cruzada: {args.folds} particiones x {args.repeticiones} repeticiones · criterio {c.CRITERIO}\n")
+    print(f"Validación cruzada: {args.folds} particiones x {args.repeticiones} repeticiones · criterio {c.CRITERIO}")
+    if experimental:
+        print(aviso_origen() + "\n")
+    else:
+        print(
+            "DATOS REALES ANONIMIZADOS. Ojo: si los conteos (ULT3MESES...) se midieron a la fecha de extracción y no "
+            "a t0, para los retirados incluyen lo que pasó después (fuga). Confírmalo con el fondo.\n"
+        )
 
     X, y = a.separar(df)
-    candidatos = c.lista_candidatos(X)
+    candidatos = c.lista_candidatos(X, random_state=args.semilla)
     if args.optuna:  # afinados con estos mismos datos: su PR-AUC de CV es algo optimista (los eligió mirándolos)
         for nombre in bo.MODELOS:
             estudio = bo.afinar_optuna(
@@ -101,7 +129,17 @@ def main() -> None:
         repeticiones=args.repeticiones,
         beta=args.beta,
         precision_min=args.precision_min,
-        info={"datos": fuente, "horizonte_meses": h, "fecha_observacion": str(t0), **r.parametros_datos(df)},
+        info={
+            "datos": fuente,
+            "horizonte_meses": h,
+            "fecha_observacion": str(t0),
+            **r.parametros_datos(df),
+            "experimental": experimental,
+            "semilla": args.semilla,
+            "validacion": f"StratifiedKFold({args.folds}) x {args.repeticiones} repeticiones (semilla = repetición)",
+            "variables": a.NUMERICAS + a.CATEGORICAS,
+            "versiones": {k: v for k, v in r.contexto_reproducible().items() if k.startswith("version.")},
+        },
     )
     print("=== Candidatos (fuera de partición; umbral = máximo F2, umbral_alto = precisión mínima) ===")
     columnas = ["pr_auc", "pr_auc_std", "pr_auc_ic_inf", "pr_auc_ic_sup", "roc_auc", "umbral", "precision"]
@@ -138,25 +176,30 @@ def main() -> None:
     # Todos los candidatos entrenados con todo, cada uno con su umbral, para nuevos y escenarios.
     entrenados = {n: clone(cand.modelo).fit(X, y) for n, cand in campeon.candidatos.items()}
     umbrales = {n: cand.umbrales["umbral"] for n, cand in campeon.candidatos.items()}
-    nuevos = GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos, tasa_retiro=DESARROLLO["tasa_retiro"])
-    nuevos = nuevos.generar()
-    nuevos = a.foto(nuevos, h) if h else nuevos
-    Xn, yn = a.separar(nuevos)
-    en_nuevos = {n: compute_metrics(yn, a.puntaje(m, Xn), threshold=umbrales[n]) for n, m in entrenados.items()}
-    print(f"\n=== Asociados nuevos ({len(nuevos)}, {yn.mean():.1%} retiro), cada uno con su umbral ===")
-    print(pd.DataFrame(en_nuevos).T.round(3).to_string())
+    nuevos, en_nuevos, por_zona, resultados, escenarios = None, {}, None, None, None
+    if experimental:  # nuevos y escenarios salen del generador: solo tienen sentido con datos sintéticos
+        nuevos = GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos, tasa_retiro=DESARROLLO["tasa_retiro"])
+        nuevos = nuevos.generar()
+        nuevos = a.foto(nuevos, h) if h else nuevos
+        Xn, yn = a.separar(nuevos)
+        en_nuevos = {n: compute_metrics(yn, a.puntaje(m, Xn), threshold=umbrales[n]) for n, m in entrenados.items()}
+        print(f"\n=== Asociados nuevos ({len(nuevos)}, {yn.mean():.1%} retiro), cada uno con su umbral ===")
+        print(pd.DataFrame(en_nuevos).T.round(3).to_string())
 
-    zonas = pd.Series(campeon.zona(Xn), index=nuevos.index, name="zona")
-    por_zona = nuevos.groupby(zonas)[a.TARGET].agg(asociados="size", se_retiran="sum", tasa_retiro="mean")
-    por_zona = por_zona.reindex([z for z in c.ZONAS if z in por_zona.index])
-    print("\n=== Zonas del campeón sobre los nuevos ===")
-    print(por_zona.round(3).to_string())
+        zonas = pd.Series(campeon.zona(Xn), index=nuevos.index, name="zona")
+        por_zona = nuevos.groupby(zonas)[a.TARGET].agg(asociados="size", se_retiran="sum", tasa_retiro="mean")
+        por_zona = por_zona.reindex([z for z in c.ZONAS if z in por_zona.index])
+        print("\n=== Zonas del campeón sobre los nuevos ===")
+        print(por_zona.round(3).to_string())
 
-    resultados = v.evaluar_escenarios(entrenados, umbrales, n=args.nuevos, seed=args.semilla_nuevos, horizonte=h)
-    escenarios = v.tabla_escenarios(resultados)
-    print("\n=== Escenarios: ¿cuánto se degrada cada candidato si el fondo real no es como el generador? ===")
-    with pd.option_context("display.width", 200, "display.max_columns", None):
-        print(escenarios.round(2).to_string())
+        resultados = v.evaluar_escenarios(entrenados, umbrales, n=args.nuevos, seed=args.semilla_nuevos, horizonte=h)
+        escenarios = v.tabla_escenarios(resultados)
+        print("\n=== Escenarios: ¿cuánto se degrada cada candidato si el fondo real no es como el generador? ===")
+        with pd.option_context("display.width", 200, "display.max_columns", None):
+            print(escenarios.round(2).to_string())
+    else:
+        print("\nDatos reales: sin asociados nuevos ni escenarios del generador (serían de otro origen). La validación")
+        print("de afuera es la temporal: validacion.particion_temporal (foto vieja -> foto reciente).")
 
     print("\n=== KMeans (sin objetivo) en los mismos datos ===")
     print(pd.DataFrame({g: {k: d[k] for k in ("asociados", "tasa_retiro")} for g, d in campeon.grupos.items()}))
@@ -170,11 +213,13 @@ def main() -> None:
     if args.shap:
         modelo = campeon.con_zonas()
         explicador = e.Explicador(modelo, X)
-        muestra = Xn.sample(min(args.shap, len(Xn)), random_state=0)
+        base_shap = Xn if experimental else X  # con datos reales, una muestra de los mismos datos de elección
+        muestra = base_shap.sample(min(args.shap, len(base_shap)), random_state=0)
         importancia_shap = e.importancia(explicador.contribuciones(muestra))
         mayor_riesgo = muestra.iloc[[int(a.puntaje(modelo, muestra).argmax())]]
         explicaciones = (explicador, importancia_shap, mayor_riesgo)
-        print(f"\n=== SHAP: |contribución| promedio en {len(muestra)} asociados nuevos (top 8) ===")
+        donde = "asociados nuevos" if experimental else "asociados de elección"
+        print(f"\n=== SHAP: |contribución| promedio en {len(muestra)} {donde} (top 8) ===")
         print(importancia_shap.head(8).round(4).to_string())
 
     # ---- Guardar: en models/ solo el campeón
@@ -183,15 +228,22 @@ def main() -> None:
     figura = FIGURES_DIR / "campeon_umbrales.html"
     c.figura_umbrales(campeon).write_html(figura, include_plotlyjs="cdn")
     tabla_escenarios = FIGURES_DIR / "campeon_escenarios.html"
-    tabla_escenarios.write_text(escenarios.round(3).to_html(), encoding="utf-8", newline="\n")
+    if escenarios is not None:
+        tabla_escenarios.write_text(escenarios.round(3).to_html(), encoding="utf-8", newline="\n")
     figura_roc = FIGURES_DIR / "campeon_roc.html"
     c.figura_roc(campeon).write_html(figura_roc, include_plotlyjs="cdn")
     figura_confusion = FIGURES_DIR / "campeon_confusion.html"
     c.figura_confusion(campeon).write_html(figura_confusion, include_plotlyjs="cdn")
-    figuras = [figura, tabla_escenarios, figura_roc, figura_confusion]
+    figuras = [figura, *([tabla_escenarios] if escenarios is not None else []), figura_roc, figura_confusion]
+    calibracion = c.figura_calibracion(campeon)
+    if calibracion is not None:  # solo si el puntaje es una probabilidad (no en Ridge)
+        figura_calibracion = FIGURES_DIR / "campeon_calibracion.html"
+        calibracion.write_html(figura_calibracion, include_plotlyjs="cdn")
+        figuras.append(figura_calibracion)
     if explicaciones:
         explicador, importancia_shap, mayor_riesgo = explicaciones
-        titulo = f"SHAP del campeón ({c.TITULOS[campeon.nombre]}) en asociados nuevos"
+        aviso = " · DATOS SINTÉTICOS: explicación experimental" if experimental else ""
+        titulo = f"SHAP del campeón ({c.TITULOS[campeon.nombre]}) en {donde}{aviso}"
         global_ = e.figura_importancia(importancia_shap, campeon.metodo, titulo)
         local = e.figura_explicacion(explicador.explicar(mayor_riesgo), explicador.base, campeon.metodo)
         local.update_layout(title="El asociado nuevo de mayor riesgo: de dónde sale su puntaje")
@@ -200,11 +252,13 @@ def main() -> None:
         pagina = '<!doctype html><meta charset="utf-8"><title>SHAP del campeón</title>' + "".join(partes)
         figura_shap.write_text(pagina + "\n", encoding="utf-8", newline="\n")
         figuras.append(figura_shap)
-    extra = {
-        "nuevos": {"asociados": len(nuevos), **en_nuevos[campeon.nombre]},
-        "zonas_nuevos": por_zona.reset_index().to_dict(orient="records"),
-        "escenarios": resultados.to_dict(orient="records"),
-    }
+    extra = {}
+    if experimental:
+        extra = {
+            "nuevos": {"asociados": len(nuevos), **en_nuevos[campeon.nombre]},
+            "zonas_nuevos": por_zona.reset_index().to_dict(orient="records"),
+            "escenarios": resultados.to_dict(orient="records"),
+        }
     if explicaciones:
         extra["shap_nuevos"] = {k: float(val) for k, val in explicaciones[1].items()}
     rutas = c.guardar(campeon, MODELS_DIR, extra)
@@ -220,6 +274,8 @@ def main() -> None:
     params = {"datos": fuente, "filas": len(df), "horizonte_meses": h, "folds": args.folds}
     params |= {"repeticiones": args.repeticiones, "beta": args.beta, "precision_min": args.precision_min}
     params |= r.parametros_datos(df)
+    params |= {"semilla": args.semilla, "validacion": campeon.info["validacion"], "experimental": experimental}
+    params["variables"] = ",".join(campeon.info["variables"])
     slugs = {e.nombre: _slug(e) for e in v.ESCENARIOS}
     por_escenario = {
         n: {
@@ -228,6 +284,7 @@ def main() -> None:
             for m in v.METRICAS_ESCENARIO[1:]
         }
         for n in entrenados
+        if resultados is not None
     }
     metricas_mlflow = r.unir(
         {n: r.con_prefijo("cv", cand.metricas) for n, cand in campeon.candidatos.items()},
@@ -237,13 +294,16 @@ def main() -> None:
     artefactos = [rutas["info"], *figuras]
     with r.corrida("campeon", params, artefactos=artefactos, tags={"campeon": campeon.nombre}):
         r.registrar_datos(df, fuente, "eleccion", fuente)  # versión de los datos (huella, sin copiarlos)
-        r.registrar_datos(nuevos, "nuevos", "nuevos", f"GeneradorAsociados(seed={args.semilla_nuevos})")
+        if nuevos is not None:
+            r.registrar_datos(nuevos, "nuevos", "nuevos", f"GeneradorAsociados(seed={args.semilla_nuevos})")
         r.registrar_modelos(entrenados, params, metricas_mlflow, titulos=c.TITULOS, guardar_modelo=False)
         propios = {**params, "modelo": campeon.nombre, "umbral": campeon.umbral, "umbral_alto": campeon.umbral_alto}
         with r.corrida(f"campeon_{campeon.nombre}", propios, metricas_mlflow[campeon.nombre], anidada=True):
-            info = r.registrar_modelo(campeon.con_zonas(), registrar_como=r.MODELO_REGISTRADO)
+            info = r.registrar_modelo(campeon.con_zonas(), registrar_como=r.modelo_registrado())
     r.asignar_alias(info.registered_model_version)
-    print(f"MLflow: experimento '{r.EXPERIMENTO}', modelo models:/{r.MODELO_REGISTRADO}@{r.ALIAS_CAMPEON}")
+    print(
+        f"MLflow: experimento '{r.con_origen(r.EXPERIMENTO)}', modelo models:/{r.modelo_registrado()}@{r.ALIAS_CAMPEON}"
+    )
     print("        (versión " + str(info.registered_model_version) + "). Ver con: make mlflow-ui")
 
 

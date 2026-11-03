@@ -45,6 +45,33 @@ class Settings:
     datos_asociados: Path
 
 
+# Origen de los datos del abandono (ORIGEN_DATOS en el .env). Los resultados de cada origen se etiquetan y se
+# registran por separado (experimentos y modelo de MLflow distintos): no se comparan como si fueran lo mismo.
+ORIGEN_SINTETICO = "sintetico"  # GeneradorAsociados o archivos del equipo: resultados EXPERIMENTALES
+ORIGEN_REAL = "real_anonimizado"  # el extracto del fondo, ya anonimizado por quien lo custodia
+ORIGENES = (ORIGEN_SINTETICO, ORIGEN_REAL)
+
+
+def origen_datos(origen: str | None = None) -> str:
+    """El origen de los datos: ``origen``, o ``ORIGEN_DATOS`` del .env, o "sintetico" si no se dice nada."""
+    valor = (origen or os.getenv("ORIGEN_DATOS", "") or ORIGEN_SINTETICO).strip()
+    if valor not in ORIGENES:
+        raise ValueError(f"ORIGEN_DATOS debe ser uno de {ORIGENES}, no {valor!r}")
+    return valor
+
+
+def es_experimental(origen: str | None = None) -> bool:
+    """True con datos sintéticos: sus métricas no dicen cómo le irá al modelo con el fondo real."""
+    return origen_datos(origen) == ORIGEN_SINTETICO
+
+
+def aviso_origen(origen: str | None = None) -> str:
+    """Una línea para la consola, los reportes y el simulador: en qué modo se está trabajando."""
+    if es_experimental(origen):
+        return "MODO SINTÉTICO: resultados EXPERIMENTALES; no dicen cómo le irá al modelo con el fondo real."
+    return "DATOS REALES ANONIMIZADOS: resultados del fondo (se registran aparte de los sintéticos)."
+
+
 def get_settings() -> Settings:
     default_mlflow = f"sqlite:///{(ROOT_DIR / 'mlflow.db').as_posix()}"
     return Settings(
