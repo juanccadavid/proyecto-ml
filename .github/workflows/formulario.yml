@@ -1,8 +1,9 @@
-# Publica web/formulario.html en GitHub Pages: https://<usuario>.github.io/<repo>/
+# Publica web/formulario.html en GitHub Pages: https://<usuario>.github.io/<repo>/formulario.html
+# (la raíz, https://<usuario>.github.io/<repo>/, redirige ahí).
 # La conexión a Supabase NO está en Git: config.js se arma aquí con las variables del repositorio
 # SUPABASE_URL y SUPABASE_KEY (Settings > Secrets and variables > Actions > Variables).
-# Solo la clave PÚBLICA (sb_publishable_... / anon). Con la migración 002, ni con ella se puede insertar sin
-# sesión: solo el equipo (correo y contraseña + tabla equipo), y en asociados_entrada (make supabase-revisar).
+# Solo la clave PÚBLICA (sb_publishable_... / anon). Con la migración 003, ni con ella se puede insertar sin
+# sesión: solo el equipo (correo y contraseña + tabla equipo), directo en la tabla.
 name: Formulario (GitHub Pages)
 
 on:
@@ -45,7 +46,8 @@ jobs:
             echo "::error::SUPABASE_KEY es la service_role; usa la anon/publishable"; exit 1
           fi
           mkdir _site
-          cp web/formulario.html _site/index.html
+          cp web/formulario.html _site/formulario.html
+          printf '<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=formulario.html">\n' > _site/index.html
           cp web/contrato.js _site/
           printf 'window.SUPABASE_CONFIG = { url: "%s", key: "%s" };\n' "$SUPABASE_URL" "$SUPABASE_KEY" > _site/config.js
           touch _site/.nojekyll

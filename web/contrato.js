@@ -3,7 +3,6 @@ window.CONTRATO = {
   "nombre": "asociados",
   "version": "1.1.0",
   "tabla_db": "asociados",
-  "tabla_entrada": "asociados_entrada",
   "grupos": {
     "SOCIODEMOGRAFICO": [
       {

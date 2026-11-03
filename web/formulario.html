@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Registro de asociados</title>
 <!-- Campos y reglas: contrato.js (generado desde contratos/asociados.yaml). Conexión: config.js (no va a Git). -->
-<!-- Solo el equipo envía: sesión con correo y contraseña (Supabase Auth) e inserción en <tabla>_entrada, que
-     make supabase-revisar pasa a la tabla. Ver supabase/migraciones/002_formulario_equipo.sql. -->
+<!-- Solo el equipo envía: sesión con correo y contraseña (Supabase Auth) e inserción directa en la tabla.
+     Ver supabase/migraciones/003_formulario_directo.sql. -->
 <script src="contrato.js"></script>
 <script src="config.js" onerror="window.SUPABASE_CONFIG = null"></script>
 <style>
@@ -188,8 +188,8 @@
       <button type="submit" class="primario" id="entrar">Entrar</button>
     </form>
     <div id="con-sesion" style="display: contents" hidden>
-      <span class="activa">Sesión iniciada como <strong id="sesion-correo"></strong>. Lo que envíes queda
-        <strong>pendiente de revisión</strong> antes de pasar a la tabla.</span>
+      <span class="activa">Sesión iniciada como <strong id="sesion-correo"></strong>. Cada registro que envíes
+        se guarda de una vez en la tabla.</span>
       <button type="button" id="salir">Salir</button>
     </div>
   </section>
@@ -365,7 +365,7 @@ function resumen() {
 }
 
 function registroDb() {
-  const reg = {};  // enviado_por y revision los pone la base; origen, la revisión (make supabase-revisar)
+  const reg = { origen: "formulario" };
   for (const c of campos) {
     const v = form.elements[c.nombre].value.trim();
     reg[c.db] = v === "" ? null : c.tipo === "entero" ? Number(v) : v;
@@ -383,8 +383,9 @@ function aviso(texto, tipo) {
 
 function explicarError(cuerpo) {
   const msg = cuerpo.message || JSON.stringify(cuerpo);
+  if (cuerpo.code === "23505") return "Ya existe un asociado con esa cédula o IDASOCIADOS. Genera otro.";
   if (cuerpo.code === "23514") return `La base rechazó el registro por una regla del contrato: ${msg}`;
-  if (cuerpo.code === "42501") return "Sin permiso: tu correo no está en la tabla equipo (o falta la migración 002).";
+  if (cuerpo.code === "42501") return "Sin permiso: tu correo no está en la tabla equipo (o falta la migración 003).";
   return msg;
 }
 
@@ -484,7 +485,7 @@ form.addEventListener("submit", async (e) => {
   btn.disabled = true;
   btn.textContent = "Enviando…";
   try {
-    const insertar = async () => fetch(`${base()}/rest/v1/${C.tabla_entrada}`, {
+    const insertar = async () => fetch(`${base()}/rest/v1/${C.tabla_db}`, {
       method: "POST",
       headers: {
         apikey: CFG.key,
@@ -506,7 +507,7 @@ form.addEventListener("submit", async (e) => {
     if (!r.ok) throw new Error(explicarError(await r.json().catch(() => ({ message: r.statusText }))));
     enviados++;
     $("contador").textContent = `${enviados} registro${enviados === 1 ? "" : "s"} enviado${enviados === 1 ? "" : "s"} en esta sesión`;
-    aviso(`Asociado ${form.elements.CEDULA.value} enviado: queda pendiente de revisión ✓`, "ok");
+    aviso(`Asociado ${form.elements.CEDULA.value} guardado en Supabase ✓`, "ok");
     llenar(asociadoAleatorio());
   } catch (err) {
     aviso(err.message === "Failed to fetch" ? "No se pudo conectar con Supabase: revisa la URL en config.js y tu conexión." : err.message, "error");

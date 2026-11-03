@@ -111,10 +111,8 @@
      make contrato-web     regenera web/contrato.js (campos del formulario)
      make supabase-subir   sube un dataset a Supabase con la clave secreta (valida antes; omite repetidos)
      make supabase-bajar   baja la tabla de Supabase a data/raw/ (valida; ver sección 7.6)
-     make supabase-revisar revisa lo que envió el equipo por el formulario (asociados_entrada): valida
-                           fila a fila y sin repetidos; ARGS="--aplicar" pasa las válidas a asociados
      make formulario       abre el formulario web (sesión del equipo con correo y contraseña + Enviar)
-                           En internet: https://juanccadavid.github.io/proyecto-ml/ (GitHub Pages; se
+                           En internet: https://juanccadavid.github.io/proyecto-ml/formulario.html (Pages; se
                            publica solo al fusionar cambios de web/ en main. Ver README.)
 
  3.3 Modelos
