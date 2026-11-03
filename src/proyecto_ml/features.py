@@ -2,15 +2,23 @@
 
 from __future__ import annotations
 
+import numpy as np
+import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.decomposition import PCA
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler
+from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, OrdinalEncoder, StandardScaler
 from sklearn.utils.validation import check_is_fitted
 
 from proyecto_ml.cleaning import ColumnDropper, OutlierClipper
+
+
+def _na_a_nan(X):
+    """pd.NA -> np.nan. clean_dataset deja el texto como dtype 'string' (vacío = pd.NA) y SimpleImputer no lo admite."""
+    X = pd.DataFrame(X)
+    return X.astype(object).where(X.notna(), np.nan)
 
 
 def build_preprocessor(
@@ -69,7 +77,11 @@ def build_preprocessor(
         encoder = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
     else:
         raise ValueError(f"encoding debe ser 'onehot' u 'ordinal', no '{encoding}'")
-    categorical_steps = [("imputer", SimpleImputer(strategy="most_frequent")), ("encoder", encoder)]
+    categorical_steps = [
+        ("na", FunctionTransformer(_na_a_nan, feature_names_out="one-to-one")),
+        ("imputer", SimpleImputer(strategy="most_frequent")),
+        ("encoder", encoder),
+    ]
 
     transformers = []
     if numeric:
@@ -120,6 +132,8 @@ class Preprocesador(TransformerMixin, BaseEstimator):
         {"preprocess__numeric_strategy": ["median", "mean"], "preprocess__encoding": ["onehot", "ordinal"],
          "preprocess__clip_outliers": [None, "iqr"]}
 
+    ``max_nulos`` activa el ``ColumnDropper`` (descarta columnas con más de esa fracción de vacíos).
+
     El preprocesador real se arma y se ajusta en ``fit`` (``preprocessor_``). Para guardarlo o verlo en
     el diagrama, ``aplanar`` lo cambia por ese preprocesador ya ajustado.
     """
@@ -132,6 +146,7 @@ class Preprocesador(TransformerMixin, BaseEstimator):
         encoding: str = "onehot",
         clip_outliers: str | None = None,
         clip_columns: list[str] | None = None,
+        max_nulos: float | None = None,
     ):
         self.numeric = numeric
         self.categorical = categorical
@@ -139,6 +154,7 @@ class Preprocesador(TransformerMixin, BaseEstimator):
         self.encoding = encoding
         self.clip_outliers = clip_outliers
         self.clip_columns = clip_columns
+        self.max_nulos = max_nulos
 
     def fit(self, X, y=None):
         self.preprocessor_ = build_preprocessor(
@@ -148,6 +164,7 @@ class Preprocesador(TransformerMixin, BaseEstimator):
             encoding=self.encoding,
             clip_outliers=self.clip_outliers,
             clip_columns=self.clip_columns,
+            drop_columns=ColumnDropper(max_missing=self.max_nulos) if self.max_nulos is not None else None,
         ).fit(X, y)
         return self
 

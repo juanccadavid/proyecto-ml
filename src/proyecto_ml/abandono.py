@@ -21,9 +21,12 @@ from sklearn.metrics import adjusted_rand_score, confusion_matrix, silhouette_sc
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
+from proyecto_ml.cleaning import ColumnDropper
+from proyecto_ml.contrato import limpiar_extracto
+from proyecto_ml.data import load_dataset
 from proyecto_ml.evaluate import compute_metrics
 from proyecto_ml.features import build_preprocessor
-from proyecto_ml.models import build_pipeline, get_models
+from proyecto_ml.models import get_models
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -102,12 +105,39 @@ TITULOS = {
 UMBRAL = {"predict_proba": 0.5, "decision_function": 0.0}
 
 
-def preprocesador(clip_outliers: str | None = None):
-    """El preprocesador de los supervisados. ``clip_outliers`` ("iqr"/"quantile") recorta solo COLUMNAS_RECORTE."""
-    return build_preprocessor(NUMERICAS, CATEGORICAS, clip_outliers=clip_outliers, clip_columns=COLUMNAS_RECORTE)
+# Limpieza con estado de cleaning.py, activa por defecto (se aprende solo con train):
+CLIP_OUTLIERS = "iqr"  # recorte de atípicos en COLUMNAS_RECORTE
+MAX_NULOS = 0.5  # ColumnDropper: descarta variables con más de 50 % vacías o con un solo valor
 
 
-def modelo_ridge(alpha: float = 1.0, clip_outliers: str | None = None) -> Pipeline:
+def cargar(path, limpiar: bool = True) -> pd.DataFrame:
+    """Lee los asociados y, por defecto, aplica la limpieza sin estado (``contrato.limpiar_extracto``).
+
+    Quita espacios, vuelve vacíos los textos tipo 'N/A', convierte a número las columnas enteras escritas
+    como texto y elimina filas repetidas, sin romper el contrato. Es segura antes de partir en train/test.
+    """
+    df = load_dataset(path)
+    return limpiar_extracto(df) if limpiar else df
+
+
+def preprocesador(clip_outliers: str | None = CLIP_OUTLIERS, max_nulos: float | None = MAX_NULOS):
+    """El preprocesador de los supervisados, con la limpieza con estado de cleaning.py.
+
+    - ``max_nulos``: ``ColumnDropper`` antes del ColumnTransformer (None = no descartar).
+    - ``clip_outliers`` ("iqr"/"quantile"): recorta solo COLUMNAS_RECORTE (None = no recortar).
+    """
+    return build_preprocessor(
+        NUMERICAS,
+        CATEGORICAS,
+        clip_outliers=clip_outliers,
+        clip_columns=COLUMNAS_RECORTE,
+        drop_columns=ColumnDropper(max_missing=max_nulos) if max_nulos is not None else None,
+    )
+
+
+def modelo_ridge(
+    alpha: float = 1.0, clip_outliers: str | None = CLIP_OUTLIERS, max_nulos: float | None = MAX_NULOS
+) -> Pipeline:
     """Ridge para clasificación: regresión Ridge sobre la clase codificada como -1/+1.
 
     class_weight="balanced" compensa que los retiros son minoría. El puntaje
@@ -115,14 +145,17 @@ def modelo_ridge(alpha: float = 1.0, clip_outliers: str | None = None) -> Pipeli
     """
     return Pipeline(
         [
-            ("preprocess", preprocesador(clip_outliers)),
+            ("preprocess", preprocesador(clip_outliers, max_nulos)),
             ("model", RidgeClassifier(alpha=alpha, class_weight="balanced")),
         ]
     )
 
 
 def modelos_supervisados(
-    alpha: float = 1.0, random_state: int = 42, clip_outliers: str | None = None
+    alpha: float = 1.0,
+    random_state: int = 42,
+    clip_outliers: str | None = CLIP_OUTLIERS,
+    max_nulos: float | None = MAX_NULOS,
 ) -> dict[str, Pipeline]:
     """Ridge + el catálogo de models.py (logística, Random Forest, HistGB), con el mismo preprocesador.
 
@@ -131,10 +164,12 @@ def modelos_supervisados(
     de los anteriores (la versión de scikit-learn inspirada en LightGBM).
     """
     catalogo = {
-        nombre: build_pipeline(preprocesador(clip_outliers), modelo)
+        # Mismo esqueleto que Ridge (preprocess -> model). build_pipeline aplanaría el preprocesador
+        # (lo necesita imblearn para SMOTE, que aquí no se usa) y cada modelo quedaría con pasos distintos.
+        nombre: Pipeline([("preprocess", preprocesador(clip_outliers, max_nulos)), ("model", modelo)])
         for nombre, modelo in get_models(random_state).items()
     }
-    return {"ridge": modelo_ridge(alpha, clip_outliers), **catalogo}
+    return {"ridge": modelo_ridge(alpha, clip_outliers, max_nulos), **catalogo}
 
 
 def metodo_puntaje(modelo: Pipeline) -> str:

@@ -118,7 +118,9 @@
  3.3 Modelos
      make abandono         Ridge, logística, Random Forest (bagging), HistGB (boosting) y KMeans,
                            validados con 1000 asociados NUEVOS. Tabla comparativa con tiempo (TT):
-                           (ARGS="--clip-outliers iqr" recorta atípicos de SALARIO, EDAD y ANTIGUEDAD)
+                           Limpieza de cleaning.py activa: limpiar_extracto + ColumnDropper + recorte IQR
+                           de SALARIO, EDAD y ANTIGUEDAD (ARGS="--sin-limpieza" la apaga para comparar).
+                           Variables que más aportan a cada modelo: reports/figures/abandono_importancia.png
                            reports/figures/abandono_comparativa.html. ej.: ARGS="--ordenar Recall"
                            Diagrama interactivo de cada pipeline: reports/figures/abandono_pipelines.html
                            ej.: make abandono ARGS="--nuevos 5000 --semilla-nuevos 7 --alpha 10"
@@ -128,8 +130,10 @@
                            compara por defecto vs. afinado con asociados nuevos. ej.: ARGS="--metrica F1"
                            También busca el preprocesamiento (mediana/media, OneHot/ordinal, con/sin recorte)
                            e imprime la tabla por partición: pipeline | fold | Accuracy | AUC.
+                           Gráfico de bigotes: reports/figures/afinamiento_bigotes.png
                            (opcional: instala el extra pycaret). ej.: make pycaret ARGS="--ordenar Recall"
      make train            compara logística / random forest / HistGB con MLflow (DATA=... ARGS=...)
+                           con clean_dataset + ColumnDropper activos (ARGS="--sin-limpieza" los apaga)
      make demo             dataset sintético genérico + entrenamiento
      make mlflow-ui        ver experimentos en http://localhost:5000
      make app              demo Streamlit en http://localhost:8501

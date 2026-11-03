@@ -236,8 +236,7 @@ def missing_report(df: pd.DataFrame) -> pd.DataFrame:
 class ColumnDropper(TransformerMixin, BaseEstimator):
     """Elimina columnas con demasiados nulos o con un único valor, decidido SOLO con train.
 
-    Parámetros
-    ----------
+    Parámetros:
     max_missing : fracción máxima de nulos permitida (0.5 = se elimina si >50 % es nulo).
     drop_constant : elimina columnas con un solo valor distinto (no aportan información).
     columns : columnas a eliminar siempre (ej. identificadores que se colaron).
@@ -276,8 +275,7 @@ class OutlierClipper(OneToOneFeatureMixin, TransformerMixin, BaseEstimator):
     No elimina filas: los valores fuera de rango se reemplazan por el límite, así el número de
     filas de X e y no cambia y se puede usar dentro de un Pipeline.
 
-    Parámetros
-    ----------
+    Parámetros:
     method : ``"iqr"`` -> límites Q1 - factor·IQR y Q3 + factor·IQR.
              ``"quantile"`` -> límites en los cuantiles ``quantiles`` (ej. 1 % y 99 %).
     factor : multiplicador del IQR (1.5 clásico; 3 solo recorta extremos muy marcados).

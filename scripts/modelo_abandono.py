@@ -9,6 +9,7 @@ Uso:
     uv run python scripts/modelo_abandono.py --validar otro_archivo.parquet
     uv run python scripts/modelo_abandono.py --exportar-nuevos data/processed/nuevos.parquet
     uv run python scripts/modelo_abandono.py --faltantes      # valida también con nuevos con datos vacíos
+    uv run python scripts/modelo_abandono.py --sin-limpieza   # sin la limpieza de cleaning.py, para comparar
 
 Los "nuevos" salen del mismo generador con OTRA semilla: son asociados distintos que siguen
 el mismo comportamiento. Las métricas sobre ellos son las que cuentan; las de entrenamiento
@@ -28,8 +29,15 @@ from sklearn.model_selection import StratifiedKFold, cross_val_predict
 
 from proyecto_ml import abandono as a
 from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, MODELS_DIR, get_settings
-from proyecto_ml.data import load_dataset
-from proyecto_ml.evaluate import COLUMNAS_COMPARATIVA, compute_metrics, resaltar, tabla_comparativa
+from proyecto_ml.evaluate import (
+    COLUMNAS_COMPARATIVA,
+    compute_metrics,
+    figura_importancia,
+    importancia_variables,
+    resaltar,
+    tabla_comparativa,
+    top_importancia,
+)
 from proyecto_ml.features import pagina_pipelines
 from proyecto_ml.generador import FALTANTES, GeneradorAsociados
 
@@ -55,28 +63,43 @@ def main() -> None:
     parser.add_argument(
         "--clip-outliers",
         choices=["iqr", "quantile"],
-        help="Recortar atípicos de SALARIO, EDAD y ANTIGUEDAD (aprendido en train). Por defecto: no",
+        default=a.CLIP_OUTLIERS,
+        help="Cómo recortar atípicos de SALARIO, EDAD y ANTIGUEDAD (aprendido en train). Por defecto: iqr",
+    )
+    parser.add_argument(
+        "--sin-limpieza",
+        action="store_true",
+        help="Apagar la limpieza (extracto, ColumnDropper y recorte) para comparar",
     )
     args = parser.parse_args()
+    limpiar = not args.sin_limpieza
+    clip, max_nulos = (args.clip_outliers, a.MAX_NULOS) if limpiar else (None, None)
 
-    train = load_dataset(args.datos)
+    train = a.cargar(args.datos, limpiar)
     validaciones = {f"nuevos (n={args.nuevos})": GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos).generar()}
     if args.faltantes:
         sucios = GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos, faltantes=FALTANTES).generar()
         validaciones["nuevos con vacíos"] = sucios
     if args.validar:
-        validaciones[args.validar.name] = load_dataset(args.validar)
+        validaciones[args.validar.name] = a.cargar(args.validar, limpiar)
     if args.exportar_nuevos:
         args.exportar_nuevos.parent.mkdir(parents=True, exist_ok=True)
         next(iter(validaciones.values())).to_parquet(args.exportar_nuevos, index=False)
         print(f"Asociados nuevos guardados en {args.exportar_nuevos}")
-    print(f"Entrenamiento: {args.datos} ({len(train)} filas, {train[a.TARGET].mean():.0%} abandono)\n")
+    print(f"Entrenamiento: {args.datos} ({len(train)} filas, {train[a.TARGET].mean():.0%} abandono)")
+    if limpiar:
+        print(
+            f"Limpieza: extracto (limpiar_extracto) + ColumnDropper (> {a.MAX_NULOS:.0%} vacíos o constantes)"
+            f" + recorte {clip} en {', '.join(a.COLUMNAS_RECORTE)}\n"
+        )
+    else:
+        print("Limpieza: apagada (--sin-limpieza)\n")
 
     # ---- Supervisados: Ridge, logística, Random Forest (bagging), HistGB (boosting)
     X, y = a.preparar(train), train[a.TARGET]
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
     supervisados, m_supervisados = {}, {}
-    for nombre, modelo in a.modelos_supervisados(args.alpha, clip_outliers=args.clip_outliers).items():
+    for nombre, modelo in a.modelos_supervisados(args.alpha, clip_outliers=clip, max_nulos=max_nulos).items():
         metodo = a.metodo_puntaje(modelo)
         puntaje_cv = cross_val_predict(modelo, X, y, cv=cv, method=metodo)  # clona: no toca `modelo`
         puntaje_cv = puntaje_cv[:, 1] if puntaje_cv.ndim == 2 else puntaje_cv
@@ -99,6 +122,12 @@ def main() -> None:
     print(f"\n=== Tabla comparativa: validación cruzada (5), mismas particiones, por {args.ordenar} ===")
     print(comparativa.round(4).to_string())
 
+    # Qué variables usa cada modelo: permutation importance sobre los asociados nuevos (no vistos).
+    con_objetivo = validaciones[nombre_nuevos]
+    importancias = importancia_variables(supervisados, a.preparar(con_objetivo), con_objetivo[a.TARGET])
+    print(f"\n=== Variables que más aportan a cada modelo: caída de AUC al desordenarlas ({nombre_nuevos}) ===")
+    print(top_importancia(importancias).to_string())
+
     # ---- KMeans (sin objetivo)
     agrupador = a.AgrupadorAbandono().fit(train)
     m_kmeans = {
@@ -120,6 +149,8 @@ def main() -> None:
     fig.savefig(grafico, dpi=150)
     tabla_html = FIGURES_DIR / "abandono_comparativa.html"  # con el mejor de cada columna en amarillo
     tabla_html.write_text(resaltar(comparativa).to_html(), encoding="utf-8", newline="\n")
+    importancia_png = FIGURES_DIR / "abandono_importancia.png"
+    figura_importancia(importancias, titulos=a.TITULOS).savefig(importancia_png, dpi=150)
     diagramas = FIGURES_DIR / "abandono_pipelines.html"  # diagrama interactivo de cada pipeline
     pipelines = {a.TITULOS[n]: m for n, m in supervisados.items()} | {"KMeans (sin objetivo)": agrupador.pipeline}
     diagramas.write_text(pagina_pipelines(pipelines, "Pipelines del modelo de abandono"), encoding="utf-8")
@@ -131,15 +162,18 @@ def main() -> None:
     resumen = {
         "datos": str(args.datos.name),
         "alpha": args.alpha,
-        "clip_outliers": args.clip_outliers,
+        "limpieza": limpiar,
+        "clip_outliers": clip,
+        "max_nulos": max_nulos,
         **m_supervisados,
         "kmeans": m_kmeans,
         "comparativa": comparativa.to_dict(orient="index"),
+        "importancia": importancias.to_dict(orient="records"),
     }
     salida.write_text(json.dumps(resumen, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
     print(f"\nModelos -> {MODELS_DIR / 'abandono_*.joblib'} | métricas -> {salida}")
     print(f"Gráfico -> {grafico} | tabla comparativa -> {tabla_html}")
-    print(f"Diagramas de los pipelines -> {diagramas}")
+    print(f"Diagramas de los pipelines -> {diagramas} | importancia -> {importancia_png}")
 
 
 if __name__ == "__main__":
