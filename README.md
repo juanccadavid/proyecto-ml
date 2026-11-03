@@ -108,6 +108,12 @@ ORIGEN_DATOS=real_anonimizado     # y luego: make campeon DATA=data/raw/extracto
 | MLflow | experimentos `abandono`, `salario`; modelo `abandono` | experimentos `abandono_real`, `salario_real`; modelo `abandono_real` |
 | Etiqueta en consola, `campeon.json`, resumen del CI y simulador | **MODO SINTÉTICO: resultados experimentales** | DATOS REALES ANONIMIZADOS |
 
+Con datos reales, además: **`FECHA_CORTE`** (`.env`) debe ser la fecha de extracción, porque la foto se toma
+3 meses antes; si el archivo trae fechas posteriores, `make campeon` se detiene. Y el simulador comprueba que
+`DATOS_ASOCIADOS` sea el mismo extracto con que se eligió el campeón (misma huella): si no, se detiene en vez
+de explicar un modelo real con datos de otro origen. Las figuras de un resultado sintético llevan la marca
+"DATOS SINTÉTICOS · resultado experimental".
+
 Las métricas de los dos orígenes nunca quedan en la misma tabla de MLflow ni en el mismo `campeon.json`. El
 contrato es el que se conoce hoy (`contratos/asociados.yaml`): si el extracto real trae otras columnas o
 categorías, el contrato lo detiene antes de entrenar, y se ajusta el contrato con el equipo, no el modelo a ciegas.
@@ -183,7 +189,10 @@ en CPU es lento con miles de filas (usar Colab con GPU).
 docker compose up --build    # simulador :8501 + servidor MLflow :5000
 ```
 
-La imagen no contiene datos ni modelos: `data/` y `models/` se montan como volúmenes de solo lectura.
+La imagen no contiene datos ni modelos: `data/` y `models/` se montan como volúmenes de solo lectura. Sí lleva el
+contrato (`contratos/`), que el código lee para validar los datos y calcular su huella. El CI construye la imagen
+en cada push y la prueba (trabajo `docker`): carga los datos, valida el contrato y elige un campeón en memoria.
+Necesita Docker Desktop (`make up`, `make down`, `make logs`).
 El servicio `app` corre el simulador del abandono (`app_abandono.py`) con el campeón de `models/`; sin
 él, lo elige al arrancar. `app.py` queda como la demo genérica de la plantilla (`make app`).
 
@@ -332,7 +341,12 @@ Los afinados, Optuna y PyCaret son **experimentos** (quedan en MLflow); el **cam
 
 ✔ = el campeón lo supera de forma concluyente (el intervalo de la diferencia no toca el 0). Contra los demás, **la elección no es concluyente**: la diferencia cabe en el ruido. Entre los empatados, la logística sin balancear es además la más simple de leer (un coeficiente por variable), así que la dejamos.
 
-El umbral de alerta (máximo F2) ya alcanza la precisión pedida (0,86 ≥ 0,8), así que coincide con el umbral alto y **no queda zona gris**: cada alerta es "se retira". Zonas con 4.635 asociados nuevos (foto a 3 meses): **se retira** 98 (83 se retiran, 85 %), **se queda** 4.537 (21 se retiran). KMeans: en el grupo "riesgo" se retira el 13,5 %; en el "estable", el 0,9 %.
+El umbral de alerta (máximo F2) ya alcanza la precisión pedida (0,86 ≥ 0,8), así que coincide con el umbral alto y **no queda zona gris**: cada alerta es "se retira". Es la regla, no un
+error: el umbral alto es el más bajo, desde el de alerta, con precisión ≥ 0,8, y el de alerta ya la cumple. Ojo
+con lo que promete: esa precisión (0,86) se midió con las mismas predicciones con que se eligió el umbral; en
+validación anidada la regla de alerta da 0,69 y la del umbral alto 0,80, y en asociados nuevos la zona acierta
+el 85 %. El simulador muestra las cifras de la validación anidada. Con el extracto real se vuelve a decidir si
+conviene exigir una zona gris (umbral alto > alerta). Zonas con 4.635 asociados nuevos (foto a 3 meses): **se retira** 98 (83 se retiran, 85 %), **se queda** 4.537 (21 se retiran). KMeans: en el grupo "riesgo" se retira el 13,5 %; en el "estable", el 0,9 %.
 
 Guarda solo el campeón en `models/`:
 
@@ -406,7 +420,11 @@ make simulador                                   # usa el campeón
 - `campeon_shap.html`: SHAP en 100 asociados nuevos y la explicación del de mayor riesgo.
 - `campeon_calibracion.html`: si la probabilidad del modelo es creíble (el "30 %" es un 30 % de verdad), por
   grupos de probabilidad con cortes finos cerca de 0; el tamaño del punto es el número de asociados del grupo.
-  Solo si el campeón da probabilidades (no con Ridge). El Brier va en las métricas.
+  Solo si el campeón da probabilidades (no con Ridge). El Brier va en las métricas, con el **Brier skill**
+  (`brier_skill`: 1 = perfecto, 0 = igual que decir siempre la tasa de retiro). Con `class_weight="balanced"`
+  la probabilidad queda inflada: la logística balanceada da 0,01 y con TargetEncoder −0,08, frente a 0,79 del
+  campeón. Si el campeón queda por debajo de 0,5, el simulador muestra "Puntaje de riesgo (no calibrado)" en
+  vez de "Probabilidad de retiro".
 
 | Umbral del campeón | real se queda: sin alerta / alerta | real se retira: sin alerta / alerta |
 |---|---|---|
@@ -552,7 +570,8 @@ TIPOPACTO no entra: el pacto integral se define por el salario y sería fuga.
 | **RMSE** | raíz del MSE, otra vez en pesos | $1.713.075 | $1.718.107 | $1.731.711 | $1.765.573 |
 | **R²** | fracción de la variación explicada (0 = el promedio) | 0,00 | −0,01 | −0,02 | −0,06 |
 
-**Ningún modelo le gana a predecir el promedio, y eso es lo correcto:** el generador saca el salario al azar
+**Ningún modelo le gana a predecir el promedio, y eso es lo correcto** (en MLflow, tag `supera_referencia =
+false`; en el JSON, `supera_referencia`; la figura lo dice en el título): el generador saca el salario al azar
 (lognormal), sin relación con las demás variables. Un R² alto aquí sería fuga. Si el RMSE es mucho mayor que
 el MAE, hay pocos errores muy grandes, que son los salarios altos. Con el extracto real, donde el salario
 depende del cargo, la antigüedad y el estrato, el R² debería subir. Resultados en
@@ -950,6 +969,9 @@ columna y la pestaña **Datasets** de cada corrida:
 
 - **No se guarda una copia de los datos.** El extracto real es sensible y no debe quedar en `mlruns/`. Los
   sintéticos se reconstruyen exactos con el generador, la semilla y el commit, que MLflow guarda solo.
+- **El modelo registrado no lleva firma (`signature`), a propósito.** Recibe la fila cruda, con conteos enteros
+  que a veces traen vacíos: una firma con enteros rechaza los vacíos y una con decimales rechaza los enteros
+  (MLflow no convierte int64 a float64). Lo que entra lo valida el contrato de datos.
 - **La huella es nuestra, no la de MLflow.** La de MLflow solo mira las primeras 10.000 filas y descarta las
   fechas y las categóricas con vacíos. La nuestra recorre todo el contenido y cuenta el tipo por familia
   (entero, texto, fecha…). Así los datos leídos del parquet en el PC y los generados en memoria en el CI dan la

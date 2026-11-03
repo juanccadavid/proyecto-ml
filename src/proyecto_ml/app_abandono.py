@@ -75,8 +75,9 @@ def elegir_campeon_aqui():
     """Como ``make campeon`` pero en memoria y con una repetición: (modelo, agrupador, info)."""
     df, fuente = c.datos_eleccion(origen=ORIGEN_SINTETICO)  # la demo pública: solo datos sintéticos
     h = a.HORIZONTE_MESES
-    info = {"datos": fuente, "horizonte_meses": h, **r.parametros_datos(df, ORIGEN_SINTETICO), "experimental": True}
-    elegido = c.elegir(a.foto(df, h), repeticiones=1, info=info, honestos=False)  # sin la anidada: arranca antes
+    vista = a.foto(df, h)  # la huella va sobre la foto, como en make campeon
+    info = {"datos": fuente, "horizonte_meses": h, **r.parametros_datos(vista, ORIGEN_SINTETICO), "experimental": True}
+    elegido = c.elegir(vista, repeticiones=1, info=info, honestos=False)  # sin la anidada: arranca antes
     return elegido.con_zonas(), elegido.agrupador, c.resumen(elegido)
 
 
@@ -87,6 +88,11 @@ def datos_referencia(horizonte: int | None, origen: str) -> pd.DataFrame:
     ruta = get_settings().datos_asociados if origen == ORIGEN_REAL else None
     df, _ = c.datos_eleccion(ruta, origen=origen)
     return a.foto(df, horizonte) if horizonte else df
+
+
+@st.cache_data
+def huella_referencia(horizonte: int | None, origen: str) -> str:
+    return r.huella(datos_referencia(horizonte, origen))
 
 
 @st.cache_data
@@ -143,7 +149,17 @@ modelo, agrupador, info = elegir_campeon_aqui() if elegido_aqui else guardado
 metodo, umbral, umbral_alto = info["metodo"], info["umbral"], info["umbral_alto"]
 origen = info.get("origen_datos", ORIGEN_SINTETICO)  # campeones guardados antes: todos eran sintéticos
 experimental = origen == ORIGEN_SINTETICO
+if "datos_huella" in info and huella_referencia(info.get("horizonte_meses"), origen) != info["datos_huella"]:
+    # Los datos de referencia (fondo de SHAP, rangos, mapa) no son los mismos con que se eligió el campeón.
+    if not experimental:
+        st.error(
+            "Los datos de DATOS_ASOCIADOS (.env) no son los mismos con que se eligió el campeón real (su huella no "
+            "coincide). Apunta DATOS_ASOCIADOS al extracto anonimizado de make campeon, o vuelve a correrlo."
+        )
+        st.stop()
+    st.warning("Los datos de desarrollo cambiaron desde que se eligió el campeón: corre `make campeon` de nuevo.")
 referencia = cargar_referencia(info.get("horizonte_meses"), origen)
+etiqueta = c.etiqueta_puntaje(metodo, info.get("metricas_cv", {}))
 
 st.caption("Fondo de empleados · modelo de abandono")
 st.title("¿Se retiraría este asociado? 🏦")
@@ -177,22 +193,28 @@ with st.sidebar:
     version += [f"datos `{info['datos_huella']}`"] if "datos_huella" in info else []
     if version:
         st.caption("Versión del modelo: " + " · ".join(version))
+    # Precisión y recall honestos (validación anidada) si están; los de metricas_cv se midieron con las mismas
+    # predicciones con que se eligió el umbral, y son optimistas.
+    hon = info.get("umbrales_honestos") or {}
+    rec, pre = hon.get("recall", cv["recall"]), hon.get("precision", cv["precision"])
+    medida = "validación anidada" if hon else "fuera de partición, optimista"
     alerta = (
         f"**Zona gris** desde {formato_puntaje(umbral, metodo)} "
-        f"(encuentra al {cv['recall']:.0%} de los que se van; precisión {cv['precision']:.0%})."
+        f"(encuentra al {rec:.0%} de los que se van; precisión {pre:.0%}; {medida})."
     )
     if umbral_alto is None:
         st.markdown(alerta + " Ningún umbral llega a la precisión pedida: no hay zona 'se retira'.")
     elif umbral_alto <= umbral:  # el umbral de alerta ya alcanza la precisión pedida: toda alerta es "se retira"
         st.markdown(
-            f"**Se retira** desde {formato_puntaje(umbral, metodo)} (encuentra al {cv['recall']:.0%} de los que se "
-            f"van; precisión {cv['precision']:.0%}). El umbral de alerta ya alcanza la precisión pedida, así que no "
+            f"**Se retira** desde {formato_puntaje(umbral, metodo)} (encuentra al {rec:.0%} de los que se "
+            f"van; precisión {pre:.0%}; {medida}). El umbral de alerta ya alcanza la precisión pedida, así que no "
             "hay zona gris."
         )
     else:
         st.markdown(
             alerta + f" **Se retira** desde {formato_puntaje(umbral_alto, metodo)} "
-            f"(precisión {cv['precision_alto']:.0%}, recall {cv['recall_alto']:.0%})."
+            f"(precisión {hon.get('precision_alto', cv['precision_alto']):.0%}, "
+            f"recall {hon.get('recall_alto', cv['recall_alto']):.0%}; {medida})."
         )
     if elegido_aqui:
         st.info("No había campeón en `models/`: se eligió al abrir la app (como `make campeon`, una repetición).")
@@ -232,9 +254,7 @@ emoji, tipo, texto = ZONA[zona]
 
 st.divider()
 st.header(f"Riesgo de abandono: {emoji}")
-st.metric(
-    "Probabilidad de retiro" if metodo == "predict_proba" else "Puntaje del modelo", formato_puntaje(puntaje, metodo)
-)
+st.metric(etiqueta, formato_puntaje(puntaje, metodo))
 if metodo == "predict_proba":
     st.progress(min(max(puntaje, 0.0), 1.0))
 getattr(st, tipo)(texto)
@@ -305,7 +325,7 @@ fig = px.line(
     markers=variable not in CONTINUAS,
     labels={
         variable: ETIQUETAS[variable],
-        "puntaje": "Probabilidad de retiro" if metodo == "predict_proba" else "Puntaje",
+        "puntaje": etiqueta,
     },
     color_discrete_sequence=["#2a78d6"],
 )

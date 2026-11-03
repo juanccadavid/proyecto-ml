@@ -63,6 +63,7 @@ from proyecto_ml.config import (
     origen_datos,
 )
 from proyecto_ml.evaluate import compute_metrics
+from proyecto_ml.figuras import marcar_origen
 from proyecto_ml.generador import DESARROLLO, GeneradorAsociados
 
 
@@ -226,19 +227,19 @@ def main() -> None:
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     METRICS_DIR.mkdir(parents=True, exist_ok=True)
     figura = FIGURES_DIR / "campeon_umbrales.html"
-    c.figura_umbrales(campeon).write_html(figura, include_plotlyjs="cdn")
+    marcar_origen(c.figura_umbrales(campeon)).write_html(figura, include_plotlyjs="cdn")
     tabla_escenarios = FIGURES_DIR / "campeon_escenarios.html"
     if escenarios is not None:
         tabla_escenarios.write_text(escenarios.round(3).to_html(), encoding="utf-8", newline="\n")
     figura_roc = FIGURES_DIR / "campeon_roc.html"
-    c.figura_roc(campeon).write_html(figura_roc, include_plotlyjs="cdn")
+    marcar_origen(c.figura_roc(campeon)).write_html(figura_roc, include_plotlyjs="cdn")
     figura_confusion = FIGURES_DIR / "campeon_confusion.html"
-    c.figura_confusion(campeon).write_html(figura_confusion, include_plotlyjs="cdn")
+    marcar_origen(c.figura_confusion(campeon)).write_html(figura_confusion, include_plotlyjs="cdn")
     figuras = [figura, *([tabla_escenarios] if escenarios is not None else []), figura_roc, figura_confusion]
     calibracion = c.figura_calibracion(campeon)
     if calibracion is not None:  # solo si el puntaje es una probabilidad (no en Ridge)
         figura_calibracion = FIGURES_DIR / "campeon_calibracion.html"
-        calibracion.write_html(figura_calibracion, include_plotlyjs="cdn")
+        marcar_origen(calibracion).write_html(figura_calibracion, include_plotlyjs="cdn")
         figuras.append(figura_calibracion)
     if explicaciones:
         explicador, importancia_shap, mayor_riesgo = explicaciones
@@ -248,7 +249,10 @@ def main() -> None:
         local = e.figura_explicacion(explicador.explicar(mayor_riesgo), explicador.base, campeon.metodo)
         local.update_layout(title="El asociado nuevo de mayor riesgo: de dónde sale su puntaje")
         figura_shap = FIGURES_DIR / "campeon_shap.html"
-        partes = [global_.to_html(full_html=False, include_plotlyjs="cdn"), local.to_html(full_html=False)]
+        partes = [
+            marcar_origen(global_).to_html(full_html=False, include_plotlyjs="cdn"),
+            marcar_origen(local).to_html(full_html=False),
+        ]
         pagina = '<!doctype html><meta charset="utf-8"><title>SHAP del campeón</title>' + "".join(partes)
         figura_shap.write_text(pagina + "\n", encoding="utf-8", newline="\n")
         figuras.append(figura_shap)

@@ -29,6 +29,24 @@ jobs:
       - name: Pruebas
         run: uv run pytest
 
+  docker:
+    # La imagen de docker compose: que construya y que el simulador encuentre lo que necesita (contrato, datos).
+    needs: calidad
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Construir la imagen
+        run: docker build -t proyecto-ml:ci .
+      - name: Probar la imagen (contrato y elección del campeón en memoria, como el simulador sin models/)
+        run: |
+          docker run --rm proyecto-ml:ci python -c "
+          from proyecto_ml import abandono as a, campeon as c, registro as r
+          df, fuente = c.datos_eleccion()
+          print(fuente, len(df), 'contrato', r.huella_contrato())
+          elegido = c.elegir(a.foto(df, 3), candidatos={'logreg': a.modelos_supervisados()['logreg']}, repeticiones=1, honestos=False)
+          print('campeón', elegido.nombre)
+          "
+
   ejecutar:
     needs: calidad
     runs-on: ubuntu-latest

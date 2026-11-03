@@ -65,6 +65,15 @@ def es_experimental(origen: str | None = None) -> bool:
     return origen_datos(origen) == ORIGEN_SINTETICO
 
 
+FECHA_CORTE_DEFECTO = "2026-10-31"  # la de los datos sintéticos
+
+
+def fecha_corte() -> str:
+    """Fecha del extracto (``FECHA_CORTE`` del .env): la foto del asociado se toma 3 meses antes. Con el extracto
+    real debe ser su fecha de extracción; si no, la foto y la etiqueta de retiro quedan corridas."""
+    return os.getenv("FECHA_CORTE", "").strip() or FECHA_CORTE_DEFECTO
+
+
 def aviso_origen(origen: str | None = None) -> str:
     """Una línea para la consola, los reportes y el simulador: en qué modo se está trabajando."""
     if es_experimental(origen):

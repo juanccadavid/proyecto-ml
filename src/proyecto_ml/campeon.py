@@ -119,6 +119,13 @@ def datos_eleccion(ruta: Path | None = None, origen: str | None = None) -> tuple
     archivo = ruta or desarrollo
     df = a.cargar(archivo)
     errores = contrato.validar(df)
+    if origen == ORIGEN_REAL:  # fechas después del corte: FECHA_CORTE no es la del extracto y la foto queda corrida
+        for columna in ("FECHARETIRO", "FECHAULTACTUALIZACION", "FECHAINGRESOLABORA"):
+            if columna in df and (pd.to_datetime(df[columna], errors="coerce") > a.FECHA_CORTE).any():
+                errores.append(
+                    f"{columna} tiene fechas después de FECHA_CORTE ({a.FECHA_CORTE.date()}): pon en el .env "
+                    "FECHA_CORTE = la fecha de extracción del archivo"
+                )
     if errores:
         mostrar = contrato.sin_valores(errores) if origen == ORIGEN_REAL else errores
         detalle = "\n".join(f"  - {e}" for e in mostrar[:10])
@@ -275,6 +282,23 @@ def elegir_umbrales(y, puntaje, beta: float = BETA, precision_min: float = PRECI
     return resultado
 
 
+BRIER_SKILL_MIN = 0.5  # por debajo, la "probabilidad" del modelo no es creíble como probabilidad
+
+
+def etiqueta_puntaje(metodo: str, metricas: dict) -> str:
+    """Cómo mostrar el puntaje: "Probabilidad de retiro" solo si es una probabilidad CALIBRADA.
+
+    Con ``class_weight="balanced"`` la probabilidad queda inflada (Brier skill cerca de 0 o negativo): llamarla
+    "probabilidad de retiro" exageraría el riesgo. ``metricas`` son las del campeón (``metricas_cv``).
+    """
+    if metodo != "predict_proba":
+        return "Puntaje del modelo"
+    habilidad = metricas.get("brier_skill")
+    if habilidad is not None and not np.isnan(habilidad) and habilidad < BRIER_SKILL_MIN:
+        return "Puntaje de riesgo (no calibrado)"
+    return "Probabilidad de retiro"
+
+
 def zona(puntaje: float, umbral: float, umbral_alto: float | None) -> str:
     """'se retira', 'zona gris' o 'se queda' según los dos umbrales del campeón."""
     if umbral_alto is not None and puntaje >= umbral_alto:
@@ -349,6 +373,9 @@ def evaluar(nombre: str, modelo: Pipeline, X, y, folds: int = FOLDS, repeticione
     umbrales = elegir_umbrales(y, promedio, **kw)
     alerta = (promedio >= umbrales["umbral"]).astype(int)
     al_umbral = compute_metrics(y, promedio, threshold=umbrales["umbral"])
+    es_proba = a.metodo_puntaje(modelo) == "predict_proba"  # por el método, no por el rango de los valores
+    tasa = float(np.mean(y))
+    brier = al_umbral["brier"] if es_proba else float("nan")
     ic_inf, ic_sup = intervalo_bootstrap(y, promedio)
     metricas = {
         "pr_auc": float(np.mean(pr)),
@@ -361,7 +388,10 @@ def evaluar(nombre: str, modelo: Pipeline, X, y, folds: int = FOLDS, repeticione
         "mcc": float(matthews_corrcoef(y, alerta)),  # al umbral de alerta, corrigen el desbalance
         "kappa": float(cohen_kappa_score(y, alerta)),
         # al umbral de alerta (F2 incluido) y sin umbral (precision@10 %, Brier: calibración de la probabilidad)
-        **{k: al_umbral[k] for k in ("f2", "specificity", "balanced_accuracy", "precision_at_10pct", "brier")},
+        **{k: al_umbral[k] for k in ("f2", "specificity", "balanced_accuracy", "precision_at_10pct")},
+        "brier": brier,
+        # Brier skill score: 1 = perfecto, 0 = igual que decir siempre la tasa de retiro (mal calibrado)
+        "brier_skill": 1 - brier / (tasa * (1 - tasa)) if es_proba and 0 < tasa < 1 else float("nan"),
     }
     return Candidato(nombre, modelo, puntajes, umbrales, metricas, por_particion)
 
@@ -588,7 +618,7 @@ def matrices_confusion(campeon: Campeon) -> dict[str, np.ndarray]:
     """
     puntaje = campeon.candidatos[campeon.nombre].promedio
     cortes = {"alerta": campeon.umbral}
-    if campeon.umbral_alto is not None:
+    if campeon.umbral_alto is not None and campeon.umbral_alto > campeon.umbral:  # si coinciden, una sola matriz
         cortes["se retira"] = campeon.umbral_alto
     return {
         nombre: confusion_matrix(campeon.y, (puntaje >= corte).astype(int), labels=[0, 1])
@@ -636,7 +666,8 @@ def figura_confusion(campeon: Campeon):
     fig.update_yaxes(autorange="reversed")
     fig.update_layout(
         title=f"Campeón: {TITULOS.get(campeon.nombre, campeon.nombre)} — matriz de confusión "
-        f"(fuera de partición, n={len(campeon.y)})",
+        f"(fuera de partición, n={len(campeon.y)})<br><sup>El umbral se eligió con estas mismas predicciones: "
+        "las cifras son optimistas (la validación anidada está en campeon.json, umbrales_honestos)</sup>",
         template="plotly_white",
         height=420,
         width=440 * len(matrices) + 80,
