@@ -37,7 +37,7 @@ EXPERIMENTO = "salario"
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--datos", type=Path, help="Por defecto los de desarrollo (2.000, semilla 7)")
+    parser.add_argument("--datos", type=Path, help="Por defecto los de desarrollo (5.000, semilla 7)")
     parser.add_argument("--folds", type=int, default=5)
     parser.add_argument("--nuevos", type=int, default=1000, help="Asociados nuevos para validar el mejor")
     parser.add_argument("--semilla-nuevos", type=int, default=2026)

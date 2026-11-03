@@ -12,7 +12,7 @@ Uso:
 
     sucio = GeneradorAsociados(n=1000, faltantes=FALTANTES).generar()  # con datos faltantes
     debil = GeneradorAsociados(n=1000, tasa_retiro=0.1, fuerza_senal=0.5).generar()  # señal a la mitad
-    df = datos_desarrollo()                                 # los 2.000 con que se elige el campeón
+    df = datos_desarrollo()                                 # los 5.000 con que se elige el campeón
 
 La misma semilla produce siempre el mismo dataset; otra semilla, asociados distintos que siguen
 el mismo comportamiento (datos que un modelo nunca vio). Las fechas son fijas (no dependen del
@@ -31,11 +31,12 @@ from proyecto_ml.config import DATA_DIR
 
 CARPETA_EJEMPLO = DATA_DIR / "ejemplo"
 
-# Datos de desarrollo: 2.000 asociados (semilla 7) con 10 % de retiro, más cerca de un fondo real que el
+# Datos de desarrollo: 5.000 asociados (semilla 7) con 10 % de retiro, más cerca de un fondo real que el
 # 30 % por defecto. Con ellos se elige el campeón; los 50 de data/ejemplo quedan para el contrato y las
 # pruebas. ``make datos-desarrollo`` los escribe en data/processed/ y el simulador los genera en memoria
-# cuando no hay archivo (Streamlit Community Cloud): mismos parámetros, mismos datos.
-DESARROLLO = {"n": 2000, "seed": 7, "tasa_retiro": 0.1}
+# cuando no hay archivo (Streamlit Community Cloud): mismos parámetros, mismos datos. Son 5.000 y no 2.000
+# porque la foto a 3 meses deja ~105 retiros; con 2.000 eran 40 y el umbral alto se apoyaba en ~31 aciertos.
+DESARROLLO = {"n": 5000, "seed": 7, "tasa_retiro": 0.1}
 NOMBRE_DESARROLLO = "asociados_desarrollo"
 
 # Apellidos evidentemente ficticios para que nadie confunda un registro con una persona real.
@@ -377,5 +378,5 @@ class GeneradorAsociados:
 
 
 def datos_desarrollo() -> pd.DataFrame:
-    """Los asociados de desarrollo (``DESARROLLO``): 2.000, semilla 7, 10 % de retiro."""
+    """Los asociados de desarrollo (``DESARROLLO``): 5.000, semilla 7, 10 % de retiro."""
     return GeneradorAsociados(**DESARROLLO).generar()

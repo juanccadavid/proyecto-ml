@@ -1,8 +1,14 @@
 """Elige el modelo campeón del abandono, su umbral y sus zonas, y lo registra en MLflow (make campeon).
 
-Candidatos: Ridge, logística, Random Forest y HistGB (``abandono.modelos_supervisados``). Gana el de mejor
-PR-AUC en validación cruzada repetida (5 particiones x 3 repeticiones) sobre la foto del asociado. Los
-umbrales salen de las predicciones fuera de partición (ver ``campeon.py``). Después:
+Candidatos (``campeon.lista_candidatos``): Ridge, logística, Random Forest, HistGB y las técnicas que mejoraron
+en ``make tecnicas`` (variables nuevas; indicador de vacíos si hay vacíos); con --optuna N, también Random
+Forest y HistGB afinados con Optuna (N intentos, por PR-AUC) en estos mismos datos. Gana el de mejor PR-AUC en
+validación cruzada repetida (5 particiones x 3 repeticiones) sobre la foto del asociado. Los umbrales salen de
+las predicciones fuera de partición (ver ``campeon.py``).
+
+Incertidumbre: PR-AUC ± desviación entre particiones e intervalo bootstrap; el campeón contra cada candidato
+partición a partición (si el intervalo de la diferencia toca el 0, la elección no es concluyente); y la regla
+de umbrales medida en validación anidada (sin el optimismo de elegir y medir sobre lo mismo). Después:
 
 - asociados nuevos (misma tasa de retiro) y escenarios menos favorables (tasa 10 %, señal al 50 % y 25 %):
   cuánto se degrada cada candidato con su umbral, en vez de una cifra perfecta;
@@ -15,12 +21,13 @@ Guarda en models/ solo el campeón (abandono_campeon.joblib, abandono_kmeans.job
 (experimento ``abandono``): una corrida "campeon" con una hija por candidato (cv_, nuevos_, esc_) y el
 campeón en el registro de modelos con el alias ``campeon`` (models:/abandono@campeon).
 
-Datos: --datos, o data/processed/asociados_desarrollo.parquet (make datos-desarrollo), o los mismos 2.000
+Datos: --datos, o data/processed/asociados_desarrollo.parquet (make datos-desarrollo), o los mismos 5.000
 generados en memoria (semilla 7, 10 % de retiro).
 
 Uso:
     uv run python scripts/elegir_campeon.py                    # foto a 3 meses
     uv run python scripts/elegir_campeon.py --horizonte 12 --precision-min 0.9
+    uv run python scripts/elegir_campeon.py --optuna 30         # + Random Forest y HistGB afinados
     uv run python scripts/elegir_campeon.py --datos data/raw/supabase_asociados.parquet --sin-mlflow
 """
 
@@ -34,6 +41,7 @@ import pandas as pd
 from sklearn.base import clone
 
 from proyecto_ml import abandono as a
+from proyecto_ml import busqueda_optuna as bo
 from proyecto_ml import campeon as c
 from proyecto_ml import explicar as e
 from proyecto_ml import registro as r
@@ -49,7 +57,7 @@ def _slug(escenario: v.Escenario) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--datos", type=Path, help="Por defecto los de desarrollo (2.000, semilla 7, 10 %%)")
+    parser.add_argument("--datos", type=Path, help="Por defecto los de desarrollo (5.000, semilla 7, 10 %%)")
     parser.add_argument(
         "--horizonte", type=int, default=a.HORIZONTE_MESES, help="Meses de la foto (0 = todos al corte)"
     )
@@ -57,7 +65,8 @@ def main() -> None:
     parser.add_argument("--repeticiones", type=int, default=c.REPETICIONES)
     parser.add_argument("--beta", type=float, default=c.BETA, help="F-beta del umbral de alerta (2 = F2)")
     parser.add_argument("--precision-min", type=float, default=c.PRECISION_MIN, help="Precisión de la zona 'se retira'")
-    parser.add_argument("--nuevos", type=int, default=1000, help="Asociados nuevos (y por escenario)")
+    parser.add_argument("--nuevos", type=int, default=5000, help="Asociados nuevos (y por escenario)")
+    parser.add_argument("--optuna", type=int, default=0, help="Intentos de Optuna para sumar RF y HistGB afinados")
     parser.add_argument("--semilla-nuevos", type=int, default=2026)
     parser.add_argument("--shap", type=int, default=100, help="Asociados nuevos a explicar con SHAP (0 = ninguno)")
     parser.add_argument("--sin-mlflow", action="store_true", help="No registrar en MLflow")
@@ -76,8 +85,18 @@ def main() -> None:
     )
     print(f"Validación cruzada: {args.folds} particiones x {args.repeticiones} repeticiones · criterio {c.CRITERIO}\n")
 
+    X, y = a.separar(df)
+    candidatos = c.lista_candidatos(X)
+    if args.optuna:  # afinados con estos mismos datos: su PR-AUC de CV es algo optimista (los eligió mirándolos)
+        for nombre in bo.MODELOS:
+            estudio = bo.afinar_optuna(
+                nombre, X, y, n_trials=args.optuna, folds=args.folds, metrica="average_precision", seed=0
+            )
+            candidatos[f"{nombre}_optuna"] = bo.mejor_modelo(estudio, nombre)
+            print(f"Optuna {nombre}: {args.optuna} intentos, mejor PR-AUC {estudio.best_value:.3f}")
     campeon = c.elegir(
         df,
+        candidatos=candidatos,
         folds=args.folds,
         repeticiones=args.repeticiones,
         beta=args.beta,
@@ -85,12 +104,38 @@ def main() -> None:
         info={"datos": fuente, "horizonte_meses": h, "fecha_observacion": str(t0)},
     )
     print("=== Candidatos (fuera de partición; umbral = máximo F2, umbral_alto = precisión mínima) ===")
-    print(campeon.tabla().round(3).to_string())
+    columnas = ["pr_auc", "pr_auc_std", "pr_auc_ic_inf", "pr_auc_ic_sup", "roc_auc", "umbral", "precision"]
+    columnas += ["recall", "umbral_alto", "precision_alto", "recall_alto", "mcc", "kappa"]
+    with pd.option_context("display.width", 220, "display.max_columns", None):
+        print(campeon.tabla().reindex(columns=columnas).round(3).to_string())
     alto = "sin zona 'se retira'" if campeon.umbral_alto is None else f"{campeon.umbral_alto:.3f}"
-    print(f"\nCampeón: {a.TITULOS[campeon.nombre]} · umbral {campeon.umbral:.3f} · umbral_alto {alto}")
+    cv = campeon.candidatos[campeon.nombre].metricas
+    print(f"\nCampeón: {c.TITULOS[campeon.nombre]} · umbral {campeon.umbral:.3f} · umbral_alto {alto}")
+    print(
+        f"PR-AUC {cv['pr_auc']:.3f} ± {cv['pr_auc_std']:.3f} entre particiones "
+        f"(IC 95 % bootstrap {cv['pr_auc_ic_inf']:.3f}–{cv['pr_auc_ic_sup']:.3f}); "
+        f"entre repeticiones solo ± {cv['pr_auc_std_repeticiones']:.3f}"
+    )
+    print("\n=== Campeón − cada candidato, partición a partición (t corregida de Nadeau y Bengio) ===")
+    print(campeon.comparacion().round(3).to_string())
+    empatados = campeon.empatados()
+    if empatados:
+        nombres = ", ".join(c.TITULOS.get(n, n) for n in empatados)
+        print(f"NO concluyente frente a: {nombres} (el intervalo de la diferencia incluye el 0)")
+    else:
+        print("Concluyente: el campeón supera a todos los candidatos (ningún intervalo toca el 0)")
+    if campeon.honestos:
+        hon = campeon.honestos
+        print(
+            f"\n=== Umbrales en validación anidada (elegidos solo con el entrenamiento de cada partición) ===\n"
+            f"alerta: precisión {hon['precision']:.2f}, recall {hon['recall']:.2f} (fuera de partición: "
+            f"{cv['precision']:.2f} / {cv['recall']:.2f})\n"
+            f"se retira: precisión {hon['precision_alto']:.2f} (pedida {args.precision_min:.2f}), "
+            f"recall {hon['recall_alto']:.2f}, {hon['alertas_alto']} alertas; "
+            f"{hon['particiones_sin_alto']} particiones sin zona 'se retira'"
+        )
 
     # Todos los candidatos entrenados con todo, cada uno con su umbral, para nuevos y escenarios.
-    X, y = a.separar(df)
     entrenados = {n: clone(cand.modelo).fit(X, y) for n, cand in campeon.candidatos.items()}
     umbrales = {n: cand.umbrales["umbral"] for n, cand in campeon.candidatos.items()}
     nuevos = GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos, tasa_retiro=DESARROLLO["tasa_retiro"])
@@ -146,7 +191,7 @@ def main() -> None:
     figuras = [figura, tabla_escenarios, figura_roc, figura_confusion]
     if explicaciones:
         explicador, importancia_shap, mayor_riesgo = explicaciones
-        titulo = f"SHAP del campeón ({a.TITULOS[campeon.nombre]}) en asociados nuevos"
+        titulo = f"SHAP del campeón ({c.TITULOS[campeon.nombre]}) en asociados nuevos"
         global_ = e.figura_importancia(importancia_shap, campeon.metodo, titulo)
         local = e.figura_explicacion(explicador.explicar(mayor_riesgo), explicador.base, campeon.metodo)
         local.update_layout(title="El asociado nuevo de mayor riesgo: de dónde sale su puntaje")
@@ -190,7 +235,7 @@ def main() -> None:
     )
     artefactos = [rutas["info"], *figuras]
     with r.corrida("campeon", params, artefactos=artefactos, tags={"campeon": campeon.nombre}):
-        r.registrar_modelos(entrenados, params, metricas_mlflow, titulos=a.TITULOS, guardar_modelo=False)
+        r.registrar_modelos(entrenados, params, metricas_mlflow, titulos=c.TITULOS, guardar_modelo=False)
         propios = {**params, "modelo": campeon.nombre, "umbral": campeon.umbral, "umbral_alto": campeon.umbral_alto}
         with r.corrida(f"campeon_{campeon.nombre}", propios, metricas_mlflow[campeon.nombre], anidada=True):
             info = r.registrar_modelo(campeon.con_zonas(), registrar_como=r.MODELO_REGISTRADO)

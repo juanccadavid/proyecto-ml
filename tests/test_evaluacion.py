@@ -3,7 +3,7 @@
 import numpy as np
 import optuna
 import pytest
-from sklearn.metrics import cohen_kappa_score, matthews_corrcoef
+from sklearn.metrics import average_precision_score, cohen_kappa_score, matthews_corrcoef
 
 from proyecto_ml import abandono as a
 from proyecto_ml import busqueda_optuna as bo
@@ -160,3 +160,69 @@ def test_shap_ridge_y_figuras(datos):
     importancia = e.importancia(explicador.contribuciones(a.separar(nuevos)[0].head(5)))
     assert importancia.is_monotonic_decreasing and set(importancia.index) == set(e.VARIABLES)
     assert len(e.figura_importancia(importancia, "decision_function", "prueba", top=15).data[0].y) == 15
+
+
+# ---------------------------------------------------------------- incertidumbre del campeón
+
+
+def test_comparar_particiones_con_la_correccion_de_nadeau_bengio():
+    rng = np.random.default_rng(0)
+    base = rng.normal(0.85, 0.05, (3, 5))
+    iguales = c.comparar_particiones(base, base + rng.normal(0, 0.01, (3, 5)), folds=5)
+    assert iguales["ic_inf"] < 0 < iguales["ic_sup"]  # ruido: no concluyente
+    claro = c.comparar_particiones(base + 0.2 + rng.normal(0, 0.01, (3, 5)), base, folds=5)
+    assert claro["ic_inf"] > 0 and claro["p_valor"] < 0.01 and claro["gana_en"] == 1
+    # la corrección ensancha el intervalo frente a la t común (que supone particiones independientes)
+    d = (base + rng.normal(0, 0.02, (3, 5)) - base).ravel()
+    t_comun = 2.145 * d.std(ddof=1) / np.sqrt(d.size)  # t(0,975; 14 gl)
+    corregido = c.comparar_particiones(base + d.reshape(3, 5), base, folds=5)
+    assert corregido["ic_sup"] - corregido["diferencia"] > t_comun
+
+
+def test_bootstrap_y_variacion_entre_particiones(campeon):
+    cand = campeon.candidatos[campeon.nombre]
+    m = cand.metricas
+    assert m["pr_auc_ic_inf"] <= average_precision_score(campeon.y, cand.promedio) <= m["pr_auc_ic_sup"]
+    assert cand.pr_auc_particion.shape == (1, 3)  # repeticiones x folds del fixture
+    assert m["pr_auc_std"] == pytest.approx(np.std(cand.pr_auc_particion, ddof=1))
+    bajo, alto = c.intervalo_bootstrap(campeon.y, cand.promedio, n=200, nivel=0.5)
+    assert m["pr_auc_ic_inf"] <= bajo <= alto <= m["pr_auc_ic_sup"]  # el del 50 % queda dentro del del 95 %
+
+
+def test_comparacion_empates_y_umbrales_honestos(campeon):
+    tabla = campeon.comparacion()
+    assert campeon.nombre not in tabla.index and set(tabla.index) == set(campeon.candidatos) - {campeon.nombre}
+    propio = campeon.candidatos[campeon.nombre].pr_auc_particion
+    for nombre, fila in tabla.iterrows():  # diferencia = promedio de (campeón − candidato) partición a partición
+        assert fila["diferencia"] == pytest.approx((propio - campeon.candidatos[nombre].pr_auc_particion).mean())
+    assert campeon.empatados() == list(tabla.index[~tabla["concluyente"].astype(bool)])
+    hon = campeon.honestos
+    assert {"precision", "recall", "precision_alto", "recall_alto", "alertas_alto"} <= hon.keys()
+    assert 0 <= hon["recall_alto"] <= hon["recall"] <= 1  # el umbral alto alerta a menos
+    info = c.resumen(campeon)
+    assert info["umbrales_honestos"] == hon and info["empatados"] == campeon.empatados()
+    assert set(info["comparacion"]) == set(tabla.index)
+
+
+def test_lista_de_candidatos_abierta(datos):
+    entrenamiento, nuevos = datos
+    sin_vacios = c.lista_candidatos(a.separar(entrenamiento)[0])
+    assert {"ridge", "logreg", "random_forest", "hist_gb", "logreg_sin_balancear", "logreg_target"} == set(sin_vacios)
+    assert "logreg_indicador" in c.lista_candidatos(a.separar(nuevos)[0])  # nuevos trae vacíos (FALTANTES)
+    assert set(c.lista_candidatos()) <= set(c.TITULOS)
+    assert sin_vacios["logreg_sin_balancear"][-1].class_weight is None
+    assert sin_vacios["logreg"][-1].class_weight == "balanced"
+
+
+def test_resumen_del_ci(campeon):
+    import importlib.util
+    from pathlib import Path
+
+    ruta = Path(__file__).parents[1] / "scripts" / "resumen_campeon.py"
+    spec = importlib.util.spec_from_file_location("resumen_campeon", ruta)
+    modulo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(modulo)
+    texto = modulo.resumen(c.resumen(campeon))
+    assert texto.startswith(f"## Campeón: {c.TITULOS[campeon.nombre]}")
+    assert "entre particiones" in texto and "IC 95 %" in texto and "validación anidada" in texto
+    assert "ROC" not in texto  # el titular es la PR-AUC, no el ROC-AUC

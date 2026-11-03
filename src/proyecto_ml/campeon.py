@@ -16,6 +16,18 @@ Los afinados, Optuna y PyCaret son evidencia de experimentos (van a MLflow); el 
   Tres zonas: **se retira** (>= umbral_alto), **zona gris** (entre los dos) y **se queda** (< umbral).
 - **KMeans** (sin objetivo) se entrena con los mismos datos: el simulador muestra en qué grupo cae el
   asociado y la tasa de retiro real de ese grupo.
+
+**Incertidumbre** (para no sobrevender una cifra):
+
+- ``pr_auc_std`` es la desviación **entre particiones** (5 x 3 = 15 puntajes), no entre repeticiones (esa,
+  mucho menor, queda en ``pr_auc_std_repeticiones``). ``pr_auc_ic_inf`` / ``pr_auc_ic_sup``: intervalo del
+  95 % por bootstrap de asociados.
+- ``comparacion``: el campeón contra cada candidato, partición a partición (todos usan las mismas), con la
+  prueba t corregida de Nadeau y Bengio para validación cruzada repetida. Si el intervalo de la diferencia
+  incluye el 0, la elección **no es concluyente** (empate estadístico) y así se reporta.
+- ``umbrales_honestos``: los umbrales se eligen y se miden sobre las mismas predicciones, lo que es optimista.
+  Aquí se repite la regla en validación anidada: en cada partición externa los umbrales salen solo del
+  entrenamiento y se miden en la prueba.
 """
 
 from __future__ import annotations
@@ -28,6 +40,7 @@ from typing import TYPE_CHECKING
 import joblib
 import numpy as np
 import pandas as pd
+from scipy import stats
 from sklearn.base import BaseEstimator, clone
 from sklearn.metrics import (
     average_precision_score,
@@ -43,6 +56,7 @@ from sklearn.utils.metaestimators import available_if
 from sklearn.utils.validation import check_is_fitted
 
 from proyecto_ml import abandono as a
+from proyecto_ml.models import get_models
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -58,11 +72,21 @@ ARCHIVO_MODELO = "abandono_campeon.joblib"
 ARCHIVO_INFO = "campeon.json"
 ARCHIVO_GRUPOS = "abandono_kmeans.joblib"
 ZONAS = ("se retira", "zona gris", "se queda")
+NIVEL = 0.95  # de los intervalos (bootstrap y diferencia entre candidatos)
+BOOTSTRAP = 1000
+TITULOS = {  # los 4 supervisados + los candidatos extra (lista_candidatos y --optuna)
+    **a.TITULOS,
+    "logreg_sin_balancear": "Logística sin balancear",
+    "logreg_target": "Logística + TargetEncoder",
+    "logreg_indicador": "Logística + indicador de vacíos",
+    "random_forest_optuna": "Random Forest (Optuna)",
+    "hist_gb_optuna": "HistGB (Optuna)",
+}
 
 
 def datos_eleccion(ruta: Path | None = None) -> tuple[pd.DataFrame, str]:
     """Los asociados con que se elige el campeón y de dónde salieron: ``ruta``, o el archivo de
-    ``make datos-desarrollo``, o los mismos 2.000 generados en memoria (Streamlit Community Cloud)."""
+    ``make datos-desarrollo``, o los mismos 5.000 generados en memoria (Streamlit Community Cloud)."""
     from proyecto_ml.config import PROCESSED_DIR
     from proyecto_ml.generador import NOMBRE_DESARROLLO, datos_desarrollo
 
@@ -74,18 +98,124 @@ def datos_eleccion(ruta: Path | None = None) -> tuple[pd.DataFrame, str]:
     return datos_desarrollo(), "datos_desarrollo() en memoria"
 
 
-def puntajes_fuera_de_particion(modelo: Pipeline, X, y, folds: int = FOLDS, repeticiones: int = REPETICIONES):
-    """Matriz (repeticiones x filas): el puntaje de cada asociado dado por un modelo que no lo vio.
+def lista_candidatos(X: pd.DataFrame | None = None, random_state: int = 42) -> dict[str, Pipeline]:
+    """Los 4 supervisados + las técnicas que en ``make tecnicas`` le ganan a la base de forma concluyente
+    (intervalo de la diferencia partición a partición sin el 0), aplicadas a la logística, que es esa base:
 
-    Cada repetición baraja las particiones con otra semilla. ``cross_val_predict`` clona el modelo.
+    - ``logreg_sin_balancear``: sin ``class_weight`` (+0,057; IC 0,028 a 0,086).
+    - ``logreg_target``: categóricas con TargetEncoder (+0,049; IC 0,024 a 0,073).
+    - ``logreg_indicador``: indicador de vacíos, solo si ``X`` tiene vacíos en las numéricas (sin vacíos no
+      agrega columnas). En ``make tecnicas`` no fue concluyente: allí los vacíos se pusieron al azar.
+
+    Las variables nuevas y el binning no entran: su diferencia con la base cabe en el ruido (variables nuevas
+    −0,003, IC −0,020 a 0,015).
+
+    Los de Optuna se suman con ``make campeon ARGS="--optuna 30"`` (se afinan con estos mismos datos). Los
+    afinados por grilla de ``make afinar`` (Ridge, pycaret_lr) no entran: son Ridge y la logística con otro
+    alpha/C, buscados con otros datos (DATOS_ASOCIADOS del .env), no con los de elección.
     """
-    metodo = a.metodo_puntaje(modelo)
-    filas = []
+    salida = a.modelos_supervisados(random_state=random_state)
+    logistica = get_models(random_state)["logreg"]
+    sin_balancear = clone(logistica).set_params(class_weight=None)
+    salida["logreg_sin_balancear"] = a.armar_pipeline(sin_balancear, random_state=random_state)
+    salida["logreg_target"] = a.armar_pipeline(clone(logistica), encoding="target", random_state=random_state)
+    if X is not None and a.preparar(X)[a.NUMERICAS].isna().any().any():
+        salida["logreg_indicador"] = a.armar_pipeline(
+            clone(logistica), missing_indicator=True, random_state=random_state
+        )
+    return salida
+
+
+def puntajes_fuera_de_particion(modelo: Pipeline, X, y, folds: int = FOLDS, repeticiones: int = REPETICIONES):
+    """(puntajes, pr_auc_particion): el puntaje de cada asociado dado por un modelo que no lo vio (repeticiones x
+    filas) y la PR-AUC de cada partición (repeticiones x folds).
+
+    Cada repetición baraja con su propia semilla, la misma para todos los candidatos: así se pueden comparar
+    partición a partición (``comparar_particiones``).
+    """
+    metodo, y = a.metodo_puntaje(modelo), np.asarray(y)
+    puntajes, por_particion = np.empty((repeticiones, len(y))), np.empty((repeticiones, folds))
     for r in range(repeticiones):
         cv = StratifiedKFold(n_splits=folds, shuffle=True, random_state=r)
-        p = cross_val_predict(modelo, X, y, cv=cv, method=metodo)
-        filas.append(p[:, 1] if p.ndim == 2 else p)
-    return np.vstack(filas)
+        for k, (entrena, prueba) in enumerate(cv.split(X, y)):
+            p = getattr(clone(modelo).fit(X.iloc[entrena], y[entrena]), metodo)(X.iloc[prueba])
+            puntajes[r, prueba] = p[:, 1] if p.ndim == 2 else p
+            por_particion[r, k] = average_precision_score(y[prueba], puntajes[r, prueba])
+    return puntajes, por_particion
+
+
+def intervalo_bootstrap(y, puntaje, n: int = BOOTSTRAP, nivel: float = NIVEL, seed: int = 0) -> tuple[float, float]:
+    """Intervalo de la PR-AUC remuestreando asociados con reemplazo (dentro de cada clase, para que la tasa de
+    retiro no cambie entre remuestras)."""
+    rng, y, puntaje = np.random.default_rng(seed), np.asarray(y), np.asarray(puntaje)
+    positivos, negativos = np.flatnonzero(y == 1), np.flatnonzero(y == 0)
+    valores = []
+    for _ in range(n):
+        i = np.concatenate([rng.choice(positivos, len(positivos)), rng.choice(negativos, len(negativos))])
+        valores.append(average_precision_score(y[i], puntaje[i]))
+    bajo, alto = np.quantile(valores, [(1 - nivel) / 2, (1 + nivel) / 2])
+    return float(bajo), float(alto)
+
+
+def comparar_particiones(a_particion: np.ndarray, b_particion: np.ndarray, folds: int, nivel: float = NIVEL) -> dict:
+    """Diferencia de PR-AUC (a − b) partición a partición, con la prueba t corregida de Nadeau y Bengio.
+
+    En validación cruzada las particiones comparten casi todo el entrenamiento: sus puntajes no son
+    independientes y la prueba t común da intervalos demasiado estrechos. La corrección suma a la varianza
+    ``n_prueba / n_entrenamiento`` (= 1 / (folds − 1)).
+    """
+    d = (np.asarray(a_particion) - np.asarray(b_particion)).ravel()
+    j = d.size
+    error = np.sqrt((1 / j + 1 / (folds - 1)) * d.var(ddof=1))
+    margen = stats.t.ppf((1 + nivel) / 2, j - 1) * error
+    # Sin variación (todas las diferencias iguales, p. ej. un candidato contra sí mismo): p = 1 si son 0, si no 0.
+    p_valor = 2 * stats.t.sf(abs(d.mean()) / error, j - 1) if error > 0 else float(d.mean() == 0)
+    return {
+        "diferencia": float(d.mean()),
+        "ic_inf": float(d.mean() - margen),
+        "ic_sup": float(d.mean() + margen),
+        "p_valor": float(p_valor),
+        "gana_en": float((d > 0).mean()),  # fracción de particiones en que a supera a b
+    }
+
+
+def umbrales_honestos(
+    modelo: Pipeline, X, y, folds: int = FOLDS, beta: float = BETA, precision_min: float = PRECISION_MIN, seed=100
+) -> dict:
+    """Precisión y recall de la REGLA de umbrales medidos sin optimismo (validación anidada).
+
+    En cada partición externa: predicciones fuera de partición internas (3 particiones) del entrenamiento ->
+    ``elegir_umbrales`` -> modelo entrenado con todo el entrenamiento -> se aplican esos umbrales a la prueba,
+    que no participó en elegirlos. Al final se juntan las pruebas.
+    """
+    metodo, y = a.metodo_puntaje(modelo), np.asarray(y)
+    alerta, alto = np.zeros(len(y), dtype=bool), np.zeros(len(y), dtype=bool)
+    sin_alto = 0
+    for entrena, prueba in StratifiedKFold(folds, shuffle=True, random_state=seed).split(X, y):
+        Xe, ye = X.iloc[entrena], y[entrena]
+        interno = cross_val_predict(
+            modelo, Xe, ye, cv=StratifiedKFold(3, shuffle=True, random_state=seed), method=metodo
+        )
+        u = elegir_umbrales(ye, interno[:, 1] if interno.ndim == 2 else interno, beta, precision_min)
+        p = a.puntaje(clone(modelo).fit(Xe, ye), X.iloc[prueba])
+        alerta[prueba] = p >= u["umbral"]
+        if u["umbral_alto"] is None:
+            sin_alto += 1
+        else:
+            alto[prueba] = p >= u["umbral_alto"]
+    positivos = max(int(y.sum()), 1)
+
+    def _precision(marcados) -> float:
+        return float((marcados & (y == 1)).sum() / marcados.sum()) if marcados.any() else float("nan")
+
+    return {
+        "precision": _precision(alerta),
+        "recall": float((alerta & (y == 1)).sum() / positivos),
+        "precision_alto": _precision(alto),
+        "recall_alto": float((alto & (y == 1)).sum() / positivos),
+        "alertas_alto": int(alto.sum()),
+        "particiones_sin_alto": sin_alto,
+    }
 
 
 def elegir_umbrales(y, puntaje, beta: float = BETA, precision_min: float = PRECISION_MIN) -> dict:
@@ -171,7 +301,8 @@ class Candidato:
     modelo: Pipeline  # sin entrenar
     puntajes: np.ndarray  # fuera de partición, repeticiones x filas
     umbrales: dict
-    metricas: dict  # cv_pr_auc (media y std entre repeticiones), cv_roc_auc, mcc y kappa al umbral...
+    metricas: dict  # pr_auc (std entre particiones, IC bootstrap), roc_auc, umbrales, mcc y kappa al umbral...
+    pr_auc_particion: np.ndarray | None = None  # repeticiones x folds, mismas particiones en todos
 
     @property
     def promedio(self) -> np.ndarray:
@@ -180,21 +311,25 @@ class Candidato:
 
 
 def evaluar(nombre: str, modelo: Pipeline, X, y, folds: int = FOLDS, repeticiones: int = REPETICIONES, **kw):
-    puntajes = puntajes_fuera_de_particion(modelo, X, y, folds, repeticiones)
+    puntajes, por_particion = puntajes_fuera_de_particion(modelo, X, y, folds, repeticiones)
     pr = [average_precision_score(y, p) for p in puntajes]
     roc = [roc_auc_score(y, p) for p in puntajes]
     promedio = puntajes.mean(axis=0)  # el umbral se elige sobre el promedio de las repeticiones
     umbrales = elegir_umbrales(y, promedio, **kw)
     alerta = (promedio >= umbrales["umbral"]).astype(int)
+    ic_inf, ic_sup = intervalo_bootstrap(y, promedio)
     metricas = {
         "pr_auc": float(np.mean(pr)),
-        "pr_auc_std": float(np.std(pr)),
+        "pr_auc_std": float(np.std(por_particion, ddof=1)),  # entre particiones: la variación honesta
+        "pr_auc_std_repeticiones": float(np.std(pr)),
+        "pr_auc_ic_inf": ic_inf,
+        "pr_auc_ic_sup": ic_sup,
         "roc_auc": float(np.mean(roc)),
         **{k: v for k, v in umbrales.items() if v is not None},
         "mcc": float(matthews_corrcoef(y, alerta)),  # al umbral de alerta, corrigen el desbalance
         "kappa": float(cohen_kappa_score(y, alerta)),
     }
-    return Candidato(nombre, modelo, puntajes, umbrales, metricas)
+    return Candidato(nombre, modelo, puntajes, umbrales, metricas, por_particion)
 
 
 @dataclass
@@ -209,11 +344,31 @@ class Campeon:
     grupos: dict  # perfil y tasa de retiro real de cada grupo de KMeans
     info: dict = field(default_factory=dict)  # datos, filas, horizonte, fecha...
     y: np.ndarray | None = None  # objetivo de los datos de elección (para la figura de umbrales)
+    honestos: dict | None = None  # umbrales_honestos del campeón (validación anidada)
 
     def tabla(self) -> pd.DataFrame:
         """Candidatos x métricas de la validación cruzada, ordenados por el criterio."""
         tabla = pd.DataFrame({n: c.metricas for n, c in self.candidatos.items()}).T
         return tabla.sort_values(CRITERIO, ascending=False)
+
+    def comparacion(self) -> pd.DataFrame:
+        """El campeón contra cada candidato: diferencia de PR-AUC, su intervalo, p y si es concluyente."""
+        propio = self.candidatos[self.nombre].pr_auc_particion
+        folds = self.info.get("folds", FOLDS)
+        filas = {
+            n: comparar_particiones(propio, cand.pr_auc_particion, folds)
+            for n, cand in self.candidatos.items()
+            if n != self.nombre and cand.pr_auc_particion is not None
+        }
+        tabla = pd.DataFrame(filas).T
+        if len(tabla):
+            tabla["concluyente"] = tabla["ic_inf"] > 0  # el intervalo de (campeón − candidato) no toca el 0
+        return tabla.sort_values("diferencia") if len(tabla) else tabla
+
+    def empatados(self) -> list[str]:
+        """Candidatos que el campeón no supera de forma concluyente (empate estadístico)."""
+        tabla = self.comparacion()
+        return list(tabla.index[~tabla["concluyente"].astype(bool)]) if len(tabla) else []
 
     def con_zonas(self) -> ModeloZonas:
         """El pipeline entrenado con sus dos umbrales: lo que se guarda y se registra en MLflow."""
@@ -245,10 +400,14 @@ def elegir(
     beta: float = BETA,
     precision_min: float = PRECISION_MIN,
     info: dict | None = None,
+    honestos: bool = True,
 ) -> Campeon:
-    """Evalúa los candidatos (por defecto los 4 supervisados), elige el de mejor PR-AUC y lo entrena con todo."""
+    """Evalúa los candidatos (por defecto ``lista_candidatos(X)``), elige el de mejor PR-AUC y lo entrena con todo.
+
+    ``honestos``: mide además la regla de umbrales del campeón en validación anidada (``umbrales_honestos``).
+    """
     X, y = a.separar(df)  # filas crudas: el pipeline prepara las variables (PrepararVariables)
-    candidatos = candidatos or a.modelos_supervisados()
+    candidatos = candidatos or lista_candidatos(X)
     evaluados = {
         n: evaluar(n, m, X, y, folds, repeticiones, beta=beta, precision_min=precision_min)
         for n, m in candidatos.items()
@@ -277,6 +436,7 @@ def elegir(
         grupos=perfil_grupos(agrupador, df),
         info=info,
         y=y.to_numpy(),
+        honestos=umbrales_honestos(elegido.modelo, X, y, folds, beta, precision_min) if honestos else None,
     )
 
 
@@ -284,13 +444,16 @@ def resumen(campeon: Campeon) -> dict:
     """Lo que va en campeon.json: modelo, umbrales, métricas de todos los candidatos, grupos y datos."""
     return {
         "modelo": campeon.nombre,
-        "titulo": a.TITULOS.get(campeon.nombre, campeon.nombre),
+        "titulo": TITULOS.get(campeon.nombre, campeon.nombre),
         "metodo": campeon.metodo,
         "umbral": campeon.umbral,
         "umbral_alto": campeon.umbral_alto,
         "criterio": CRITERIO,
         "metricas_cv": campeon.candidatos[campeon.nombre].metricas,
         "candidatos": {n: c.metricas for n, c in campeon.candidatos.items()},
+        "comparacion": campeon.comparacion().to_dict(orient="index"),  # campeón − candidato, partición a partición
+        "empatados": campeon.empatados(),
+        "umbrales_honestos": campeon.honestos,
         "confusion_cv": {  # fuera de partición, con cada umbral: tn, fp, fn, tp
             n: dict(zip(("tn", "fp", "fn", "tp"), map(int, m.ravel()), strict=True))
             for n, m in (matrices_confusion(campeon).items() if campeon.y is not None else ())
@@ -364,7 +527,7 @@ def figura_umbrales(campeon: Campeon):
         )
     escala = "probabilidad" if campeon.metodo == "predict_proba" else "puntaje (distancia a la frontera)"
     fig.update_layout(
-        title=f"Campeón: {a.TITULOS.get(campeon.nombre, campeon.nombre)} — precisión y recall según el umbral",
+        title=f"Campeón: {TITULOS.get(campeon.nombre, campeon.nombre)} — precisión y recall según el umbral",
         xaxis_title=f"Umbral ({escala})",
         yaxis_title="",
         yaxis_tickformat=".0%",
@@ -378,7 +541,8 @@ def figura_umbrales(campeon: Campeon):
 
 # ---------------------------------------------------------------- curva ROC y matriz de confusión del campeón
 
-_COLORES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]  # paleta de referencia, un color fijo por candidato
+# Paleta de referencia en orden fijo, un color por candidato (hasta 8: los de lista_candidatos y --optuna)
+_COLORES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"]
 _GRIS, _TINTA = "#898781", "#0b0b0b"
 
 
@@ -437,7 +601,7 @@ def figura_confusion(campeon: Campeon):
     fig.update_yaxes(title_text="Real", autorange="reversed", row=1, col=1)
     fig.update_yaxes(autorange="reversed")
     fig.update_layout(
-        title=f"Campeón: {a.TITULOS.get(campeon.nombre, campeon.nombre)} — matriz de confusión "
+        title=f"Campeón: {TITULOS.get(campeon.nombre, campeon.nombre)} — matriz de confusión "
         f"(fuera de partición, n={len(campeon.y)})",
         template="plotly_white",
         height=420,
@@ -461,10 +625,11 @@ def figura_roc(campeon: Campeon):
     fig.add_scatter(
         x=[0, 1], y=[0, 1], mode="lines", name="azar (AUC 0,50)", line={"color": _GRIS, "width": 1, "dash": "dot"}
     )
-    for color, (nombre, candidato) in zip(_COLORES, campeon.candidatos.items(), strict=False):
+    for i, (nombre, candidato) in enumerate(campeon.candidatos.items()):
+        color = _COLORES[i % len(_COLORES)]
         fpr, tpr, cortes = roc_curve(y, candidato.promedio)
         es_campeon = nombre == campeon.nombre
-        titulo = a.TITULOS.get(nombre, nombre)
+        titulo = TITULOS.get(nombre, nombre)
         fig.add_scatter(
             x=fpr,
             y=tpr,

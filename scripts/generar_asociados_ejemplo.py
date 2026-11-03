@@ -4,7 +4,7 @@ Uso:
     uv run python scripts/generar_asociados_ejemplo.py                 # los 50 de data/ejemplo/ (make ejemplo)
     uv run python scripts/generar_asociados_ejemplo.py --rows 1000 --seed 7 --output-dir data/processed --nombre nuevos
     uv run python scripts/generar_asociados_ejemplo.py --faltantes --output-dir data/processed --nombre sucios
-    uv run python scripts/generar_asociados_ejemplo.py --desarrollo   # los 2.000 de desarrollo (make datos-desarrollo)
+    uv run python scripts/generar_asociados_ejemplo.py --desarrollo   # los 5.000 de desarrollo (make datos-desarrollo)
     uv run python scripts/generar_asociados_ejemplo.py --rows 1000 --tasa-retiro 0.1 --fuerza-senal 0.5 \\
         --output-dir data/processed --nombre senal_debil                # retirados menos distinguibles
 Luego: uv run python scripts/ingesta.py --input data/ejemplo/asociados_ejemplo.parquet --target "#RETIROS"

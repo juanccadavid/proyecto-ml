@@ -35,7 +35,7 @@ from proyecto_ml.config import FIGURES_DIR, METRICS_DIR
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--datos", type=Path, help="Por defecto los de desarrollo (2.000, semilla 7, 10 %%)")
+    parser.add_argument("--datos", type=Path, help="Por defecto los de desarrollo (5.000, semilla 7, 10 %%)")
     parser.add_argument(
         "--horizonte", type=int, default=a.HORIZONTE_MESES, help="Meses de la foto (0 = todos al corte)"
     )
