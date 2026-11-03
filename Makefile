@@ -26,7 +26,7 @@ ARGS ?=
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup setup-hf demo-data demo train train-hf abandono pycaret afinar mlflow-ui app simulador \
+.PHONY: help setup setup-hf demo-data demo train train-hf abandono pycaret afinar optuna mlflow-ui app simulador \
         ejemplo contrato contrato-sql contrato-web supabase-subir supabase-bajar formulario \
         test test-fast cov lint format check hooks secrets up down logs salt bundle clean clean-all
 
@@ -74,6 +74,9 @@ pycaret: ## Compara con PyCaret (AutoML) vs. los modelos de abandono (instala el
 
 afinar: ## Busca los mejores hiperparámetros de Ridge y pycaret_lr (GridSearchCV; extra pycaret)
 	$(UV) run --extra pycaret python scripts/afinar_modelos.py $(if $(DATA),--datos $(DATA)) $(ARGS)
+
+optuna: ## Afina Random Forest y HistGB con Optuna (búsqueda en rangos con poda), validados con nuevos
+	$(PY) scripts/afinar_optuna.py $(if $(DATA),--datos $(DATA)) $(ARGS)
 
 # ==============================================================================
 # Servicios locales

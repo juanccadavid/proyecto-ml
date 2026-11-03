@@ -19,6 +19,7 @@ dependencies = [
     "matplotlib>=3.8",
     "pandera>=0.24",
     "polars>=1.0",
+    "optuna>=4.0",
 ]
 
 [project.optional-dependencies]

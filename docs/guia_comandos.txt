@@ -133,6 +133,11 @@
                            e imprime la tabla por partición: pipeline | fold | Accuracy | AUC.
                            Gráfico de bigotes: reports/figures/afinamiento_bigotes.png
                            (opcional: instala el extra pycaret). ej.: make pycaret ARGS="--ordenar Recall"
+     make optuna           Optuna afina Random Forest y HistGB (60 intentos por modelo, con poda), con
+                           el preprocesamiento como hiperparámetro; compara por defecto vs. afinado con
+                           asociados nuevos. ej.: ARGS="--intentos 200 --metrica F1 --modelos hist_gb"
+                           Gráficos interactivos: reports/figures/optuna_random_forest.html y optuna_hist_gb.html
+                           Guardar y continuar el estudio: ARGS="--storage sqlite:///optuna.db"
      make train            compara logística / random forest / HistGB con MLflow (DATA=... ARGS=...)
                            con clean_dataset + ColumnDropper activos (ARGS="--sin-limpieza" los apaga)
      make demo             dataset sintético genérico + entrenamiento

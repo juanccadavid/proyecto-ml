@@ -29,6 +29,7 @@ models/**
 *.pkl
 mlflow.db
 mlflow.db-journal
+optuna.db
 mlruns/
 mlartifacts/
 
