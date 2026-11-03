@@ -27,7 +27,7 @@ ARGS ?=
 .DEFAULT_GOAL := help
 
 .PHONY: help setup setup-hf demo-data demo train train-hf abandono campeon pycaret afinar optuna mlflow-ui app \
-        simulador ejemplo datos-desarrollo contrato contrato-sql contrato-web supabase-subir supabase-bajar formulario \
+        simulador ejemplo datos-desarrollo contrato contrato-sql contrato-web supabase-subir supabase-bajar supabase-crear formulario \
         test test-fast cov lint format check hooks secrets up down logs salt bundle clean clean-all
 
 # ==============================================================================
@@ -116,6 +116,9 @@ supabase-subir: ## Sube un dataset a Supabase con la clave secreta (DATA=..., po
 
 supabase-bajar: ## Descarga la tabla de Supabase a data/raw/ (valida con el contrato)
 	$(PY) scripts/contrato_datos.py bajar $(ARGS)
+
+supabase-crear: ## Crea las tablas en Supabase con supabase/asociados.sql (requiere SUPABASE_DB_URL)
+	$(UV) run --with "psycopg[binary]" python scripts/crear_tablas_supabase.py
 
 formulario: ## Abre el formulario web en el navegador
 	@test -f web/config.js || echo "!! Falta web/config.js (copia web/config.example.js): podrás generar pero no enviar"
