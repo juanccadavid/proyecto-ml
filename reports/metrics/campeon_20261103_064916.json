@@ -1,0 +1,288 @@
+{
+  "modelo": "logreg",
+  "titulo": "Regresión logística",
+  "metodo": "predict_proba",
+  "umbral": 0.2907423481373628,
+  "umbral_alto": 0.8817462656565511,
+  "criterio": "pr_auc",
+  "metricas_cv": {
+    "pr_auc": 0.8746639105179868,
+    "pr_auc_std": 0.005379721936937136,
+    "roc_auc": 0.9945798707294552,
+    "umbral": 0.2907423481373628,
+    "fbeta": 0.8185840707964602,
+    "precision": 0.5606060606060606,
+    "recall": 0.925,
+    "umbral_alto": 0.8817462656565511,
+    "precision_alto": 0.8157894736842105,
+    "recall_alto": 0.775
+  },
+  "candidatos": {
+    "ridge": {
+      "pr_auc": 0.82723910767458,
+      "pr_auc_std": 0.012393188498969232,
+      "roc_auc": 0.9863942751615883,
+      "umbral": 0.2582079254875734,
+      "fbeta": 0.7960199004975125,
+      "precision": 0.7804878048780488,
+      "recall": 0.8,
+      "umbral_alto": 0.28096858193550805,
+      "precision_alto": 0.8157894736842105,
+      "recall_alto": 0.775
+    },
+    "logreg": {
+      "pr_auc": 0.8746639105179868,
+      "pr_auc_std": 0.005379721936937136,
+      "roc_auc": 0.9945798707294552,
+      "umbral": 0.2907423481373628,
+      "fbeta": 0.8185840707964602,
+      "precision": 0.5606060606060606,
+      "recall": 0.925,
+      "umbral_alto": 0.8817462656565511,
+      "precision_alto": 0.8157894736842105,
+      "recall_alto": 0.775
+    },
+    "random_forest": {
+      "pr_auc": 0.8161229002073517,
+      "pr_auc_std": 0.019462361603703442,
+      "roc_auc": 0.9923684210526317,
+      "umbral": 0.09555555555555556,
+      "fbeta": 0.8597285067873303,
+      "precision": 0.6229508196721312,
+      "recall": 0.95,
+      "umbral_alto": 0.18666666666666668,
+      "precision_alto": 0.8076923076923077,
+      "recall_alto": 0.525
+    },
+    "hist_gb": {
+      "pr_auc": 0.7769083688461947,
+      "pr_auc_std": 0.03336518978330504,
+      "roc_auc": 0.987950138504155,
+      "umbral": 0.10315072155155852,
+      "fbeta": 0.7555555555555555,
+      "precision": 0.5230769230769231,
+      "recall": 0.85,
+      "umbral_alto": 0.5350522854095857,
+      "precision_alto": 0.8125,
+      "recall_alto": 0.65
+    }
+  },
+  "grupos": {
+    "riesgo": {
+      "asociados": 186,
+      "tasa_retiro": 0.12903225806451613,
+      "perfil": {
+        "#SOLICITUD_DISMINUCIONCUOTAS": 0.4408602150537634,
+        "#SOLICITUD_CANCELACIONAHORROS": 0.26881720430107525,
+        "#SOLICITUD_RETIROPARCIALAHORROS": 0.6344086021505376,
+        "#CANTIDAD_AHORROSALAVISTA": 2.0,
+        "#CANTIDAD_AHORROSCONTRACTUALES": 0.9946236559139786,
+        "CANCELACIONCREDITOS_ULT3MESES": 1.0806451612903227,
+        "#SOLICITUDCREDITOS_ULT3MESES": 0.9032258064516129,
+        "#CANTIDAD_SERVICIOS": 3.478494623655914,
+        "#INTENCIONRETIROS_ULT3MESES": 0.4086021505376344
+      }
+    },
+    "estable": {
+      "asociados": 1659,
+      "tasa_retiro": 0.009644364074743821,
+      "perfil": {
+        "#SOLICITUD_DISMINUCIONCUOTAS": 0.3104279686558166,
+        "#SOLICITUD_CANCELACIONAHORROS": 0.10970464135021103,
+        "#SOLICITUD_RETIROPARCIALAHORROS": 0.5961422543701025,
+        "#CANTIDAD_AHORROSALAVISTA": 2.009644364074744,
+        "#CANTIDAD_AHORROSCONTRACTUALES": 0.980108499095841,
+        "CANCELACIONCREDITOS_ULT3MESES": 4.3021142204224816e-16,
+        "#SOLICITUDCREDITOS_ULT3MESES": 0.9119951778179626,
+        "#CANTIDAD_SERVICIOS": 3.5280289330922243,
+        "#INTENCIONRETIROS_ULT3MESES": 0.21458710066305012
+      }
+    }
+  },
+  "fecha": "2026-11-03T06:49:15",
+  "filas": 1845,
+  "tasa_retiro": 0.02168021680216802,
+  "folds": 5,
+  "repeticiones": 3,
+  "beta": 2.0,
+  "precision_min": 0.8,
+  "datos": "datos_desarrollo() en memoria",
+  "horizonte_meses": 3,
+  "fecha_observacion": "2026-07-31",
+  "nuevos": {
+    "asociados": 925,
+    "base_rate": 0.016216216216216217,
+    "roc_auc": 0.9975091575091575,
+    "pr_auc": 0.9231762681762682,
+    "precision": 0.4375,
+    "recall": 0.9333333333333333,
+    "f1": 0.5957446808510638,
+    "recall_at_10pct": 1.0
+  },
+  "zonas_nuevos": [
+    {
+      "zona": "se retira",
+      "asociados": 19,
+      "se_retiran": 14,
+      "tasa_retiro": 0.7368421052631579
+    },
+    {
+      "zona": "zona gris",
+      "asociados": 13,
+      "se_retiran": 0,
+      "tasa_retiro": 0.0
+    },
+    {
+      "zona": "se queda",
+      "asociados": 893,
+      "se_retiran": 1,
+      "tasa_retiro": 0.0011198208286674132
+    }
+  ],
+  "escenarios": [
+    {
+      "escenario": "tasa 30 %, señal 100 % (generador)",
+      "modelo": "ridge",
+      "base_rate": 0.0698856416772554,
+      "roc_auc": 0.9634376552409338,
+      "pr_auc": 0.8557825795011578,
+      "precision": 0.8541666666666666,
+      "recall": 0.7454545454545455
+    },
+    {
+      "escenario": "tasa 30 %, señal 100 % (generador)",
+      "modelo": "logreg",
+      "base_rate": 0.0698856416772554,
+      "roc_auc": 0.9807252856433185,
+      "pr_auc": 0.9107994549488649,
+      "precision": 0.7777777777777778,
+      "recall": 0.8909090909090909
+    },
+    {
+      "escenario": "tasa 30 %, señal 100 % (generador)",
+      "modelo": "random_forest",
+      "base_rate": 0.0698856416772554,
+      "roc_auc": 0.9747143566815698,
+      "pr_auc": 0.8982347757256591,
+      "precision": 0.7666666666666667,
+      "recall": 0.8363636363636363
+    },
+    {
+      "escenario": "tasa 30 %, señal 100 % (generador)",
+      "modelo": "hist_gb",
+      "base_rate": 0.0698856416772554,
+      "roc_auc": 0.9762543467461501,
+      "pr_auc": 0.8807834662093332,
+      "precision": 0.86,
+      "recall": 0.7818181818181819
+    },
+    {
+      "escenario": "tasa 10 %, señal 100 %",
+      "modelo": "ridge",
+      "base_rate": 0.016216216216216217,
+      "roc_auc": 0.9907692307692307,
+      "pr_auc": 0.8305306267806267,
+      "precision": 0.5909090909090909,
+      "recall": 0.8666666666666667
+    },
+    {
+      "escenario": "tasa 10 %, señal 100 %",
+      "modelo": "logreg",
+      "base_rate": 0.016216216216216217,
+      "roc_auc": 0.9975091575091575,
+      "pr_auc": 0.9231762681762682,
+      "precision": 0.4375,
+      "recall": 0.9333333333333333
+    },
+    {
+      "escenario": "tasa 10 %, señal 100 %",
+      "modelo": "random_forest",
+      "base_rate": 0.016216216216216217,
+      "roc_auc": 0.9963369963369964,
+      "pr_auc": 0.9130158730158731,
+      "precision": 0.4666666666666667,
+      "recall": 0.9333333333333333
+    },
+    {
+      "escenario": "tasa 10 %, señal 100 %",
+      "modelo": "hist_gb",
+      "base_rate": 0.016216216216216217,
+      "roc_auc": 0.9852014652014651,
+      "pr_auc": 0.7856356801093642,
+      "precision": 0.375,
+      "recall": 0.8
+    },
+    {
+      "escenario": "tasa 10 %, señal 50 %",
+      "modelo": "ridge",
+      "base_rate": 0.016216216216216217,
+      "roc_auc": 0.9737728937728938,
+      "pr_auc": 0.5473165473505085,
+      "precision": 0.75,
+      "recall": 0.6
+    },
+    {
+      "escenario": "tasa 10 %, señal 50 %",
+      "modelo": "logreg",
+      "base_rate": 0.016216216216216217,
+      "roc_auc": 0.9857875457875458,
+      "pr_auc": 0.6415613425332095,
+      "precision": 0.5217391304347826,
+      "recall": 0.8
+    },
+    {
+      "escenario": "tasa 10 %, señal 50 %",
+      "modelo": "random_forest",
+      "base_rate": 0.016216216216216217,
+      "roc_auc": 0.9731501831501832,
+      "pr_auc": 0.5093401319871907,
+      "precision": 0.375,
+      "recall": 0.6
+    },
+    {
+      "escenario": "tasa 10 %, señal 50 %",
+      "modelo": "hist_gb",
+      "base_rate": 0.016216216216216217,
+      "roc_auc": 0.9561172161172161,
+      "pr_auc": 0.48282069059884686,
+      "precision": 0.5,
+      "recall": 0.4666666666666667
+    },
+    {
+      "escenario": "tasa 10 %, señal 25 %",
+      "modelo": "ridge",
+      "base_rate": 0.016216216216216217,
+      "roc_auc": 0.7236630036630037,
+      "pr_auc": 0.1308796157416934,
+      "precision": 0.16666666666666666,
+      "recall": 0.06666666666666667
+    },
+    {
+      "escenario": "tasa 10 %, señal 25 %",
+      "modelo": "logreg",
+      "base_rate": 0.016216216216216217,
+      "roc_auc": 0.7549450549450549,
+      "pr_auc": 0.15632367120682805,
+      "precision": 0.1875,
+      "recall": 0.2
+    },
+    {
+      "escenario": "tasa 10 %, señal 25 %",
+      "modelo": "random_forest",
+      "base_rate": 0.016216216216216217,
+      "roc_auc": 0.7395238095238096,
+      "pr_auc": 0.13962784088268682,
+      "precision": 0.14285714285714285,
+      "recall": 0.13333333333333333
+    },
+    {
+      "escenario": "tasa 10 %, señal 25 %",
+      "modelo": "hist_gb",
+      "base_rate": 0.016216216216216217,
+      "roc_auc": 0.7457875457875457,
+      "pr_auc": 0.1193023181010806,
+      "precision": 0.11764705882352941,
+      "recall": 0.13333333333333333
+    }
+  ]
+}

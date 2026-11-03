@@ -109,9 +109,11 @@
      make contrato         valida data/ejemplo contra el contrato (o: make contrato DATA=otro.parquet)
      make contrato-sql     regenera supabase/asociados.sql después de cambiar el contrato
      make contrato-web     regenera web/contrato.js (campos del formulario)
-     make supabase-subir   sube un dataset a Supabase (valida antes; omite cédulas repetidas)
+     make supabase-subir   sube un dataset a Supabase con la clave secreta (valida antes; omite repetidos)
      make supabase-bajar   baja la tabla de Supabase a data/raw/ (valida; ver sección 7.6)
-     make formulario       abre el formulario web (datos aleatorios + botón Enviar)
+     make supabase-revisar revisa lo que envió el equipo por el formulario (asociados_entrada): valida
+                           fila a fila y sin repetidos; ARGS="--aplicar" pasa las válidas a asociados
+     make formulario       abre el formulario web (sesión del equipo con enlace por correo + Enviar)
                            En internet: https://juanccadavid.github.io/proyecto-ml/ (GitHub Pages; se
                            publica solo al fusionar cambios de web/ en main. Ver README.)
 
@@ -133,6 +135,11 @@
                            e imprime la tabla por partición: pipeline | fold | Accuracy | AUC.
                            Gráfico de bigotes: reports/figures/afinamiento_bigotes.png
                            (opcional: instala el extra pycaret). ej.: make pycaret ARGS="--ordenar Recall"
+     make campeon          elige el modelo campeón (PR-AUC en validación cruzada repetida) con la foto a
+                           3 meses y los datos de desarrollo; umbral de alerta (F2) y alto (precisión 80 %):
+                           zonas se retira / zona gris / se queda. Escenarios (tasa 10 %, señal 50 % y 25 %),
+                           KMeans y MLflow (models:/abandono@campeon). Solo el campeón queda en models/.
+     make datos-desarrollo los 2.000 asociados de desarrollo (semilla 7, 10 % de retiro) en data/processed/
      make optuna           Optuna afina Random Forest y HistGB (60 intentos por modelo, con poda), con
                            el preprocesamiento como hiperparámetro; compara por defecto vs. afinado con
                            asociados nuevos. ej.: ARGS="--intentos 200 --metrica F1 --modelos hist_gb"
@@ -142,7 +149,8 @@
                            con clean_dataset + ColumnDropper activos (ARGS="--sin-limpieza" los apaga)
      make demo             dataset sintético genérico + entrenamiento
      make mlflow-ui        ver experimentos en http://localhost:5000
-     make app              demo Streamlit en http://localhost:8501
+     make app              demo Streamlit genérica (plantilla) en http://localhost:8501
+     make simulador        simulador del abandono con el campeón en http://localhost:8501 (make campeon antes)
 
  3.4 Calidad (antes de abrir un PR: make check)
      make check            lint + todas las pruebas

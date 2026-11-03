@@ -3,6 +3,8 @@ services:
   app:
     build: .
     image: proyecto-ml:latest
+    # El simulador del abandono (con el campeón de models/; si no está, lo elige al arrancar).
+    command: streamlit run src/proyecto_ml/app_abandono.py --server.address=0.0.0.0 --server.port=8501 --server.headless=true
     ports:
       - "8501:8501"
     env_file:
@@ -11,7 +13,7 @@ services:
     environment:
       MLFLOW_TRACKING_URI: http://mlflow:5000
     volumes:
-      - ./models:/app/models:ro   # modelo entrenado (best_model.joblib)
+      - ./models:/app/models:ro   # el campeón (abandono_campeon.joblib + campeon.json)
       - ./data:/app/data:ro       # datos locales, solo lectura
     depends_on:
       - mlflow

@@ -11,6 +11,8 @@ Uso:
     GeneradorAsociados().guardar()                          # los 50 de data/ejemplo/ (seed 42)
 
     sucio = GeneradorAsociados(n=1000, faltantes=FALTANTES).generar()  # con datos faltantes
+    debil = GeneradorAsociados(n=1000, tasa_retiro=0.1, fuerza_senal=0.5).generar()  # señal a la mitad
+    df = datos_desarrollo()                                 # los 2.000 con que se elige el campeón
 
 La misma semilla produce siempre el mismo dataset; otra semilla, asociados distintos que siguen
 el mismo comportamiento (datos que un modelo nunca vio). Las fechas son fijas (no dependen del
@@ -28,6 +30,13 @@ import pandas as pd
 from proyecto_ml.config import DATA_DIR
 
 CARPETA_EJEMPLO = DATA_DIR / "ejemplo"
+
+# Datos de desarrollo: 2.000 asociados (semilla 7) con 10 % de retiro, más cerca de un fondo real que el
+# 30 % por defecto. Con ellos se elige el campeón; los 50 de data/ejemplo quedan para el contrato y las
+# pruebas. ``make datos-desarrollo`` los escribe en data/processed/ y el simulador los genera en memoria
+# cuando no hay archivo (Streamlit Community Cloud): mismos parámetros, mismos datos.
+DESARROLLO = {"n": 2000, "seed": 7, "tasa_retiro": 0.1}
+NOMBRE_DESARROLLO = "asociados_desarrollo"
 
 # Apellidos evidentemente ficticios para que nadie confunda un registro con una persona real.
 APELLIDOS = ["PRUEBA", "FICTICIO", "EJEMPLO", "DEMO", "SINTETICO", "MUESTRA", "SIMULADO", "MODELO", "PILOTO", "ENSAYO"]
@@ -143,14 +152,27 @@ def _fechas(rng: np.random.Generator, inicio: str, fin: str, n: int) -> pd.Serie
     return pd.Series(a + pd.to_timedelta(dias, unit="D")).dt.normalize()
 
 
-def _generar(n: int, seed: int, tasa_retiro: float) -> pd.DataFrame:
+def _senal(activo: float, retirado: float, fuerza: float) -> float:
+    """Valor del retirado con la señal escalada: activo + fuerza * (retirado - activo).
+
+    fuerza = 1 deja el valor original exacto (mismos datos que antes, bit a bit); 0 lo iguala al del
+    activo (retirados indistinguibles); 0.5 deja la mitad de la diferencia.
+    """
+    return retirado if fuerza == 1 else activo + fuerza * (retirado - activo)
+
+
+def _generar(n: int, seed: int, tasa_retiro: float, fuerza_senal: float = 1.0) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
     idx = np.arange(1, n + 1)
     pick = lambda opciones, **kw: rng.choice(opciones, n, **kw)  # noqa: E731
+    f = fuerza_senal
 
     # Retiro: la propensión sube con solicitudes de cancelación/disminución e intención declarada.
     retirado = rng.random(n) < tasa_retiro
-    contrato_fijo = rng.random(n) < np.where(retirado, 0.6, 0.25)
+    contrato_fijo = rng.random(n) < np.where(retirado, _senal(0.25, 0.6, f), 0.25)
+    # Los retirados usan un servicio menos. Con señal parcial, solo una fracción `f` de ellos. Ese sorteo
+    # usa su propio generador: con f = 1 no se llama y el resto del dataset no cambia.
+    menos_servicios = retirado if f == 1 else retirado & (np.random.default_rng([seed, 2]).random(n) < f)
     sexo = pick(["F", "M"])
     nombres = np.where(sexo == "F", pick(NOMBRES_F), pick(NOMBRES_M))
     segundo = np.where(rng.random(n) < 0.5, np.where(sexo == "F", pick(NOMBRES_F), pick(NOMBRES_M)), "")
@@ -249,16 +271,17 @@ def _generar(n: int, seed: int, tasa_retiro: float) -> pd.DataFrame:
         "EXTENSION": [str(x) if x else "" for x in np.where(rng.random(n) < 0.8, rng.integers(100, 500, n), 0)],
         "MODALIDADSALARIAL": np.where(integral, "INTEGRAL", "FIJO"),
         # ---- PRODUCTOS ----
-        "#SOLICITUD_DISMINUCIONCUOTAS": rng.poisson(np.where(retirado, 1.5, 0.3)),
-        "#SOLICITUD_CANCELACIONAHORROS": rng.poisson(np.where(retirado, 1.2, 0.1)),
-        "#SOLICITUD_RETIROPARCIALAHORROS": rng.poisson(np.where(retirado, 2.0, 0.6)),
+        # Tasa de Poisson: la del activo y, para el retirado, la del activo + f * (diferencia). Ver _senal.
+        "#SOLICITUD_DISMINUCIONCUOTAS": rng.poisson(np.where(retirado, _senal(0.3, 1.5, f), 0.3)),
+        "#SOLICITUD_CANCELACIONAHORROS": rng.poisson(np.where(retirado, _senal(0.1, 1.2, f), 0.1)),
+        "#SOLICITUD_RETIROPARCIALAHORROS": rng.poisson(np.where(retirado, _senal(0.6, 2.0, f), 0.6)),
         "#CANTIDAD_AHORROSALAVISTA": rng.integers(1, 4, n),
-        "#CANTIDAD_AHORROSCONTRACTUALES": rng.poisson(np.where(retirado, 0.3, 1.0)),
-        "CANCELACIONCREDITOS_ULT3MESES": rng.poisson(np.where(retirado, 0.8, 0.1)),
-        "#SOLICITUDCREDITOS_ULT3MESES": rng.poisson(np.where(retirado, 0.2, 0.9)),
-        "#CANTIDAD_SERVICIOS": np.maximum(rng.integers(1, 7, n) - retirado, 1),
+        "#CANTIDAD_AHORROSCONTRACTUALES": rng.poisson(np.where(retirado, _senal(1.0, 0.3, f), 1.0)),
+        "CANCELACIONCREDITOS_ULT3MESES": rng.poisson(np.where(retirado, _senal(0.1, 0.8, f), 0.1)),
+        "#SOLICITUDCREDITOS_ULT3MESES": rng.poisson(np.where(retirado, _senal(0.9, 0.2, f), 0.9)),
+        "#CANTIDAD_SERVICIOS": np.maximum(rng.integers(1, 7, n) - menos_servicios, 1),
         # ---- RETIRO ----
-        "#INTENCIONRETIROS_ULT3MESES": rng.poisson(np.where(retirado, 1.5, 0.2)),
+        "#INTENCIONRETIROS_ULT3MESES": rng.poisson(np.where(retirado, _senal(0.2, 1.5, f), 0.2)),
         "#RETIROS": retirado.astype(int),
         "MOTIVORETIRO": motivo,
     }
@@ -298,19 +321,32 @@ class GeneradorAsociados:
     faltantes=None genera datos limpios (cumplen el contrato). faltantes=FALTANTES (o un dict propio
     {columna: probabilidad}) vacía datos al azar para probar que el contrato los detecta y que el
     pipeline los imputa. Los faltantes usan otra semilla: el resto del dataset no cambia.
+
+    fuerza_senal escala qué tanto se diferencian los retirados de los activos (solicitudes, ahorros,
+    créditos, intención, contrato y servicios): 1.0 es el comportamiento de siempre, 0.5 la mitad de la
+    diferencia y 0 los vuelve indistinguibles. Sirve para medir cuánto se degrada un modelo si la señal
+    real es más débil que la del generador (``validacion.evaluar_escenarios``).
     """
 
     def __init__(
-        self, n: int = 50, seed: int = 42, tasa_retiro: float = 0.3, faltantes: dict[str, float] | None = None
+        self,
+        n: int = 50,
+        seed: int = 42,
+        tasa_retiro: float = 0.3,
+        faltantes: dict[str, float] | None = None,
+        fuerza_senal: float = 1.0,
     ):
+        if fuerza_senal < 0:
+            raise ValueError(f"fuerza_senal debe ser >= 0 (1 = señal de siempre); llegó {fuerza_senal}")
         self.n = n
         self.seed = seed
         self.tasa_retiro = tasa_retiro
         self.faltantes = faltantes
+        self.fuerza_senal = fuerza_senal
         self.reporte_faltantes_: dict[str, int] = {}
 
     def generar(self) -> pd.DataFrame:
-        df = _generar(self.n, self.seed, self.tasa_retiro)
+        df = _generar(self.n, self.seed, self.tasa_retiro, self.fuerza_senal)
         return self.agregar_faltantes(df) if self.faltantes else df
 
     def agregar_faltantes(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -338,3 +374,8 @@ class GeneradorAsociados:
             df.to_excel(xw, sheet_name="DATOS", index=False)
             diccionario().to_excel(xw, sheet_name="DICCIONARIO", index=False)
         return parquet, xlsx
+
+
+def datos_desarrollo() -> pd.DataFrame:
+    """Los asociados de desarrollo (``DESARROLLO``): 2.000, semilla 7, 10 % de retiro."""
+    return GeneradorAsociados(**DESARROLLO).generar()

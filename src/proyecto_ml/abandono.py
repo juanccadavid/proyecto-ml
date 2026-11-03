@@ -315,7 +315,11 @@ class AgrupadorAbandono:
 
     def predict(self, df: pd.DataFrame) -> np.ndarray:
         """1 = grupo de riesgo de abandono, 0 = grupo estable."""
-        return (self.pipeline.predict(preparar(df)[COMPORTAMIENTO]) == self.grupo_riesgo_).astype(int)
+        return self.grupos(preparar(df))
+
+    def grupos(self, X: pd.DataFrame) -> np.ndarray:
+        """Como ``predict``, pero con las variables ya preparadas (``preparar``), p. ej. en el simulador."""
+        return (self.pipeline.predict(X[COMPORTAMIENTO]) == self.grupo_riesgo_).astype(int)
 
 
 def metricas_agrupacion(agrupador: AgrupadorAbandono, df: pd.DataFrame) -> dict[str, float]:

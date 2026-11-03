@@ -11,11 +11,16 @@ Uso:
     uv run python scripts/afinar_optuna.py --intentos 200 --metrica F1
     uv run python scripts/afinar_optuna.py --modelos hist_gb --timeout 120   # máximo 2 minutos
     uv run python scripts/afinar_optuna.py --storage sqlite:///optuna.db     # guarda y continúa el estudio
+    uv run python scripts/afinar_optuna.py --sin-mlflow                      # sin registrar en MLflow
 
 Hiperparámetros (rangos en busqueda_optuna.py):
 - Random Forest: n_estimators, max_depth, min_samples_leaf, max_features (fracción) y class_weight.
 - HistGB:        learning_rate, max_iter, max_leaf_nodes, max_depth, min_samples_leaf,
                  l2_regularization y class_weight.
+
+En MLflow (experimento ``abandono``): una corrida "optuna" con una hija por estudio, con el MEJOR intento
+(sus hiperparámetros, cv_<métrica>, nuevos_ y el resumen del estudio), no una corrida por intento. En
+models/ no se guarda nada: el modelo que se usa es el campeón (make campeon).
 """
 
 from __future__ import annotations
@@ -31,9 +36,9 @@ from sklearn.base import clone
 
 from proyecto_ml import abandono as a
 from proyecto_ml import busqueda_optuna as bo
-from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, MODELS_DIR, get_settings
+from proyecto_ml import registro as r
+from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, get_settings
 from proyecto_ml.evaluate import SCORING, resaltar, tabla_comparativa
-from proyecto_ml.features import aplanar
 from proyecto_ml.generador import GeneradorAsociados
 
 
@@ -51,6 +56,7 @@ def main() -> None:
     parser.add_argument("--intentos", type=int, default=60, help="Intentos (trials) por modelo")
     parser.add_argument("--timeout", type=float, default=None, help="Segundos máximos por modelo (opcional)")
     parser.add_argument("--semilla", type=int, default=42, help="Semilla del muestreador TPE")
+    parser.add_argument("--sin-mlflow", action="store_true", help="No registrar en MLflow")
     parser.add_argument("--storage", help="Base del estudio, ej. sqlite:///optuna.db (por defecto, en memoria)")
     parser.add_argument("--nuevos", type=int, default=1000, help="Asociados nuevos para validar")
     parser.add_argument("--semilla-nuevos", type=int, default=2026, help="La misma que usa make abandono")
@@ -93,12 +99,10 @@ def main() -> None:
     print(f"\n=== Por defecto vs. Optuna sobre asociados nuevos (n={args.nuevos}) ===")
     print(en_nuevos.round(3).to_string())
 
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
     METRICS_DIR.mkdir(parents=True, exist_ok=True)
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     paginas = []
     for nombre, estudio in estudios.items():
-        a.guardar_modelo(aplanar(entrenados[f"{nombre}_optuna"]), MODELS_DIR, f"abandono_{nombre}_optuna")
         pagina = FIGURES_DIR / f"optuna_{nombre}.html"  # interactivo: historia, importancia, cortes y poda
         pagina.write_text(bo.pagina_estudio(estudio, f"Optuna - {a.TITULOS[nombre]}"), encoding="utf-8")
         paginas.append(pagina)
@@ -125,9 +129,26 @@ def main() -> None:
         f"nuevos (n={args.nuevos})": en_nuevos.to_dict(orient="index"),
     }
     salida.write_text(json.dumps(resumen, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
-    print(f"\nModelos (pipeline, _preprocesamiento y _modelo) -> {MODELS_DIR / 'abandono_*_optuna*.joblib'}")
     print(f"Métricas -> {salida} | tabla comparativa -> {tabla_html}")
     print("Gráficos interactivos de cada estudio -> " + " | ".join(str(p) for p in paginas))
+
+    if args.sin_mlflow:
+        return
+    r.configurar()
+    params = {"datos": args.datos.name, "filas": len(train), "metrica": args.metrica, "intentos": args.intentos}
+    params |= {"semilla": args.semilla, "folds": args.folds}
+    with r.corrida("optuna", params, artefactos=[salida, tabla_html, *paginas]):
+        for nombre, estudio in estudios.items():
+            afinado = f"{nombre}_optuna"
+            metricas = {
+                f"cv_{r.nombre_metrica(args.metrica)}": estudio.best_value,
+                **r.con_prefijo("nuevos", en_nuevos.loc[afinado].to_dict()),
+                **{f"estudio_{k}": v for k, v in bo.resumen_estudio(estudio).items()},
+            }
+            propios = {**params, "mejor_intento": estudio.best_trial.number, **estudio.best_params}
+            with r.corrida(afinado, {"modelo": afinado, **propios}, metricas, anidada=True):
+                r.registrar_modelo(entrenados[afinado])
+    print(f"MLflow: experimento '{r.EXPERIMENTO}', corrida 'optuna' (make mlflow-ui)")
 
 
 if __name__ == "__main__":

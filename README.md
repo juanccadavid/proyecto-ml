@@ -27,7 +27,10 @@ MLflow y demo en Streamlit.
 │   ├── anonymize.py      Hash con sal, eliminación de PII, agrupación en rangos
 │   ├── synthetic.py      Generador sintético genérico (make demo)
 │   ├── app.py            Demo Streamlit
-│   └── app_abandono.py   Simulador Streamlit del abandono (make simulador)
+│   ├── campeon.py        Modelo campeón: PR-AUC en CV repetida, umbrales y zonas (make campeon)
+│   ├── validacion.py     Escenarios (tasa y fuerza de la señal) y partición temporal
+│   ├── registro.py       Registro en MLflow (experimento abandono, alias campeon)
+│   └── app_abandono.py   Simulador Streamlit del abandono con el campeón (make simulador)
 ├── scripts/              Ingesta, anonimización, generadores, contrato, modelo de abandono
 ├── contratos/            Contratos de datos (YAML)
 ├── supabase/             SQL de la tabla y migraciones
@@ -37,7 +40,7 @@ MLflow y demo en Streamlit.
 ├── tests/                Pruebas unitarias e integración (pytest); tests/data: reglas del contrato
 ├── reports/              Métricas y figuras versionables
 ├── data/                 Datos locales — NO van a Git
-└── models/               Modelos exportados — NO van a Git
+└── models/               Solo el campeón (y best_model de make train) — NO van a Git
 ```
 
 ## Requisitos
@@ -58,6 +61,7 @@ make train ARGS="--clip-outliers iqr --clip-columns salario"  # además recorta 
 make train ARGS="--sin-limpieza"  # sin la limpieza de cleaning.py, para comparar en MLflow
 make mlflow-ui               # http://localhost:5000
 make app                     # http://localhost:8501
+make campeon                 # elige el modelo campeón, su umbral y zonas (MLflow: abandono@campeon)
 make simulador               # http://localhost:8501: mueve las variables y mira si el asociado se retira
 make check                   # lint + pruebas, antes de abrir un PR
 ```
@@ -78,10 +82,12 @@ en CPU es lento con miles de filas (usar Colab con GPU).
 ### Docker
 
 ```bash
-docker compose up --build    # app :8501 + servidor MLflow :5000
+docker compose up --build    # simulador :8501 + servidor MLflow :5000
 ```
 
 La imagen no contiene datos ni modelos: `data/` y `models/` se montan como volúmenes de solo lectura.
+El servicio `app` corre el simulador del abandono (`app_abandono.py`) con el campeón de `models/`; sin
+él, lo elige al arrancar. `app.py` queda como la demo genérica de la plantilla (`make app`).
 
 ## Modelos de abandono (supervisados y KMeans)
 
@@ -177,6 +183,71 @@ Ojo: los conteos de solicitudes (`ULT3MESES`...) se toman como vienen. Si el ext
 extracción y no a t0, para los retirados incluyen lo que pasó después de irse (fuga). Hay que confirmarlo con
 el fondo. EDA de la foto: [`sesiones/02_juan_eda_foto_asociado.ipynb`](sesiones/02_juan_eda_foto_asociado.ipynb).
 
+### El modelo campeón: `make campeon`
+
+Los afinados, Optuna y PyCaret son **experimentos** (quedan en MLflow); el **campeón** es el único modelo
+"oficial": lo usa el simulador ([`campeon.py`](src/proyecto_ml/campeon.py),
+[`scripts/elegir_campeon.py`](scripts/elegir_campeon.py)).
+
+- **Datos:** los de desarrollo, 2.000 asociados generados con semilla 7 y **10 % de retiro** (más cerca de un
+  fondo real que el 30 % por defecto), con la foto a 3 meses: 1.845 asociados, 40 retiros (2,2 %). `make
+  datos-desarrollo` los escribe en `data/processed/`; sin el archivo se generan en memoria, idénticos. Los 50
+  de `data/ejemplo` quedan para el contrato y las pruebas.
+- **Criterio:** PR-AUC promedio en validación cruzada **repetida** (5 particiones × 3 repeticiones), no en los
+  "nuevos" del generador. PR-AUC y no AUC: con 2 % de retiros el AUC pasa de 0,98 en todos los modelos.
+- **Umbrales**, con las predicciones fuera de partición (cada asociado puntuado por un modelo que no lo vio):
+  - *alerta*: el que maximiza **F2** (el recall pesa el doble: perder a quien se va cuesta más que una llamada);
+  - *alto*: el menor puntaje desde el cual **al menos 8 de cada 10 alertas son retiros reales**.
+- **Tres zonas:** 😟 **se retira** (≥ alto) · 😐 **zona gris** (entre los dos) · 😀 **se queda** (< alerta).
+- **KMeans** con los mismos datos y sin el objetivo: el simulador muestra en qué grupo cae el asociado y la
+  tasa de retiro real del grupo.
+
+| Candidato | PR-AUC (CV) | umbral alerta | precisión / recall | umbral alto | precisión / recall |
+|---|---|---|---|---|---|
+| **Regresión logística (campeón)** | **0,875 ± 0,005** | 0,29 | 0,56 / 0,93 | 0,88 | 0,82 / 0,78 |
+| Ridge | 0,827 ± 0,012 | 0,26 | 0,78 / 0,80 | 0,28 | 0,82 / 0,78 |
+| Random Forest | 0,816 ± 0,019 | 0,10 | 0,62 / 0,95 | 0,19 | 0,81 / 0,53 |
+| HistGB | 0,777 ± 0,033 | 0,10 | 0,52 / 0,85 | 0,54 | 0,81 / 0,65 |
+
+Zonas del campeón con 925 asociados nuevos (foto a 3 meses): **se retira** 19 (14 se retiran, 74 %),
+**zona gris** 13 (ninguno), **se queda** 893 (1 se retira). KMeans: en el grupo "riesgo" se retira el 12,9 %;
+en el "estable", el 1,0 %.
+
+Guarda solo el campeón en `models/` (`abandono_campeon.joblib`, `abandono_kmeans.joblib` y `campeon.json`
+con modelo, umbrales, métricas de todos los candidatos, grupos, datos y fecha), los gráficos
+`reports/figures/campeon_umbrales.html` y `campeon_escenarios.html`, y lo registra en MLflow con el alias
+`campeon`: `mlflow.sklearn.load_model("models:/abandono@campeon")`.
+
+```bash
+make campeon                                     # foto a 3 meses, datos de desarrollo
+make campeon ARGS="--horizonte 12 --precision-min 0.9"
+make campeon DATA=data/raw/supabase_asociados.parquet   # con el extracto, cuando llegue
+make simulador                                   # usa el campeón
+```
+
+### Validación: qué miden las cifras (para la sustentación)
+
+> Las métricas sobre asociados nuevos miden si el modelo **recupera la regla del generador**. La validación
+> real será **temporal**, con el extracto del fondo: entrenar con una foto vieja y probar con la más reciente
+> (`validacion.particion_temporal`, lista y probada con datos generados).
+
+Mientras tanto, `make campeon` valida cada candidato, con su umbral, en escenarios menos favorables
+([`validacion.py`](src/proyecto_ml/validacion.py)): otra tasa de retiro y una señal más débil
+(`GeneradorAsociados(fuerza_senal=...)`: 1 = el generador de siempre, 0,5 = retirados la mitad de distintos).
+Esa tabla reemplaza al "0,97 en nuevos" en la presentación:
+
+| Escenario (foto a 3 meses) | Logística (campeón): AUC · precisión · recall | Random Forest | HistGB |
+|---|---|---|---|
+| tasa 30 %, señal 100 % (generador) | 0,98 · 0,78 · 0,89 | 0,97 · 0,77 · 0,84 | 0,98 · 0,86 · 0,78 |
+| tasa 10 %, señal 100 % | 1,00 · 0,44 · 0,93 | 1,00 · 0,47 · 0,93 | 0,99 · 0,38 · 0,80 |
+| tasa 10 %, señal 50 % | 0,99 · 0,52 · 0,80 | 0,97 · 0,38 · 0,60 | 0,96 · 0,50 · 0,47 |
+| tasa 10 %, señal 25 % | 0,75 · 0,19 · 0,20 | 0,74 · 0,14 · 0,13 | 0,75 · 0,12 · 0,13 |
+
+Si la señal real es la mitad de clara, el campeón aún encuentra a 8 de cada 10; con un cuarto, el AUC cae a
+0,75. **Pendiente con el fondo** (datos agregados, sin anonimizar): tasa de retiro anual, % de asociados con al
+menos una solicitud de cancelación o disminución de cuotas, y mediana de antigüedad y salario, para calibrar
+el generador y elegir el umbral con la tasa real.
+
 ### Comparación automática con PyCaret (opcional)
 
 `make pycaret` ([`scripts/comparar_pycaret.py`](scripts/comparar_pycaret.py)) le da las mismas variables a
@@ -224,13 +295,8 @@ aportan a los dos afinados.
 Imprime las 5 mejores combinaciones de cada uno, la tabla "por defecto vs. afinado" y, lo que cuenta,
 la comparación con asociados **nuevos** (el puntaje de validación cruzada del mejor es optimista: se
 eligió mirando esos mismos datos). Guarda las curvas en `reports/figures/afinamiento_curvas.png` y cada
-modelo afinado en tres `.joblib` (`a.guardar_modelo`):
-
-| Archivo en `models/` | Contenido | Uso |
-|---|---|---|
-| `abandono_<m>_afinado.joblib` | pipeline completo | predecir: `joblib.load(...).predict(a.preparar(df))` |
-| `abandono_<m>_afinado_preprocesamiento.joblib` | solo el preprocesamiento ajustado | transformar datos / ver medianas y categorías |
-| `abandono_<m>_afinado_modelo.joblib` | solo el estimador | ver coeficientes; recibe datos ya transformados |
+modelo afinado en MLflow (corrida "afinar", una hija por afinado con sus hiperparámetros y el modelo). Para
+guardar un pipeline por partes (completo, solo preprocesamiento y solo estimador) sigue `a.guardar_modelo`.
 
 También arma una **tabla de predicciones** de los dos afinados (como `predict_model` de PyCaret) sobre los
 asociados nuevos: variables, abandono real y, por modelo, `<modelo>_label` (1 = abandona) y `<modelo>_score`
@@ -260,8 +326,8 @@ peor que la mediana. No necesita PyCaret.
 | los dos | preprocesamiento: mediana/media × OneHot/ordinal × sin/IQR (como en `make afinar`) |
 
 Imprime los 5 mejores intentos, la importancia de cada hiperparámetro y "por defecto vs. Optuna" en
-validación cruzada y con asociados **nuevos**. Guarda los afinados como `models/abandono_<m>_optuna*.joblib`
-(los mismos tres archivos que `make afinar`), un HTML interactivo por estudio en
+validación cruzada y con asociados **nuevos**. Registra en MLflow el mejor intento de cada estudio (sus
+hiperparámetros, `cv_`, `nuevos_` y el resumen del estudio, no una corrida por intento), un HTML interactivo por estudio en
 `reports/figures/optuna_<m>.html` (historia de la búsqueda, importancia, cortes y poda) y el resumen en
 `reports/metrics/optuna_*.json`.
 
@@ -303,24 +369,65 @@ make contrato-sql contrato-web             # regenerar tras cambiar el contrato
 **Configurar Supabase (una vez):**
 
 1. Crear un proyecto gratuito en [supabase.com](https://supabase.com).
-2. *SQL Editor* → pegar [`supabase/asociados.sql`](supabase/asociados.sql) → *Run*. Crea la tabla con todas
-   las restricciones del contrato y RLS: la clave pública **solo puede insertar** (no leer, editar ni borrar).
-   Si la tabla ya existía con una versión anterior del contrato, correr en orden los archivos de
-   [`supabase/migraciones/`](supabase/migraciones/) que falten.
-3. *Project Settings → API Keys*: copiar la URL y la clave **pública** (anon / publishable).
-   La `service_role` / secret nunca va en el HTML, el `.env` compartido ni Git.
-4. Ponerlas en `.env` (`SUPABASE_URL`, `SUPABASE_KEY`) y en `web/config.js` (copiar `web/config.example.js`).
+2. *SQL Editor* → pegar [`supabase/asociados.sql`](supabase/asociados.sql) → *Run*. Crea `asociados` con todas
+   las restricciones del contrato, cerrada con RLS (la clave pública no lee, inserta, edita ni borra), y la
+   parte del formulario: `equipo`, `asociados_entrada` y sus políticas (ver abajo). Si la tabla ya existía,
+   correr en orden los archivos de [`supabase/migraciones/`](supabase/migraciones/) que falten (la **002**
+   cierra el formulario al equipo).
+3. *Project Settings → API Keys*: copiar la URL, la clave **pública** (anon / publishable) y crear una
+   **secreta** (*Secret keys*). La secreta va solo en tu `.env` (`SUPABASE_SECRET_KEY`): nunca en el HTML,
+   Git ni un chat, porque salta el RLS.
+4. `.env`: `SUPABASE_URL`, `SUPABASE_KEY` (pública) y `SUPABASE_SECRET_KEY`. `web/config.js` (copiar
+   `web/config.example.js`): URL y clave **pública**.
 
 ```bash
-make supabase-subir                        # sube los 50 asociados de ejemplo (omite cédulas repetidas)
-make supabase-bajar                        # baja la tabla a data/raw/ (requiere SUPABASE_SECRET_KEY)
-make formulario                            # abre web/formulario.html: datos aleatorios + botón Enviar
+make supabase-subir                        # sube los 50 de ejemplo con la clave secreta (omite repetidos)
+make supabase-bajar                        # baja la tabla a data/raw/ (clave secreta; valida el contrato)
+make supabase-revisar                      # qué entradas del formulario pasarían (no escribe nada)
+make supabase-revisar ARGS="--aplicar"     # pasa las válidas a asociados y marca cada entrada
+make formulario                            # abre web/formulario.html: sesión del equipo + Enviar
 ```
+
+**Formulario solo para el equipo** ([migración 002](supabase/migraciones/002_formulario_equipo.sql)):
+
+```
+formulario ──(enlace por correo: Supabase Auth)──► asociados_entrada ──► make supabase-revisar ──► asociados
+              solo correos de public.equipo          pendiente            valida fila a fila,      (la que baja
+                                                                          sin repetidos            supabase-bajar)
+```
+
+- **Sesión con enlace por correo.** El formulario pide el correo y Supabase envía un enlace: al abrirlo vuelve
+  al formulario con la sesión iniciada. Si la plantilla del correo trae `{{ .Token }}` (exige SMTP propio para
+  editarla), también sirve el código de 6 dígitos. Sin registro abierto: solo cuentas creadas por el equipo.
+- **Lista de correos permitidos.** La tabla `public.equipo`; la política de `asociados_entrada` exige
+  `public.es_del_equipo()` (el correo del token está en `equipo`), `revision = 'pendiente'` y
+  `enviado_por` = el correo del token (nadie envía a nombre de otro).
+- **Tabla de entrada separada.** Lo que llega del formulario no toca `asociados`: la basura no bloquea
+  `supabase-bajar` ni ocupa cédulas reales. `make supabase-revisar` valida cada entrada con el contrato (por
+  fila y entre columnas; las reglas de lote no aplican a una fila) y contra las cédulas/IDASOCIADOS ya
+  guardados. Sin `--aplicar` solo muestra; con `--aplicar` inserta las válidas en `asociados` y marca cada
+  entrada `aprobada` o `rechazada` con su `motivo_revision`.
+
+Activarlo en Supabase (una vez, en el panel):
+
+1. *SQL Editor*: correr la migración **002** (o `asociados.sql` completo en una base nueva).
+2. *Authentication → Sign In / Providers → Email*: activo, y **desactivar "Allow new users to sign up"**.
+3. *Authentication → Users → Add user → Send invitation* (o *Create new user*) con el correo de cada integrante.
+4. *Table Editor → equipo → Insert row*: el mismo correo **en minúsculas** (y el nombre).
+5. *Authentication → URL Configuration*: **Site URL** = la dirección del formulario en Pages
+   (`https://<usuario>.github.io/<repo>/formulario.html`) y la misma en **Redirect URLs**. Si no está ahí, el
+   enlace del correo lleva a `localhost:3000` y no inicia sesión. Para probar en tu PC, agrega también
+   `http://localhost:8000/**` y sirve la carpeta: `uv run python -m http.server 8000 -d web`
+   (abierto como archivo, con `make formulario`, el enlace no puede volver y solo sirve el código).
+6. *Opcional, código de 6 dígitos*: *Authentication → Emails → Magic link or OTP* solo se edita con SMTP propio
+   (*Set up SMTP*); ahí se agrega `<p>Tu código: <strong>{{ .Token }}</strong></p>`. Sin eso basta el enlace.
+
+Ojo: el correo de Supabase sin SMTP propio tiene un límite bajo de envíos por hora; para la demo basta.
 
 **Entrenar con lo que llega a Supabase:**
 
 ```
-formulario / supabase-subir ──► Supabase ──► make supabase-bajar ──► data/raw/supabase_asociados.parquet ──► make abandono
+supabase-revisar / supabase-subir ──► asociados ──► make supabase-bajar ──► data/raw/supabase_asociados.parquet ──► make abandono
                                               (clave secreta,          (+ copia fechada; valida el contrato)
                                                solo en tu .env)
 ```
@@ -342,8 +449,9 @@ El workflow [`.github/workflows/formulario.yml`](.github/workflows/formulario.ym
 2. *Settings → Pages → Source*: **GitHub Actions**.
 3. *Actions → Formulario (GitHub Pages) → Run workflow*.
 
-Cualquiera con el enlace puede **insertar** asociados (no leer, editar ni borrar): la tabla los valida con el
-contrato. Para cerrarlo: *Settings → Pages → Unpublish site*.
+Con la migración 002, quien abra el enlace sin ser del equipo no puede enviar nada: no recibe código (no hay
+registro abierto) y, aunque lo tuviera, su correo no está en `equipo`. Si la 002 aún no está aplicada en la
+base, lo mínimo es despublicar: *Settings → Pages → Unpublish site*, y publicarlo solo el día de la demo.
 
 ### Qué va en el contrato y qué va en el test
 
@@ -370,6 +478,13 @@ regla a conciencia, actualiza su caso en el mismo PR.
 
 ## Experimentos (MLflow)
 
+**Abandono:** experimento `abandono`. Cada script abre una corrida (`modelo_abandono`, `campeon`, `optuna`,
+`afinar`, `pycaret`) con una hija por modelo: parámetros (datos, filas, limpieza, hiperparámetros
+`model__...`), métricas con prefijo (`entrenamiento_`, `cv_`, `nuevos_`, `esc_t10_s50_...` para los
+escenarios) y los gráficos y el JSON adjuntos. El campeón queda en el registro de modelos como `abandono`
+con el alias `campeon`. `--sin-mlflow` lo apaga en cualquiera de los scripts. `make mlflow-ui` para verlos.
+
+**Plantilla genérica (`make train`):**
 Cada `make train` registra parámetros, métricas y modelo en `mlflow.db` (local, no versionado), incluidas
 las opciones de limpieza (`limpieza`, `clip_outliers`, `clip_columns`, `drop_columns`) para comparar con y
 sin ellas. Por defecto corre `clean_dataset` (sin renombrar columnas) y un `ColumnDropper` (`--drop-columns`
