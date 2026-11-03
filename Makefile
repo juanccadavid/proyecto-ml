@@ -26,7 +26,7 @@ ARGS ?=
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup setup-hf demo-data demo train train-hf abandono campeon tecnicas validacion regresion pycaret afinar optuna mlflow-ui app \
+.PHONY: help setup setup-hf demo-data demo train train-hf abandono campeon tecnicas validacion regresion segmentos predecir pipeline pycaret afinar optuna mlflow-ui app \
         simulador ejemplo datos-desarrollo contrato contrato-sql contrato-web supabase-subir supabase-bajar supabase-crear formulario \
         test test-fast cov lint format check hooks secrets up down logs salt bundle clean clean-all
 
@@ -86,6 +86,19 @@ validacion: ## Compara KFold, StratifiedKFold y TimeSeriesSplit en el abandono (
 
 regresion: ## Regresión de ejemplo: estima el SALARIO (MAE, MSE, RMSE, R²) con validación KFold
 	$(PY) scripts/regresion_salario.py $(if $(DATA),--datos $(DATA)) $(ARGS)
+
+segmentos: ## Segmenta a los asociados con KMeans y DBSCAN (no supervisado) + mapa interactivo
+	$(PY) scripts/segmentar.py $(if $(DATA),--datos $(DATA)) $(ARGS)
+
+predecir: ## Predice con el campeón guardado: zona, alerta y grupo (DATA=..., por defecto el de ejemplo)
+	$(PY) -m proyecto_ml.predict --datos $(or $(DATA),$(EJEMPLO)) $(ARGS)
+
+pipeline: ## Corre todo el flujo: campeón, predicción, segmentos, validación cruzada y regresión (lo hace el CI)
+	$(MAKE) campeon
+	$(MAKE) predecir
+	$(MAKE) segmentos
+	$(MAKE) validacion
+	$(MAKE) regresion
 
 optuna: ## Afina Random Forest y HistGB con Optuna (búsqueda en rangos con poda), validados con nuevos
 	$(PY) scripts/afinar_optuna.py $(if $(DATA),--datos $(DATA)) $(ARGS)

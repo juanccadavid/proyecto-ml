@@ -4,7 +4,8 @@ Usa solo el modelo campeón (``make campeon``: models/abandono_campeon.joblib + 
 zonas: **se retira** (puntaje >= umbral_alto: al menos 8 de cada 10 alertas así son retiros reales),
 **zona gris** (entre el umbral de alerta y el alto) y **se queda**. Muestra también en qué grupo de KMeans
 (entrenado sin el objetivo) cae el asociado y la tasa de retiro real de ese grupo, y con SHAP, qué variables de
-este asociado suben o bajan su puntaje.
+este asociado suben o bajan su puntaje. Un mapa interactivo ubica al asociado entre los segmentos de KMeans y
+DBSCAN (no supervisados).
 
 Cada control es una variable de ``abandono.preparar``: al moverlo, la predicción se recalcula al instante.
 
@@ -25,6 +26,7 @@ import streamlit as st
 from proyecto_ml import abandono as a
 from proyecto_ml import campeon as c
 from proyecto_ml import explicar as e
+from proyecto_ml import segmentacion as sg
 from proyecto_ml.config import MODELS_DIR
 
 ETIQUETAS = {
@@ -87,6 +89,14 @@ def cargar_referencia(horizonte: int | None) -> pd.DataFrame:
 def explicador(_modelo, horizonte: int | None) -> e.Explicador:
     """SHAP del campeón frente a los asociados de referencia (``_modelo``: Streamlit no lo usa como llave)."""
     return e.Explicador(_modelo, cargar_referencia(horizonte))
+
+
+@st.cache_resource(show_spinner="Segmentando a los asociados (KMeans y DBSCAN)...")
+def segmentar(horizonte: int | None):
+    """(segmentación, datos con el retiro) de los asociados de referencia, para el mapa."""
+    df, _ = c.datos_eleccion()
+    df = a.foto(df, horizonte) if horizonte else df
+    return sg.Segmentacion().fit(df), df
 
 
 def rango(serie: pd.Series, paso: float) -> tuple[float, float]:
@@ -219,6 +229,24 @@ perfil = pd.DataFrame(
     }
 ).rename(index=ETIQUETAS)
 st.dataframe(perfil.round(2), width="stretch")
+
+# ---- Mapa de segmentos (no supervisado): dónde cae este asociado
+st.subheader("Mapa de segmentos")
+segmentacion, datos_mapa = segmentar(info.get("horizonte_meses"))
+atipico = segmentacion.dbscan(asociado)[0] == sg.ATIPICO
+st.plotly_chart(
+    sg.figura_mapa(segmentacion, datos_mapa, asociado=asociado, titulo="Asociados de referencia por comportamiento"),
+    width="stretch",
+    key="mapa",
+)
+atipicos = segmentacion.dbscan(datos_mapa) == sg.ATIPICO
+tasa_atipicos = datos_mapa.loc[atipicos, a.TARGET].mean()
+st.caption(
+    f"La estrella es este asociado. Con el botón se cambia entre KMeans (k = {segmentacion.k_}, por silueta) y "
+    f"DBSCAN, que deja aparte a los **atípicos** (✕): en los datos de referencia se retira el {tasa_atipicos:.0%} "
+    f"de ellos. Según DBSCAN, este asociado **{'es atípico' if atipico else 'no es atípico'}**. Ninguno de los dos "
+    "vio quién se retiró (no supervisados): agrupan solo por comportamiento."
+)
 
 st.subheader("¿Y si cambia una sola variable?")
 variable = st.selectbox(

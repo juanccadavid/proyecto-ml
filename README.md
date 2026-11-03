@@ -33,9 +33,13 @@ MLflow y demo en Streamlit.
 │   ├── explicar.py       SHAP: por qué el modelo le dio a cada asociado su puntaje
 │   ├── validacion.py     Escenarios, partición temporal y KFold / Stratified / TimeSeriesSplit
 │   ├── regresion.py      Regresión de ejemplo: el salario con MAE, MSE, RMSE y R² (make regresion)
+│   ├── segmentacion.py   No supervisado: KMeans y DBSCAN + mapa interactivo de segmentos (make segmentos)
+│   ├── predict.py        Predicción con el campeón guardado: zona, alerta y grupo (make predecir)
 │   ├── registro.py       Registro en MLflow (experimento abandono, alias campeon)
 │   └── app_abandono.py   Simulador Streamlit del abandono con el campeón (make simulador)
 ├── scripts/              Ingesta, anonimización, generadores, contrato, modelo de abandono
+├── streamlit_app.py      Entrada de Streamlit Community Cloud (abre el simulador)
+├── .github/workflows/    ci.yml (lint + pruebas + make pipeline en cada push) y formulario.yml (Pages)
 ├── contratos/            Contratos de datos (YAML)
 ├── supabase/             SQL de la tabla y migraciones
 ├── web/                  Formulario para enviar asociados a Supabase
@@ -67,11 +71,40 @@ make mlflow-ui               # http://localhost:5000
 make app                     # http://localhost:8501
 make campeon                 # elige el modelo campeón, su umbral y zonas (MLflow: abandono@campeon)
 make simulador               # http://localhost:8501: mueve las variables y mira si el asociado se retira
+make pipeline                # todo el flujo: campeón, predicción, segmentos, validación cruzada, regresión
 make check                   # lint + pruebas, antes de abrir un PR
 ```
 
 `make` (sin argumentos) lista todos los objetivos. Sin `make`, cada objetivo del `Makefile` muestra
 el comando `uv run ...` equivalente.
+
+### Estructura frente a la plantilla del curso
+
+| Plantilla | Aquí | Nota |
+|---|---|---|
+| `README.md`, `Makefile`, `pyproject.toml` | ✅ los mismos | `make` sin argumentos lista los comandos; dependencias con uv (`uv.lock`) |
+| `.github/workflows/ci.yml` | ✅ | en cada push: lint + pruebas y, si pasan, `make pipeline` (ver abajo) |
+| `notebooks/` | `sesiones/` | los notebooks de EDA y la bitácora del equipo |
+| `src/<paquete>/config.py`, `data.py`, `features.py`, `train.py` | ✅ `src/proyecto_ml/` | |
+| `model.py` | `models.py` | el catálogo de modelos; el abandono los arma en `abandono.armar_pipeline` |
+| `predict.py` | ✅ `predict.py` | `make predecir DATA=...`: filas crudas → puntaje, zona, alerta y grupo |
+| `app/` (Streamlit o FastAPI) | `streamlit_app.py` + `src/proyecto_ml/app_abandono.py` | Streamlit Cloud abre `streamlit_app.py` en la raíz |
+| `tests/` | ✅ | pytest, con las pruebas del contrato en `tests/data/` |
+| `models/` | ✅ gitignored | solo el campeón; el CI lo deja como artefacto |
+
+### Integración continua: cada push deja el código ejecutado
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) corre en **cada push, en cualquier rama** (y con el botón
+*Run workflow* de la pestaña Actions):
+
+1. **calidad**: `ruff` (lint y formato) y todas las pruebas, con las versiones exactas de `uv.lock`.
+2. **ejecutar** (si la anterior pasa): `make pipeline`, que corre en orden `campeon`, `predecir`, `segmentos`,
+   `validacion` y `regresion`, con un MLflow local del runner.
+   - En la pestaña *Summary* de la corrida aparece el resumen del campeón: PR-AUC, recall, MCC y las zonas.
+   - Las figuras, las métricas y el campeón quedan en el artefacto **resultados** (14 días).
+
+Todo corre con datos generados (semilla fija): el extracto real nunca va a GitHub. Si haces otro push a la
+misma rama mientras corre, se cancela la corrida vieja. Lo mismo se corre en local con `make pipeline`.
 
 ### Componentes Hugging Face (opcional)
 
@@ -403,6 +436,50 @@ el MAE, hay pocos errores muy grandes, que son los salarios altos. Con el extrac
 depende del cargo, la antigüedad y el estrato, el R² debería subir. Resultados en
 `reports/figures/regresion_salario.html` y en MLflow (experimento `salario`).
 
+### Supervisado vs. no supervisado: segmentación con KMeans y DBSCAN (`make segmentos`)
+
+| | Supervisado | No supervisado |
+|---|---|---|
+| Aprende de | el retiro real (`#RETIROS`) | solo el comportamiento: nunca ve quién se retiró |
+| Modelos | Ridge, logística, Random Forest, HistGB (el campeón) | KMeans y DBSCAN ([`segmentacion.py`](src/proyecto_ml/segmentacion.py)) |
+| Responde | ¿este asociado se retira? (puntaje y zona) | ¿qué tipos de asociado hay? (segmentos) |
+| Se valida con | PR-AUC, recall, precisión (validación cruzada) | silueta; y, solo al final, la tasa de retiro de cada segmento |
+
+[`scripts/segmentar.py`](scripts/segmentar.py) agrupa a los asociados de la foto por sus 9 variables de
+comportamiento, imputadas y estandarizadas:
+
+- **KMeans** parte a todos en `k` grupos alrededor de `k` centros. `k` se elige con la **silueta**:
+  - k = 2 da 0,295, k = 3 da 0,268, y de k = 4 en adelante queda por debajo de 0,13.
+  - El segmento 1 es el de más señales de salida, ordenado por sus centros sin mirar el retiro.
+- **DBSCAN** no pide `k`: forma grupos con las zonas densas (al menos 18 vecinos a menos de `eps` = 2,62, el
+  cuantil 90 de la distancia al vecino 18) y deja aparte a los **atípicos**, que no caen en ninguna.
+
+| Marcar "en riesgo" a… | asociados | se retira | recall | ARI con el retiro |
+|---|---|---|---|---|
+| KMeans: segmento 1 | 186 (10 %) | 12,9 % | 60 % | 0,16 |
+| **DBSCAN: atípicos** | 84 (5 %) | **36,9 %** | **78 %** | **0,47** |
+| (todos los asociados) | 1.845 | 2,2 % | | |
+
+Sin ver el retiro, DBSCAN aparta a un 5 % de asociados con comportamiento raro: muchas cancelaciones,
+disminuciones e intenciones de retiro. Ahí está el 78 % de los que se van. Aun así, el supervisado es mucho
+mejor (el campeón encuentra al 92 % con una precisión del 56 %), porque aprende directamente del retiro. Los
+segmentos sirven para **describir** a los asociados y para campañas, no para reemplazar al campeón.
+
+**Mapa interactivo** (`reports/figures/segmentos.html` y, en el simulador, "Mapa de segmentos"):
+- Cada asociado va en dos ejes que se leen directo: **señales de salida** (cancelaciones, disminuciones,
+  intención de retiro) y **vínculo con el fondo** (ahorros, créditos, servicios).
+- Cada segmento tiene su color y su contorno.
+- Un botón cambia entre KMeans y DBSCAN; los atípicos van en gris con ✕.
+- Al pasar el mouse sale el segmento, su tasa de retiro y el comportamiento del asociado.
+- En el simulador, una estrella marca dónde cae el asociado que se está simulando.
+
+Con PCA, en cambio, dos componentes solo explican el 29 % de la variación y los segmentos se enciman.
+
+```bash
+make segmentos                                   # k por silueta, eps por vecinos
+make segmentos ARGS="--k 4"                      # 4 segmentos (los dos de riesgo: 12,8 % y 6,4 % de retiro)
+```
+
 ### Mapa de evaluación (para la sustentación)
 
 | Concepto | Dónde está |
@@ -417,6 +494,9 @@ depende del cargo, la antigüedad y el estrato, el R² debería subir. Resultado
 | MAE, MSE, RMSE, R² | `regresion.py` / `make regresion` |
 | Hiperparámetros comunes | `busqueda_optuna.espacio_random_forest`: n_estimators, max_depth, min_samples_split, min_samples_leaf, max_features |
 | KFold, StratifiedKFold, TimeSeriesSplit | `validacion.comparar_validaciones` / `make validacion` |
+| Supervisado vs. no supervisado | campeón (`campeon.py`) vs. KMeans y DBSCAN (`segmentacion.py`, `make segmentos`) |
+| Segmentación y su gráfico interactivo | `segmentacion.figura_mapa` / `segmentos.html` y el simulador |
+| Predicción con el modelo guardado | `predict.py` / `make predecir` |
 | Importancia de variables | permutación (`evaluate.importancia_variables`), MDI del bosque (`importancia_arbol`), coeficientes (`abandono.coeficientes`) y SHAP (`explicar.py`) |
 
 ### Comparación automática con PyCaret (opcional)
