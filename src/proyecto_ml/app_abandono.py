@@ -5,7 +5,8 @@ la predicción se recalcula al instante. Los rangos, valores iniciales y categor
 de entrenamiento (DATOS_ASOCIADOS del .env).
 
 Uso:  make simulador   (o: uv run streamlit run src/proyecto_ml/app_abandono.py)
-Requiere los modelos de ``make abandono`` en models/abandono_*.joblib.
+Usa los modelos de ``make abandono`` (models/abandono_*.joblib). Si no están, como en Streamlit Community
+Cloud (los .joblib no van a Git), entrena los mismos supervisados al arrancar, en memoria.
 """
 
 from __future__ import annotations
@@ -59,11 +60,18 @@ def cargar_modelos(carpeta: Path) -> dict[str, object]:
 
 
 @st.cache_data
-def cargar_referencia() -> pd.DataFrame:
-    """Variables de entrenamiento, para rangos y valores iniciales. Sin archivo: asociados del generador."""
+def cargar_asociados() -> pd.DataFrame:
+    """Asociados de entrenamiento (con el objetivo). Sin archivo: asociados del generador."""
     ruta = get_settings().datos_asociados
-    df = a.cargar(ruta) if ruta.exists() else GeneradorAsociados(500).generar()
-    return a.preparar(df)
+    return a.cargar(ruta) if ruta.exists() else GeneradorAsociados(500).generar()
+
+
+@st.cache_resource(show_spinner="Entrenando los modelos de abandono...")
+def entrenar_modelos() -> dict[str, object]:
+    """Los supervisados de ``make abandono``, entrenados con ``cargar_asociados()``. No se guardan en disco."""
+    df = cargar_asociados()
+    X, y = a.preparar(df), df[a.TARGET]
+    return {nombre: modelo.fit(X, y) for nombre, modelo in a.modelos_supervisados().items()}
 
 
 def rango(serie: pd.Series, paso: float) -> tuple[float, float]:
@@ -109,10 +117,10 @@ def formato_puntaje(puntaje: float, metodo: str) -> str:
 
 
 modelos = cargar_modelos(MODELS_DIR)
-if not modelos:
-    st.warning("No hay modelos de abandono entrenados. Ejecuta primero: `make abandono`.")
-    st.stop()
-referencia = cargar_referencia()
+entrenados_aqui = not modelos
+if entrenados_aqui:
+    modelos = entrenar_modelos()
+referencia = a.preparar(cargar_asociados())
 
 st.caption("Fondo de empleados · modelo de abandono")
 st.title("¿Se retiraría este asociado? 🏦")
@@ -124,6 +132,8 @@ with st.sidebar:
         f"Entrenado con `{get_settings().datos_asociados.name}` ({len(referencia)} asociados). "
         "Ridge no da probabilidad: su puntaje es la distancia a la frontera (> 0 = se retira)."
     )
+    if entrenados_aqui:
+        st.info("No había modelos en `models/`: se entrenaron al abrir la app (como `make abandono`).")
     if st.button("Volver a los valores iniciales"):
         for columna in a.NUMERICAS + a.CATEGORICAS:
             st.session_state.pop(columna, None)

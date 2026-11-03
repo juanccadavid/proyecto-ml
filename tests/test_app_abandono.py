@@ -37,8 +37,11 @@ def test_simulador_predice_y_cambia_de_modelo(carpeta_modelos):
     assert app.metric[0].value.endswith("%")
 
 
-def test_simulador_avisa_si_no_hay_modelos(tmp_path, monkeypatch):
+def test_simulador_entrena_si_no_hay_modelos(tmp_path, monkeypatch):
+    """Como en Streamlit Community Cloud: sin .joblib, entrena los 4 supervisados al arrancar."""
     monkeypatch.setattr(config, "MODELS_DIR", tmp_path)
-    app = AppTest.from_file(str(APP), default_timeout=60).run()
+    app = AppTest.from_file(str(APP), default_timeout=120).run()
     assert not app.exception
-    assert "make abandono" in app.warning[0].value
+    assert app.radio(key="modelo").options == [a.TITULOS[n] for n in a.TITULOS]
+    assert "se entrenaron al abrir la app" in app.info[0].value
+    assert not list(tmp_path.iterdir())  # en memoria: no escribe en models/
