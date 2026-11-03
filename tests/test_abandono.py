@@ -180,3 +180,44 @@ def test_cargar_limpia_sin_romper_el_contrato(tmp_path):
     limpio = a.cargar(ruta)
     assert len(limpio) == 100 and k.validar(limpio) == []
     assert len(a.cargar(ruta, limpiar=False)) == 102
+
+
+# ---------------------------------------------------------------- foto del asociado (fecha de observación)
+
+
+def test_foto_solo_activos_en_t0_y_objetivo_en_el_horizonte(entrenamiento):
+    t0 = a.fecha_observacion(3)
+    assert t0 == pd.Timestamp("2026-07-31")
+    vista = a.foto(entrenamiento, 3)
+    retiro = pd.to_datetime(vista["FECHARETIRO"])
+    assert (pd.to_datetime(vista["FECHAINGRESOLABORA"]) <= t0).all()
+    assert not (retiro <= t0).any()  # los retirados antes de t0 no están en la foto
+    se_retira = retiro.between(t0, a.FECHA_CORTE, inclusive="right")
+    assert (vista[a.TARGET] == se_retira.astype(int)).all()
+    assert 0 < vista[a.TARGET].sum() < entrenamiento[a.TARGET].sum()  # pierde a los que se fueron antes
+    assert (vista[a.FECHA_OBSERVACION] == t0).all()
+    assert len(entrenamiento) == 400 and a.TARGET in entrenamiento  # no modifica el original
+
+
+def test_preparar_calcula_edad_y_antiguedad_a_la_fecha_de_observacion(entrenamiento):
+    vista = a.foto(entrenamiento, 12)
+    al_corte, en_t0 = a.preparar(vista.drop(columns=a.FECHA_OBSERVACION)), a.preparar(vista)
+    for columna in ("EDAD", "ANTIGUEDAD"):
+        assert np.allclose(al_corte[columna] - en_t0[columna], 365 / 365.25, atol=0.01)  # un año menos
+    assert a.FECHA_OBSERVACION not in en_t0  # no es una variable del modelo
+
+
+def test_resumen_foto_por_horizonte(entrenamiento):
+    resumen = a.resumen_foto(entrenamiento, horizontes=(3, 12))
+    # El generador reparte los retiros en los 12 meses antes del corte: con 12 meses entran todos.
+    assert resumen.loc[12, "asociados"] == len(entrenamiento)
+    assert resumen.loc[12, "se_retiran"] == entrenamiento[a.TARGET].sum()
+    assert resumen.loc[3, "asociados"] + resumen.loc[3, "fuera_de_la_foto"] == len(entrenamiento)
+    assert resumen.loc[3, "tasa_retiro"] < resumen.loc[12, "tasa_retiro"]
+
+
+def test_modelo_con_la_foto_generaliza():
+    train = a.foto(GeneradorAsociados(n=1500, seed=3).generar(), 3)
+    nuevos = a.foto(GeneradorAsociados(n=1000, seed=4).generar(), 3)
+    modelo = a.modelo_ridge().fit(a.preparar(train), train[a.TARGET])
+    assert a.metricas_supervisado(modelo, nuevos)["roc_auc"] > 0.9

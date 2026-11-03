@@ -145,6 +145,38 @@ con dejar el pipeline al final de una celda; desde código: `pagina_pipelines({"
 Se excluyen las columnas que solo existen porque el asociado ya se fue (fecha/motivo de retiro, `ESTADO`,
 fechas de actualización...): con ellas cualquier modelo acierta el 100 % pero no anticipa nada.
 
+### La foto del asociado: fecha de observación y horizonte
+
+Sin opciones, el modelo mira a todos los asociados **al corte** (31-oct-2026): EDAD y ANTIGUEDAD se miden
+después de que los retirados se fueron, y como el generador reparte los retiros en los 12 meses anteriores,
+en la práctica predice "¿se retiró en el último año?". El diseño correcto es una **foto** en t0 = corte − H:
+
+- **Población:** asociados activos en t0 (los que se retiraron antes ya no eran asociados en la foto).
+- **Objetivo:** `#RETIROS` = 1 si se retira entre t0 y el corte (usa `FECHARETIRO`).
+- **Variables:** EDAD y ANTIGUEDAD a t0 (`preparar` lee la columna `FECHA_OBSERVACION` que agrega `foto`).
+
+```python
+vista = a.foto(df, horizonte_meses=3)  # t0 = 2026-07-31
+X, y = a.preparar(vista), vista[a.TARGET]
+a.resumen_foto(df)  # por horizonte: asociados, retiros y tasa en la foto
+```
+
+| Datos | Foto a 3 meses | Foto a 12 meses (= sin foto) |
+|---|---|---|
+| 50 de `data/ejemplo` | 39 asociados, **1 retiro** | 50, 12 retiros (24 %) |
+| 2.000 generados (semilla 7) | 1.535 asociados, **135 retiros (8,8 %)** | 2.000, 600 retiros (30 %) |
+
+Con 50 filas la foto no deja con qué entrenar, así que es opcional (`--horizonte`) y se usa con más filas:
+
+```bash
+make ejemplo ARGS="--rows 2000 --seed 7 --output-dir data/processed --nombre asociados_2000"
+make abandono DATA=data/processed/asociados_2000.parquet ARGS="--horizonte 3"
+```
+
+Ojo: los conteos de solicitudes (`ULT3MESES`...) se toman como vienen. Si el extracto los mide a la fecha de
+extracción y no a t0, para los retirados incluyen lo que pasó después de irse (fuga). Hay que confirmarlo con
+el fondo. EDA de la foto: [`sesiones/02_juan_eda_foto_asociado.ipynb`](sesiones/02_juan_eda_foto_asociado.ipynb).
+
 ### Comparación automática con PyCaret (opcional)
 
 `make pycaret` ([`scripts/comparar_pycaret.py`](scripts/comparar_pycaret.py)) le da las mismas variables a

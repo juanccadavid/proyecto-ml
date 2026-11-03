@@ -10,6 +10,7 @@ Uso:
     uv run python scripts/modelo_abandono.py --exportar-nuevos data/processed/nuevos.parquet
     uv run python scripts/modelo_abandono.py --faltantes      # valida también con nuevos con datos vacíos
     uv run python scripts/modelo_abandono.py --sin-limpieza   # sin la limpieza de cleaning.py, para comparar
+    uv run python scripts/modelo_abandono.py --horizonte 3    # foto del asociado: ¿se retira en 3 meses?
 
 Los "nuevos" salen del mismo generador con OTRA semilla: son asociados distintos que siguen
 el mismo comportamiento. Las métricas sobre ellos son las que cuentan; las de entrenamiento
@@ -69,6 +70,13 @@ def main() -> None:
         help="Cómo recortar atípicos de SALARIO, EDAD y ANTIGUEDAD (aprendido en train). Por defecto: iqr",
     )
     parser.add_argument(
+        "--horizonte",
+        type=int,
+        metavar="MESES",
+        help="Foto del asociado en t0 = corte - MESES: activos en t0, objetivo = se retira entre t0 y el corte.\n"
+        "Sin la opción, todos los asociados al corte (como antes). Con los 50 de ejemplo quedan muy pocos retiros",
+    )
+    parser.add_argument(
         "--sin-limpieza",
         action="store_true",
         help="Apagar la limpieza (extracto, ColumnDropper y recorte) para comparar",
@@ -88,6 +96,18 @@ def main() -> None:
         args.exportar_nuevos.parent.mkdir(parents=True, exist_ok=True)
         next(iter(validaciones.values())).to_parquet(args.exportar_nuevos, index=False)
         print(f"Asociados nuevos guardados en {args.exportar_nuevos}")
+    if args.horizonte:
+        print(f"Foto del asociado (corte {a.FECHA_CORTE.date()}), según el horizonte:")
+        print(a.resumen_foto(train).round(3).to_string() + "\n")
+        train = a.foto(train, args.horizonte)
+        validaciones = {nombre: a.foto(df, args.horizonte) for nombre, df in validaciones.items()}
+        minimo = int(train[a.TARGET].value_counts().reindex([0, 1], fill_value=0).min())
+        if minimo < 5:  # la validación cruzada estratificada necesita al menos 5 de cada clase
+            raise SystemExit(
+                f"Con --horizonte {args.horizonte} la clase minoritaria tiene {minimo} asociados (mínimo 5). "
+                'Usa más filas (make ejemplo ARGS="--rows 2000 ...") o un horizonte mayor.'
+            )
+        print(f"Horizonte: {args.horizonte} meses (t0 = {a.fecha_observacion(args.horizonte).date()})")
     print(f"Entrenamiento: {args.datos} ({len(train)} filas, {train[a.TARGET].mean():.0%} abandono)")
     if limpiar:
         print(
@@ -171,6 +191,7 @@ def main() -> None:
         "datos": str(args.datos.name),
         "alpha": args.alpha,
         "limpieza": limpiar,
+        "horizonte_meses": args.horizonte,
         "clip_outliers": clip,
         "max_nulos": max_nulos,
         **m_supervisados,

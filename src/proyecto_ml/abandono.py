@@ -35,6 +35,10 @@ if TYPE_CHECKING:
 
 TARGET = "#RETIROS"
 FECHA_CORTE = pd.Timestamp("2026-10-31")
+# Foto del asociado: se observa en t0 = FECHA_CORTE - HORIZONTE_MESES y se predice si se retira entre t0 y el
+# corte. La columna FECHA_OBSERVACION (la agrega ``foto``) le dice a ``preparar`` a qué fecha calcular.
+HORIZONTE_MESES = 3
+FECHA_OBSERVACION = "FECHA_OBSERVACION"
 
 # Columnas que delatan el resultado (fuga de información): nunca entran a los modelos.
 FUGA = [
@@ -79,11 +83,59 @@ SENAL_RIESGO = {
 }
 
 
+def fecha_observacion(horizonte_meses: int = HORIZONTE_MESES, corte: pd.Timestamp = FECHA_CORTE) -> pd.Timestamp:
+    """t0: la fecha de la foto, ``horizonte_meses`` antes del corte."""
+    return pd.Timestamp(corte) - pd.DateOffset(months=horizonte_meses)
+
+
+def foto(df: pd.DataFrame, horizonte_meses: int = HORIZONTE_MESES, corte: pd.Timestamp = FECHA_CORTE) -> pd.DataFrame:
+    """La foto del asociado en t0 = corte - horizonte: quién estaba activo y quién se retiró después.
+
+    - Población: asociados activos en t0 (ingresaron a laborar antes de t0 y no se habían retirado).
+      Los que se retiraron antes de t0 salen: en la foto ya no eran asociados.
+    - Objetivo (#RETIROS): 1 si se retira entre t0 y el corte, 0 si sigue activo.
+    - Agrega FECHA_OBSERVACION = t0, para que ``preparar`` calcule EDAD y ANTIGUEDAD a esa fecha.
+
+    Usa FECHARETIRO, que el contrato exige si y solo si #RETIROS = 1 (regla retiro_coherente).
+    Ojo: los conteos de solicitudes (ULT3MESES...) se toman como vienen. Si el extracto los mide a la
+    fecha de extracción y no a t0, para los retirados incluyen lo que pasó después: fuga de información.
+    """
+    t0 = fecha_observacion(horizonte_meses, corte)
+    retiro = pd.to_datetime(df["FECHARETIRO"])
+    activos = (pd.to_datetime(df["FECHAINGRESOLABORA"]) <= t0) & (retiro.isna() | (retiro > t0))
+    vista = df[activos].copy()
+    vista[TARGET] = (retiro[activos] <= pd.Timestamp(corte)).astype(int)  # NaT <= corte es False: activo
+    vista[FECHA_OBSERVACION] = t0
+    return vista
+
+
+def resumen_foto(df: pd.DataFrame, horizontes=(1, 3, 6, 12), corte: pd.Timestamp = FECHA_CORTE) -> pd.DataFrame:
+    """Para el EDA: por horizonte, la fecha t0, cuántos asociados entran a la foto y cuántos se retiran."""
+    filas = []
+    for h in horizontes:
+        vista = foto(df, h, corte)
+        filas.append(
+            {
+                "horizonte_meses": h,
+                "fecha_observacion": fecha_observacion(h, corte).date(),
+                "asociados": len(vista),
+                "se_retiran": int(vista[TARGET].sum()),
+                "tasa_retiro": float(vista[TARGET].mean()) if len(vista) else float("nan"),
+                "fuera_de_la_foto": len(df) - len(vista),  # retirados antes de t0 o ingresados después
+            }
+        )
+    return pd.DataFrame(filas).set_index("horizonte_meses")
+
+
 def preparar(df: pd.DataFrame) -> pd.DataFrame:
-    """Variables del modelo: edad y antigüedad (años al corte) + columnas elegidas. Sin fuga ni PII."""
+    """Variables del modelo: edad y antigüedad (años a la fecha de observación) + columnas elegidas. Sin fuga ni PII.
+
+    La fecha de observación es FECHA_OBSERVACION si ``df`` viene de ``foto``; si no, FECHA_CORTE.
+    """
     X = pd.DataFrame(index=df.index)
-    X["EDAD"] = (FECHA_CORTE - pd.to_datetime(df["FECHANACIMIENTO"])).dt.days / 365.25
-    X["ANTIGUEDAD"] = (FECHA_CORTE - pd.to_datetime(df["FECHAINGRESOLABORA"])).dt.days / 365.25
+    t0 = pd.to_datetime(df[FECHA_OBSERVACION]) if FECHA_OBSERVACION in df else FECHA_CORTE
+    X["EDAD"] = (t0 - pd.to_datetime(df["FECHANACIMIENTO"])).dt.days / 365.25
+    X["ANTIGUEDAD"] = (t0 - pd.to_datetime(df["FECHAINGRESOLABORA"])).dt.days / 365.25
     for c in NUMERICAS:
         if c not in X:
             X[c] = pd.to_numeric(df[c]).astype(float)  # Int64 con vacíos -> float con NaN (lo imputa el pipeline)
