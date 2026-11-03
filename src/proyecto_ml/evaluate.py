@@ -354,3 +354,67 @@ def figura_importancia(
         ax.spines[["top", "right"]].set_visible(False)
     fig.suptitle("Variables que más aportan a cada modelo (permutation importance)", fontsize=13)
     return fig
+
+
+def _column_transformer(estimador):
+    """El ColumnTransformer dentro de un preprocesador (puede venir anidado: ColumnDropper -> columns)."""
+    from sklearn.compose import ColumnTransformer
+
+    if isinstance(estimador, ColumnTransformer):
+        return estimador
+    for _, paso in getattr(estimador, "steps", []):
+        encontrado = _column_transformer(paso)
+        if encontrado is not None:
+            return encontrado
+    return None
+
+
+def importancia_arbol(modelo) -> pd.DataFrame:
+    """``feature_importances_`` de un modelo de árboles (Random Forest), por columna ya transformada.
+
+    Es la importancia propia del bosque (MDI): cuánto reduce, en promedio, la impureza de los árboles
+    cada columna. Va por columna transformada (``cat__SEXO_F``, ``num__EDAD``...), con el nombre de su
+    rama como prefijo. Ojo: favorece a las numéricas continuas, que ofrecen más cortes; la
+    ``importancia_variables`` (por permutación) no tiene ese sesgo.
+    """
+    estimador = modelo.steps[-1][1]
+    ct = _column_transformer(modelo[:-1])
+    nombres = [
+        f"{rama}__{columna}"
+        for rama, transformador, _ in ct.transformers_
+        if rama != "remainder" and transformador != "drop"
+        for columna in transformador.get_feature_names_out()
+    ]
+    importancias = estimador.feature_importances_
+    if len(nombres) != len(importancias):  # p. ej. con PCA después del ColumnTransformer
+        raise ValueError("Las columnas del preprocesador no coinciden con las del modelo")
+    tabla = pd.DataFrame({"variable": nombres, "importancia": importancias})
+    return tabla.sort_values("importancia", ascending=False, ignore_index=True)
+
+
+def figura_importancia_interactiva(importancias: pd.DataFrame, titulo: str, top: int = 20):
+    """Barras de Plotly con las ``top`` columnas más importantes; al pasar el mouse muestra variable e importancia.
+
+    Se guarda con ``fig.write_html(ruta)`` y se abre en el navegador; en un notebook basta con ``fig``.
+    """
+    import plotly.graph_objects as go
+
+    datos = importancias.head(top)
+    fig = go.Figure(
+        go.Bar(
+            x=datos["variable"],
+            y=datos["importancia"],
+            marker_color=_COLORES[0],
+            hovertemplate="Variable=%{x}<br>Importancia=%{y:.6f}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        title=titulo,
+        xaxis_title="Variables",
+        yaxis_title="Importancia",
+        xaxis_tickangle=35,
+        template="plotly_white",
+        height=560,
+        margin={"b": 200},
+    )
+    return fig

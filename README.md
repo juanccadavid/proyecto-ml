@@ -119,6 +119,12 @@ asociados nuevos: desordena una variable a la vez y mide cuánto cae el AUC. Sir
 modelos (HistGB no trae `feature_importances_`) y mide la variable completa, no cada columna del OneHot.
 Imprime las 5 principales de cada modelo y guarda `reports/figures/abandono_importancia.png`.
 
+Además, para el Random Forest, `reports/figures/abandono_importancia_rf.html` es un gráfico **interactivo**
+(Plotly: al pasar el mouse muestra variable e importancia) con su `feature_importances_` por columna ya
+transformada, con el prefijo de su rama (`num__`, `clip__`, `cat__SEXO_F`...). Es la importancia propia del
+bosque (cuánto reduce la impureza): favorece a las continuas como `SALARIO` o `EDAD`, que en la de
+permutación casi no pesan. En código: `figura_importancia_interactiva(importancia_arbol(rf), "titulo")`.
+
 Al final imprime una **tabla comparativa** al estilo de `compare_models` de PyCaret: Accuracy, AUC, Recall,
 Prec., F1, Kappa, MCC y **TT (Sec)** (tiempo promedio de entrenamiento por partición), con validación cruzada
 y las mismas particiones para todos. Se guarda en `reports/figures/abandono_comparativa.html` con el mejor

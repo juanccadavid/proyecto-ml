@@ -33,6 +33,8 @@ from proyecto_ml.evaluate import (
     COLUMNAS_COMPARATIVA,
     compute_metrics,
     figura_importancia,
+    figura_importancia_interactiva,
+    importancia_arbol,
     importancia_variables,
     resaltar,
     tabla_comparativa,
@@ -127,6 +129,9 @@ def main() -> None:
     importancias = importancia_variables(supervisados, a.preparar(con_objetivo), con_objetivo[a.TARGET])
     print(f"\n=== Variables que más aportan a cada modelo: caída de AUC al desordenarlas ({nombre_nuevos}) ===")
     print(top_importancia(importancias).to_string())
+    importancia_rf = importancia_arbol(supervisados["random_forest"])  # la propia del bosque, por columna transformada
+    print("\n=== Random Forest: feature_importances_ por columna transformada (top 10) ===")
+    print(importancia_rf.head(10).round(4).to_string(index=False))
 
     # ---- KMeans (sin objetivo)
     agrupador = a.AgrupadorAbandono().fit(train)
@@ -151,6 +156,9 @@ def main() -> None:
     tabla_html.write_text(resaltar(comparativa).to_html(), encoding="utf-8", newline="\n")
     importancia_png = FIGURES_DIR / "abandono_importancia.png"
     figura_importancia(importancias, titulos=a.TITULOS).savefig(importancia_png, dpi=150)
+    importancia_rf_html = FIGURES_DIR / "abandono_importancia_rf.html"  # interactivo: pasar el mouse por las barras
+    titulo_rf = "Importancia de las variables - Random Forest (feature_importances_)"
+    figura_importancia_interactiva(importancia_rf, titulo_rf).write_html(importancia_rf_html)
     diagramas = FIGURES_DIR / "abandono_pipelines.html"  # diagrama interactivo de cada pipeline
     pipelines = {a.TITULOS[n]: m for n, m in supervisados.items()} | {"KMeans (sin objetivo)": agrupador.pipeline}
     diagramas.write_text(pagina_pipelines(pipelines, "Pipelines del modelo de abandono"), encoding="utf-8")
@@ -169,11 +177,13 @@ def main() -> None:
         "kmeans": m_kmeans,
         "comparativa": comparativa.to_dict(orient="index"),
         "importancia": importancias.to_dict(orient="records"),
+        "importancia_rf": importancia_rf.to_dict(orient="records"),
     }
     salida.write_text(json.dumps(resumen, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
     print(f"\nModelos -> {MODELS_DIR / 'abandono_*.joblib'} | métricas -> {salida}")
     print(f"Gráfico -> {grafico} | tabla comparativa -> {tabla_html}")
     print(f"Diagramas de los pipelines -> {diagramas} | importancia -> {importancia_png}")
+    print(f"Importancia del Random Forest (interactiva) -> {importancia_rf_html}")
 
 
 if __name__ == "__main__":

@@ -156,3 +156,23 @@ def test_grafico_de_bigotes_por_pipeline():
         "cada partición (CV)",
         "asociados nuevos",
     ]
+
+
+def test_importancia_del_random_forest_por_columna_transformada():
+    from proyecto_ml.evaluate import figura_importancia_interactiva, importancia_arbol
+
+    df = GeneradorAsociados(n=300, seed=1).generar()
+    rf = a.modelos_supervisados()["random_forest"].fit(a.preparar(df), df[a.TARGET])
+    imp = importancia_arbol(rf)
+
+    assert len(imp) == rf.steps[-1][1].n_features_in_  # una fila por columna que recibe el bosque
+    assert np.isclose(imp["importancia"].sum(), 1.0)
+    assert imp["importancia"].is_monotonic_decreasing
+    ramas = {v.split("__")[0] for v in imp["variable"]}
+    assert ramas == {"num", "clip", "cat"}  # el prefijo dice de qué rama del ColumnTransformer sale
+    assert "clip__SALARIO" in set(imp["variable"]) and any(v.startswith("cat__SEXO_") for v in imp["variable"])
+
+    fig = figura_importancia_interactiva(imp, "Importancia", top=10)
+    barras = fig.data[0]
+    assert list(barras.x) == list(imp["variable"].head(10))
+    assert "Importancia=%{y" in barras.hovertemplate  # tooltip al pasar el mouse

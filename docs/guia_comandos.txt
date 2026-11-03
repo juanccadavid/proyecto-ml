@@ -121,6 +121,7 @@
                            Limpieza de cleaning.py activa: limpiar_extracto + ColumnDropper + recorte IQR
                            de SALARIO, EDAD y ANTIGUEDAD (ARGS="--sin-limpieza" la apaga para comparar).
                            Variables que más aportan a cada modelo: reports/figures/abandono_importancia.png
+                           Random Forest interactivo (Plotly): reports/figures/abandono_importancia_rf.html
                            reports/figures/abandono_comparativa.html. ej.: ARGS="--ordenar Recall"
                            Diagrama interactivo de cada pipeline: reports/figures/abandono_pipelines.html
                            ej.: make abandono ARGS="--nuevos 5000 --semilla-nuevos 7 --alpha 10"
