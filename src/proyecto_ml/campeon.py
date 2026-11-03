@@ -44,6 +44,7 @@ from scipy import stats
 from sklearn.base import BaseEstimator, clone
 from sklearn.metrics import (
     average_precision_score,
+    brier_score_loss,
     cohen_kappa_score,
     confusion_matrix,
     matthews_corrcoef,
@@ -56,6 +57,7 @@ from sklearn.utils.metaestimators import available_if
 from sklearn.utils.validation import check_is_fitted
 
 from proyecto_ml import abandono as a
+from proyecto_ml.evaluate import compute_metrics
 from proyecto_ml.models import get_models
 
 if TYPE_CHECKING:
@@ -84,20 +86,47 @@ TITULOS = {  # los 4 supervisados + los candidatos extra (lista_candidatos y --o
 }
 
 
-def datos_eleccion(ruta: Path | None = None) -> tuple[pd.DataFrame, str]:
-    """Los asociados con que se elige el campeón y de dónde salieron: ``ruta``, o el archivo de
-    ``make datos-desarrollo``, o los mismos 5.000 generados en memoria (Streamlit Community Cloud)."""
-    from proyecto_ml.config import PROCESSED_DIR
-    from proyecto_ml.contrato import limpiar_extracto
+class DatosInvalidos(ValueError):
+    """El lote no cumple el contrato de datos: no se entrena con él."""
+
+
+def datos_eleccion(ruta: Path | None = None, origen: str | None = None) -> tuple[pd.DataFrame, str]:
+    """Los asociados con que se elige el campeón y de dónde salieron, según el origen (``config.origen_datos``).
+
+    - **sintetico** (por defecto): ``ruta``, o el archivo de ``make datos-desarrollo``, o los mismos 5.000
+      generados en memoria (Streamlit Community Cloud, CI).
+    - **real_anonimizado**: solo ``ruta`` (el extracto anonimizado). Nunca cae en los sintéticos: sin ``ruta``
+      falla, para no etiquetar como reales unos datos generados.
+
+    Todo archivo debe cumplir el contrato (``contrato.validar``); si no, ``DatosInvalidos``. Con datos reales el
+    mensaje no lleva valores ni filas de ejemplo (``contrato.sin_valores``). Los generados en memoria no se
+    validan aquí: el generador cumple el contrato por construcción (lo prueba tests/data).
+    """
+    from proyecto_ml import contrato
+    from proyecto_ml.config import ORIGEN_REAL, PROCESSED_DIR, origen_datos
     from proyecto_ml.generador import NOMBRE_DESARROLLO, datos_desarrollo
 
-    if ruta:
-        return a.cargar(ruta), ruta.name
+    origen = origen_datos(origen)
+    if origen == ORIGEN_REAL and ruta is None:
+        raise DatosInvalidos(
+            "ORIGEN_DATOS=real_anonimizado: indica el extracto anonimizado con --datos (make ... DATA=...). "
+            "En este modo no se usan datos sintéticos."
+        )
     desarrollo = PROCESSED_DIR / f"{NOMBRE_DESARROLLO}.parquet"
-    if desarrollo.exists():
-        return a.cargar(desarrollo), desarrollo.name
-    # La misma limpieza que a.cargar aplica al leer el archivo: así los dos caminos dan los mismos datos.
-    return limpiar_extracto(datos_desarrollo()), "datos_desarrollo() en memoria"
+    if ruta is None and not desarrollo.exists():
+        # La misma limpieza que a.cargar aplica al leer el archivo: así los dos caminos dan los mismos datos.
+        return contrato.limpiar_extracto(datos_desarrollo()), "datos_desarrollo() en memoria"
+    archivo = ruta or desarrollo
+    df = a.cargar(archivo)
+    errores = contrato.validar(df)
+    if errores:
+        mostrar = contrato.sin_valores(errores) if origen == ORIGEN_REAL else errores
+        detalle = "\n".join(f"  - {e}" for e in mostrar[:10])
+        raise DatosInvalidos(
+            f"{archivo.name} no cumple el contrato de datos ({len(errores)} incumplimientos):\n{detalle}\n"
+            f"Revísalo con: make contrato DATA={archivo}"
+        )
+    return df, archivo.name
 
 
 def lista_candidatos(X: pd.DataFrame | None = None, random_state: int = 42) -> dict[str, Pipeline]:
@@ -319,6 +348,7 @@ def evaluar(nombre: str, modelo: Pipeline, X, y, folds: int = FOLDS, repeticione
     promedio = puntajes.mean(axis=0)  # el umbral se elige sobre el promedio de las repeticiones
     umbrales = elegir_umbrales(y, promedio, **kw)
     alerta = (promedio >= umbrales["umbral"]).astype(int)
+    al_umbral = compute_metrics(y, promedio, threshold=umbrales["umbral"])
     ic_inf, ic_sup = intervalo_bootstrap(y, promedio)
     metricas = {
         "pr_auc": float(np.mean(pr)),
@@ -330,6 +360,8 @@ def evaluar(nombre: str, modelo: Pipeline, X, y, folds: int = FOLDS, repeticione
         **{k: v for k, v in umbrales.items() if v is not None},
         "mcc": float(matthews_corrcoef(y, alerta)),  # al umbral de alerta, corrigen el desbalance
         "kappa": float(cohen_kappa_score(y, alerta)),
+        # al umbral de alerta (F2 incluido) y sin umbral (precision@10 %, Brier: calibración de la probabilidad)
+        **{k: al_umbral[k] for k in ("f2", "specificity", "balanced_accuracy", "precision_at_10pct", "brier")},
     }
     return Candidato(nombre, modelo, puntajes, umbrales, metricas, por_particion)
 
@@ -678,6 +710,63 @@ def figura_roc(campeon: Campeon):
         height=620,
         width=720,
         legend={"x": 0.98, "y": 0.02, "xanchor": "right", "yanchor": "bottom"},
+        font={"color": _TINTA},
+    )
+    return fig
+
+
+CORTES_CALIBRACION = (0, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 0.9, 1)  # finos cerca de 0: casi todos están ahí
+
+
+def tabla_calibracion(y, puntaje, cortes=CORTES_CALIBRACION) -> pd.DataFrame:
+    """Por grupo de probabilidad: asociados, probabilidad media del modelo y retiro real (sin grupos vacíos).
+
+    Con un 2 % de retiro casi todas las probabilidades están cerca de 0: los deciles quedarían todos ahí y la
+    curva tendría dos puntos. Por eso los cortes son fijos y más finos abajo.
+    """
+    datos = pd.DataFrame({"y": np.asarray(y), "p": np.asarray(puntaje)})
+    grupo = pd.cut(datos["p"], bins=list(cortes), include_lowest=True)
+    tabla = datos.groupby(grupo, observed=True).agg(asociados=("y", "size"), predicho=("p", "mean"), real=("y", "mean"))
+    return tabla[tabla["asociados"] > 0]
+
+
+def figura_calibracion(campeon: Campeon):
+    """Plotly: curva de calibración del campeón (fuera de partición). None si el puntaje no es una probabilidad.
+
+    Compara la probabilidad media que da el modelo en cada grupo (``tabla_calibracion``) con la tasa de retiro
+    real del grupo: sobre la diagonal, el "30 %" del modelo es un 30 % de verdad. Un modelo puede ordenar bien
+    (PR-AUC alta) y aun así exagerar o subestimar la probabilidad; el Brier lo resume.
+    """
+    import plotly.graph_objects as go
+
+    if campeon.metodo != "predict_proba":
+        return None
+    puntaje, y = campeon.candidatos[campeon.nombre].promedio, campeon.y
+    tabla = tabla_calibracion(y, puntaje)
+    fig = go.Figure()
+    fig.add_scatter(
+        x=[0, 1], y=[0, 1], mode="lines", name="calibración perfecta", line={"color": _GRIS, "width": 1, "dash": "dot"}
+    )
+    fig.add_scatter(
+        x=tabla["predicho"],
+        y=tabla["real"],
+        customdata=np.column_stack([tabla["asociados"], tabla.index.astype(str)]),
+        mode="lines+markers",
+        name=f"{TITULOS.get(campeon.nombre, campeon.nombre)} (Brier {brier_score_loss(y, puntaje):.4f})",
+        line={"color": _COLORES[0], "width": 2},
+        # punto más grande = más asociados en el grupo: los grupos chicos (los del medio) son los más ruidosos
+        marker={"size": 8 + 16 * np.sqrt(tabla["asociados"] / tabla["asociados"].max()), "line": {"color": "#fcfcfb"}},
+        hovertemplate="grupo %{customdata[1]} · %{customdata[0]} asociados<br>probabilidad media del modelo=%{x:.1%}"
+        "<br>retiro real del grupo=%{y:.1%}<extra></extra>",
+    )
+    fig.update_layout(
+        title="Calibración del campeón (fuera de partición)",
+        xaxis={"title": "Probabilidad que da el modelo", "tickformat": ".0%", "gridcolor": "#e1e0d9"},
+        yaxis={"title": "Retiro real en ese grupo", "tickformat": ".0%", "gridcolor": "#e1e0d9"},
+        template="plotly_white",
+        height=560,
+        width=700,
+        legend={"x": 0.02, "y": 0.98},
         font={"color": _TINTA},
     )
     return fig

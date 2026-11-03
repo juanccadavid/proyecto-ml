@@ -30,7 +30,7 @@ from proyecto_ml import abandono as a
 from proyecto_ml import campeon as c
 from proyecto_ml import registro as r
 from proyecto_ml import validacion as v
-from proyecto_ml.config import FIGURES_DIR, METRICS_DIR
+from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, aviso_origen
 
 
 def main() -> None:
@@ -50,6 +50,7 @@ def main() -> None:
     if h:
         df = a.foto(df, h)
     print(f"Datos: {fuente} · foto a {h or 0} meses · {len(df)} asociados, {int(df[a.TARGET].sum())} se retiran")
+    print(aviso_origen())
     print(f"Modelo: {a.TITULOS[args.modelo]} · {args.folds} particiones · TimeSeriesSplit por {v.ORDEN_TEMPORAL}\n")
 
     modelo = a.modelos_supervisados()[args.modelo]

@@ -8,8 +8,12 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import (
     average_precision_score,
+    balanced_accuracy_score,
+    brier_score_loss,
     cohen_kappa_score,
+    confusion_matrix,
     f1_score,
+    fbeta_score,
     make_scorer,
     matthews_corrcoef,
     precision_score,
@@ -52,10 +56,31 @@ def recall_at_k(y_true, y_score, k_frac: float = 0.1) -> float:
     return float(y_true[top_idx].sum() / positives)
 
 
+def precision_at_k(y_true, y_score, k_frac: float = 0.1) -> float:
+    """De los ``k_frac`` con mayor puntaje, qué fracción se retira de verdad (el uso operativo: a quién llamar)."""
+    y_true, y_score = np.asarray(y_true), np.asarray(y_score)
+    k = max(1, int(np.ceil(len(y_score) * k_frac)))
+    return float(y_true[np.argsort(-y_score, kind="stable")[:k]].mean())
+
+
+def es_probabilidad(y_score) -> bool:
+    """True si el puntaje está en [0, 1] (predict_proba); la distancia a la frontera de Ridge no lo está."""
+    y_score = np.asarray(y_score, dtype=float)
+    return bool(((y_score >= 0) & (y_score <= 1)).all())
+
+
 def compute_metrics(y_true, y_score, threshold: float = 0.5) -> dict[str, float]:
+    """Métricas de clasificación desbalanceada sobre datos que el modelo NO vio (prueba, CV o nuevos).
+
+    Sin umbral: ``roc_auc``, ``pr_auc``, ``recall_at_10pct``, ``precision_at_10pct`` y ``brier`` (error
+    cuadrático de la probabilidad: mide la calibración; NaN si el puntaje no es una probabilidad, como en Ridge).
+    Con ``threshold``: precisión, recall, F1, F2, especificidad (``specificity``: de los que se quedan, cuántos
+    no reciben alerta), ``balanced_accuracy`` (promedio de recall y especificidad), MCC y Kappa.
+    """
     y_true = np.asarray(y_true)
     y_pred = (np.asarray(y_score) >= threshold).astype(int)
     single_class = len(np.unique(y_true)) < 2
+    tn, fp, _, _ = confusion_matrix(y_true, y_pred, labels=[0, 1]).ravel()
     return {
         "base_rate": float(y_true.mean()),
         "roc_auc": float("nan") if single_class else float(roc_auc_score(y_true, y_score)),
@@ -63,10 +88,15 @@ def compute_metrics(y_true, y_score, threshold: float = 0.5) -> dict[str, float]
         "precision": float(precision_score(y_true, y_pred, zero_division=0)),
         "recall": float(recall_score(y_true, y_pred, zero_division=0)),
         "f1": float(f1_score(y_true, y_pred, zero_division=0)),
+        "f2": float(fbeta_score(y_true, y_pred, beta=2, zero_division=0)),
+        "specificity": float(tn / (tn + fp)) if tn + fp else float("nan"),
+        "balanced_accuracy": float("nan") if single_class else float(balanced_accuracy_score(y_true, y_pred)),
         # MCC y Kappa corrigen el desbalance: 0 = no mejor que el azar, 1 = perfecto (ver README: qué métrica)
         "mcc": float(matthews_corrcoef(y_true, y_pred)),
         "kappa": float(cohen_kappa_score(y_true, y_pred)),
         "recall_at_10pct": recall_at_k(y_true, y_score, 0.10),
+        "precision_at_10pct": precision_at_k(y_true, y_score, 0.10),
+        "brier": float(brier_score_loss(y_true, y_score)) if es_probabilidad(y_score) else float("nan"),
     }
 
 

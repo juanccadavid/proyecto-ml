@@ -26,8 +26,9 @@ import streamlit as st
 from proyecto_ml import abandono as a
 from proyecto_ml import campeon as c
 from proyecto_ml import explicar as e
+from proyecto_ml import registro as r
 from proyecto_ml import segmentacion as sg
-from proyecto_ml.config import MODELS_DIR
+from proyecto_ml.config import MODELS_DIR, ORIGEN_REAL, ORIGEN_SINTETICO, aviso_origen, get_settings
 
 ETIQUETAS = {
     "EDAD": "Edad (años)",
@@ -72,31 +73,38 @@ def cargar_campeon(carpeta: Path):
 @st.cache_resource(show_spinner="Eligiendo el modelo campeón (una sola vez)...")
 def elegir_campeon_aqui():
     """Como ``make campeon`` pero en memoria y con una repetición: (modelo, agrupador, info)."""
-    df, fuente = c.datos_eleccion()
+    df, fuente = c.datos_eleccion(origen=ORIGEN_SINTETICO)  # la demo pública: solo datos sintéticos
     h = a.HORIZONTE_MESES
-    info = {"datos": fuente, "horizonte_meses": h}
+    info = {"datos": fuente, "horizonte_meses": h, **r.parametros_datos(df, ORIGEN_SINTETICO), "experimental": True}
     elegido = c.elegir(a.foto(df, h), repeticiones=1, info=info, honestos=False)  # sin la anidada: arranca antes
     return elegido.con_zonas(), elegido.agrupador, c.resumen(elegido)
 
 
 @st.cache_data
-def cargar_referencia(horizonte: int | None) -> pd.DataFrame:
+def datos_referencia(horizonte: int | None, origen: str) -> pd.DataFrame:
+    """Los asociados del MISMO origen que el campeón: con un campeón real, el extracto de DATOS_ASOCIADOS (.env).
+    Así el fondo de SHAP, los rangos y el mapa no mezclan datos sintéticos con un modelo real."""
+    ruta = get_settings().datos_asociados if origen == ORIGEN_REAL else None
+    df, _ = c.datos_eleccion(ruta, origen=origen)
+    return a.foto(df, horizonte) if horizonte else df
+
+
+@st.cache_data
+def cargar_referencia(horizonte: int | None, origen: str = ORIGEN_SINTETICO) -> pd.DataFrame:
     """Variables de los datos del campeón, para rangos, valores iniciales y categorías."""
-    df, _ = c.datos_eleccion()
-    return a.preparar(a.foto(df, horizonte) if horizonte else df)
+    return a.preparar(datos_referencia(horizonte, origen))
 
 
 @st.cache_resource(show_spinner="Preparando la explicación (SHAP)...")
-def explicador(_modelo, horizonte: int | None) -> e.Explicador:
+def explicador(_modelo, horizonte: int | None, origen: str = ORIGEN_SINTETICO) -> e.Explicador:
     """SHAP del campeón frente a los asociados de referencia (``_modelo``: Streamlit no lo usa como llave)."""
-    return e.Explicador(_modelo, cargar_referencia(horizonte))
+    return e.Explicador(_modelo, cargar_referencia(horizonte, origen))
 
 
 @st.cache_resource(show_spinner="Segmentando a los asociados (KMeans y DBSCAN)...")
-def segmentar(horizonte: int | None):
+def segmentar(horizonte: int | None, origen: str = ORIGEN_SINTETICO):
     """(segmentación, datos con el retiro) de los asociados de referencia, para el mapa."""
-    df, _ = c.datos_eleccion()
-    df = a.foto(df, horizonte) if horizonte else df
+    df = datos_referencia(horizonte, origen)
     return sg.Segmentacion().fit(df), df
 
 
@@ -133,10 +141,19 @@ guardado = cargar_campeon(MODELS_DIR)
 elegido_aqui = guardado is None
 modelo, agrupador, info = elegir_campeon_aqui() if elegido_aqui else guardado
 metodo, umbral, umbral_alto = info["metodo"], info["umbral"], info["umbral_alto"]
-referencia = cargar_referencia(info.get("horizonte_meses"))
+origen = info.get("origen_datos", ORIGEN_SINTETICO)  # campeones guardados antes: todos eran sintéticos
+experimental = origen == ORIGEN_SINTETICO
+referencia = cargar_referencia(info.get("horizonte_meses"), origen)
 
 st.caption("Fondo de empleados · modelo de abandono")
 st.title("¿Se retiraría este asociado? 🏦")
+if experimental:
+    st.warning(
+        f"**{aviso_origen(origen)}** Las cifras, las explicaciones y los segmentos muestran la regla del generador "
+        "de asociados ficticios, no el comportamiento del fondo."
+    )
+else:
+    st.info(aviso_origen(origen))
 
 with st.sidebar:
     st.header("Modelo campeón")
@@ -152,9 +169,14 @@ with st.sidebar:
             if info.get("empatados")
             else ""
         )
-        + f"Datos: `{info.get('datos', 'sin nombre')}` ({info['filas']} asociados, {info['tasa_retiro']:.1%} retiro), "
+        + f"Datos ({'sintéticos' if experimental else 'reales anonimizados'}): `{info.get('datos', 'sin nombre')}` "
+        f"({info['filas']} asociados, {info['tasa_retiro']:.1%} retiro), "
         f"foto a {info.get('horizonte_meses') or 0} meses."
     )
+    version = [f"elegido el {info['fecha'][:16].replace('T', ' ')}"] if "fecha" in info else []
+    version += [f"datos `{info['datos_huella']}`"] if "datos_huella" in info else []
+    if version:
+        st.caption("Versión del modelo: " + " · ".join(version))
     alerta = (
         f"**Zona gris** desde {formato_puntaje(umbral, metodo)} "
         f"(encuentra al {cv['recall']:.0%} de los que se van; precisión {cv['precision']:.0%})."
@@ -219,12 +241,13 @@ getattr(st, tipo)(texto)
 
 # ---- SHAP: de dónde sale el puntaje de este asociado
 st.subheader("¿Por qué este puntaje?")
-explicacion = explicador(modelo, info.get("horizonte_meses"))
+explicacion = explicador(modelo, info.get("horizonte_meses"), origen)
 tabla = explicacion.explicar(asociado)
 st.plotly_chart(e.figura_explicacion(tabla, explicacion.base, metodo, etiquetas=ETIQUETAS), width="stretch", key="shap")
 st.caption(
     f"SHAP: cada barra es cuánto sube (rojo) o baja (azul) esa variable el puntaje de este asociado frente al "
     f"promedio de {len(explicacion.fondo)} asociados de referencia. La suma da exactamente el puntaje del modelo."
+    + (" Con datos sintéticos, la explicación muestra la regla del generador, no la del fondo." if experimental else "")
 )
 
 # ---- KMeans: el grupo de comportamiento (entrenado sin el objetivo)
@@ -234,7 +257,8 @@ st.subheader(f"Grupo de comportamiento: {grupo}")
 st.caption(
     f"KMeans agrupó a los asociados por su comportamiento sin ver quién se retiró. En el grupo **{grupo}** "
     f"({info['grupos'][grupo]['asociados']} asociados) se retiró el **{info['grupos'][grupo]['tasa_retiro']:.1%}**; "
-    f"en el grupo {otro}, el {info['grupos'][otro]['tasa_retiro']:.1%}."
+    f"en el grupo {otro}, el {info['grupos'][otro]['tasa_retiro']:.1%}. El grupo describe el comportamiento: "
+    "no es una probabilidad de retiro (esa es la del modelo, arriba)."
 )
 perfil = pd.DataFrame(
     {
@@ -247,7 +271,7 @@ st.dataframe(perfil.round(2), width="stretch")
 
 # ---- Mapa de segmentos (no supervisado): dónde cae este asociado
 st.subheader("Mapa de segmentos")
-segmentacion, datos_mapa = segmentar(info.get("horizonte_meses"))
+segmentacion, datos_mapa = segmentar(info.get("horizonte_meses"), origen)
 atipico = segmentacion.dbscan(asociado)[0] == sg.ATIPICO
 st.plotly_chart(
     sg.figura_mapa(segmentacion, datos_mapa, asociado=asociado, titulo="Asociados de referencia por comportamiento"),

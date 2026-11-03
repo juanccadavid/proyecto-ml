@@ -27,7 +27,7 @@ from proyecto_ml import abandono as a
 from proyecto_ml import campeon as c
 from proyecto_ml import registro as r
 from proyecto_ml import segmentacion as s
-from proyecto_ml.config import FIGURES_DIR, METRICS_DIR
+from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, aviso_origen
 
 
 def main() -> None:
@@ -46,6 +46,7 @@ def main() -> None:
     if h:
         df = a.foto(df, h)
     print(f"Datos: {fuente} · foto a {h or 0} meses · {len(df)} asociados · {len(s.VARIABLES)} variables")
+    print(aviso_origen())
 
     seg = s.Segmentacion(k=args.k, eps=args.eps).fit(df)
     if seg.tabla_k_ is not None:

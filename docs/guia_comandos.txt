@@ -137,8 +137,11 @@
                            3 meses y los datos de desarrollo; umbral de alerta (F2) y alto (precisión 80 %):
                            zonas se retira / zona gris / se queda. Escenarios (tasa 10 %, señal 50 % y 25 %),
                            KMeans y MLflow (models:/abandono@campeon). Solo el campeón queda en models/.
-                           Gráficos: campeon_umbrales, campeon_roc, campeon_confusion y campeon_shap
-                           (SHAP: qué variables mueven el puntaje). ej.: ARGS="--shap 0" (sin SHAP)
+                           Gráficos: campeon_umbrales, campeon_roc, campeon_confusion, campeon_calibracion y
+                           campeon_shap (SHAP: qué variables mueven el puntaje). ej.: ARGS="--shap 0" (sin SHAP)
+                           Con el extracto real: ORIGEN_DATOS=real_anonimizado en el .env y
+                           make campeon DATA=data/raw/extracto_anon.parquet (exige el contrato, sin nuevos ni
+                           escenarios del generador; MLflow aparte: experimento y modelo abandono_real)
      make tecnicas         compara técnicas de preprocesamiento: SMOTE/ADASYN, imputadores (KNN, iterativo,
                            indicador), encoders (ordinal, target), escaladores, variables nuevas, binning,
                            PCA y RFE (PR-AUC en CV) + correlación de variables. ej.: ARGS="--clasificador hist_gb"

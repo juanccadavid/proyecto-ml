@@ -89,6 +89,29 @@ flowchart TD
 | **6. Uso** | El campeón guardado recibe la fila cruda y devuelve la zona: se retira, zona gris o se queda. | `make predecir DATA=...`, `make simulador` | `predict.py`, `app_abandono.py` |
 | **7. CI** | En cada push: lint, pruebas y el flujo completo, con el resumen del campeón y los resultados como artefacto. | `make pipeline` (lo mismo en local) | `.github/workflows/ci.yml`, `scripts/resumen_campeon.py` |
 
+## Datos sintéticos y datos reales
+
+Hoy todo corre con **datos sintéticos** (`GeneradorAsociados`): sirven para construir y probar el sistema, **no son
+evidencia** de cómo le irá al modelo con el fondo. Cuando llegue el extracto anonimizado, el mismo pipeline lo usa
+cambiando una sola línea del `.env`:
+
+```bash
+ORIGEN_DATOS=sintetico            # por defecto
+ORIGEN_DATOS=real_anonimizado     # y luego: make campeon DATA=data/raw/extracto_anon.parquet
+```
+
+| | `sintetico` | `real_anonimizado` |
+|---|---|---|
+| De dónde salen los datos | `--datos`, o `data/processed/asociados_desarrollo.parquet`, o el generador en memoria | **solo** `--datos` (sin él, falla: nunca cae en los generados) |
+| Contrato de datos | se exige a todo archivo | se exige; el error dice cuántas filas y qué columnas, **sin valores** (`contrato.sin_valores`) |
+| Asociados nuevos y escenarios del generador | sí (validación sobre datos que el modelo no vio) | no: serían de otro origen. La validación de afuera es la temporal (`validacion.particion_temporal`) |
+| MLflow | experimentos `abandono`, `salario`; modelo `abandono` | experimentos `abandono_real`, `salario_real`; modelo `abandono_real` |
+| Etiqueta en consola, `campeon.json`, resumen del CI y simulador | **MODO SINTÉTICO: resultados experimentales** | DATOS REALES ANONIMIZADOS |
+
+Las métricas de los dos orígenes nunca quedan en la misma tabla de MLflow ni en el mismo `campeon.json`. El
+contrato es el que se conoce hoy (`contratos/asociados.yaml`): si el extracto real trae otras columnas o
+categorías, el contrato lo detiene antes de entrenar, y se ajusta el contrato con el equipo, no el modelo a ciegas.
+
 ## Requisitos
 
 - [uv](https://docs.astral.sh/uv/) (gestiona Python 3.12 y dependencias)
@@ -381,6 +404,9 @@ make simulador                                   # usa el campeón
   `predict`, así que cuadra con la precisión y el recall de la tabla. Los conteos también van en
   `campeon.json` (`confusion_cv`).
 - `campeon_shap.html`: SHAP en 100 asociados nuevos y la explicación del de mayor riesgo.
+- `campeon_calibracion.html`: si la probabilidad del modelo es creíble (el "30 %" es un 30 % de verdad), por
+  grupos de probabilidad con cortes finos cerca de 0; el tamaño del punto es el número de asociados del grupo.
+  Solo si el campeón da probabilidades (no con Ridge). El Brier va en las métricas.
 
 | Umbral del campeón | real se queda: sin alerta / alerta | real se retira: sin alerta / alerta |
 |---|---|---|
@@ -443,6 +469,28 @@ from proyecto_ml import explicar as e
 explicador = e.Explicador(campeon, datos_de_referencia)  # crudos o preparados
 explicador.explicar(fila)  # variable | valor | contribucion, de la que más pesa a la que menos
 ```
+
+### Auditoría de fuga y validación
+
+Cada punto se verificó en el código y tiene una prueba que impide que vuelva a pasar:
+
+| Qué se revisó | Resultado | Dónde / prueba |
+|---|---|---|
+| Imputación, codificación, escalado, recortes, PCA, RFE y TargetEncoder | dentro del Pipeline: se ajustan solo con el entrenamiento de cada partición | `armar_pipeline` · `test_el_preprocesamiento_aprende_solo_del_entrenamiento` |
+| SMOTE / ADASYN | solo en el `fit` (pipeline de imblearn), una vez por partición y con sus filas de entrenamiento; predecir no re-muestrea | `test_smote_solo_en_el_entrenamiento_de_cada_particion` |
+| Columnas de fuga e identificadores (cédula, nombres, correo, cuenta, `FECHARETIRO`, `ESTADO`…) | no entran a los modelos | `preparar` · `test_identificadores_y_fuga_no_son_predictores`, `test_columnas_de_fuga_no_cambian_las_predicciones` |
+| Selección del campeón, umbrales e hiperparámetros | con validación cruzada sobre los datos de elección; los asociados nuevos no participan; los umbrales se miden además en validación anidada | `campeon.elegir`, `umbrales_honestos` |
+| Tiempo | foto en t0 (corte − 3 meses): EDAD y ANTIGUEDAD a t0; solo activos en t0 | `abandono.foto` |
+| Reproducibilidad | misma semilla, mismos candidatos y métricas | `test_reproducible` |
+
+**Riesgos que dependen de los datos reales (por confirmar con el fondo):**
+
+- **Conteos medidos después de t0.** Si el extracto mide los conteos "ULT3MESES" a la fecha de extracción y no a
+  t0, para los retirados incluyen lo que pasó después: fuga. `make campeon` lo advierte en modo real.
+- **Optuna se afina con los mismos datos** con que compite (`--optuna`): su PR-AUC de validación cruzada es algo
+  optimista.
+- **Otras distribuciones.** El contrato detiene cambios de esquema y rangos, no cambios de distribución: con el
+  extracto, los umbrales (F2 y precisión ≥ 0,8) se vuelven a elegir; los de hoy no son definitivos.
 
 ### Validación: qué miden las cifras (para la sustentación)
 
@@ -561,7 +609,9 @@ make segmentos ARGS="--k 4"                      # 4 segmentos (los dos de riesg
 | Probabilidad vs. etiqueta | `abandono.puntaje` (probabilidad) vs. `ModeloZonas.predict` (zona) y `.alerta` (0/1) |
 | Umbral de decisión | `campeon.elegir_umbrales`: alerta (máximo F2) y alto (precisión ≥ 0,8) |
 | Matriz de confusión | `campeon.matrices_confusion` / `campeon_confusion.html` (con los umbrales del campeón) |
-| Métricas de evaluación | `evaluate.compute_metrics` y `SCORING`: accuracy, precisión, recall, F1, AUC, PR-AUC, MCC, Kappa |
+| Métricas de evaluación | `evaluate.compute_metrics` y `SCORING`: accuracy, precisión, recall, F1, F2, especificidad, balanced accuracy, AUC, PR-AUC, MCC, Kappa, recall@10 % y precision@10 %, Brier |
+| Calibración | `campeon.figura_calibracion` / `campeon_calibracion.html` y el Brier |
+| Datos sintéticos vs. reales | `config.origen_datos` (`ORIGEN_DATOS`), sección "Datos sintéticos y datos reales" |
 | Trade-off precisión vs. recall | `campeon.figura_umbrales` / `campeon_umbrales.html` |
 | AUC-ROC | `campeon.figura_roc` / `campeon_roc.html` (los cuatro candidatos) |
 | Qué métrica elegir | sección "Qué métrica usamos y por qué" |
