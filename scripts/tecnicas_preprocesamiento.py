@@ -101,6 +101,7 @@ def main() -> None:
     fig_corr = FIGURES_DIR / "correlaciones.html"
     k.figura_matriz(m).write_html(fig_corr, include_plotlyjs="cdn")
     params = {
+        **r.parametros_datos(df),
         "datos": fuente,
         "filas": len(X),
         "horizonte_meses": h,
@@ -130,7 +131,7 @@ def main() -> None:
         for metrica in ("pr_auc", "roc_auc")
     }
     with r.corrida("tecnicas", params, por_tecnica, artefactos=[metricas, fig_tecnicas, fig_corr]):
-        pass
+        r.registrar_datos(df, fuente, "eleccion", fuente)  # sin los vacíos al azar (--vacios, con su semilla)
     print(f"MLflow: experimento '{r.EXPERIMENTO}', corrida 'tecnicas'. Ver con: make mlflow-ui")
 
 

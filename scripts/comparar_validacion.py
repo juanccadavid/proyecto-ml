@@ -67,6 +67,7 @@ def main() -> None:
     titulo = f"PR-AUC por partición · {a.TITULOS[args.modelo]} · {args.folds} particiones"
     v.figura_validaciones(por_particion, titulo).write_html(figura, include_plotlyjs="cdn")
     params = {"datos": fuente, "filas": len(df), "horizonte_meses": h, "modelo": args.modelo, "folds": args.folds}
+    params |= r.parametros_datos(df)
     resultado = {
         **params,
         "resumen": resumen.reset_index().to_dict(orient="records"),
@@ -87,7 +88,7 @@ def main() -> None:
         for m in ("pr_auc", "pr_auc_std", "roc_auc")
     }
     with r.corrida("validacion_cruzada", params, por_estrategia, artefactos=[metricas, figura]):
-        pass
+        r.registrar_datos(df, fuente, "eleccion", fuente)
     print(f"MLflow: experimento '{r.EXPERIMENTO}', corrida 'validacion_cruzada'. Ver con: make mlflow-ui")
 
 
