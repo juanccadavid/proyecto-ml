@@ -52,6 +52,7 @@ make setup                   # uv sync + .env desde .env.example + hooks de pre-
 
 make demo                    # genera el dataset sintético y entrena con él (MLflow)
 make train                   # entrena con DATA_PATH del .env (o: make train DATA=... ARGS="--pca 0.95")
+make train ARGS="--clip-outliers iqr --clip-columns salario --drop-columns 0.5"  # con limpieza (MLflow)
 make mlflow-ui               # http://localhost:5000
 make app                     # http://localhost:8501
 make check                   # lint + pruebas, antes de abrir un PR
@@ -146,6 +147,20 @@ mejores hiperparámetros de los dos mejores de la tabla comparativa, con las mis
 |---|---|---|
 | Ridge | `alpha` (más alto = más regularización), `class_weight` | 0.001 … 1000 (13, escala log) × None/balanced |
 | `pycaret_lr` | `C` (más alto = menos regularización), `l1_ratio` (0 = L2, 1 = L1), `class_weight` | 0.001 … 1000 × L2/L1 × None/balanced |
+| los dos | preprocesamiento: vacíos numéricos, codificación, recorte de atípicos | mediana/media × OneHot/ordinal × sin/IQR |
+
+El preprocesamiento entra a la búsqueda con `features.Preprocesador` (parámetros `numeric_strategy`,
+`encoding`, `clip_outliers`). `pycaret_lr` usa la LogisticRegression de PyCaret con su preprocesamiento
+(media + ordinal) reproducido con `build_preprocessor`: predice igual, y así también se puede cambiar.
+El recorte solo toca `SALARIO`, `EDAD` y `ANTIGUEDAD` (`a.COLUMNAS_RECORTE`): en los conteos de
+comportamiento el IQR vale [0, 0] y recortarlos borraría la señal.
+
+**Tabla por partición** (`pipeline | fold | Accuracy | AUC`): para cada preprocesamiento de cada modelo
+(`Ridge_median_onehot`, `LogisticRegression_mean_ordinal_iqr`...), su mejor combinación del resto en cada
+una de las 5 particiones. Debajo, el resumen por preprocesamiento: promedio y desviación entre particiones
+y, la prueba honesta, el resultado sobre asociados **nuevos**. Con `data/ejemplo` (50 filas) el orden se
+invierte: en validación cruzada gana ordinal, con nuevos gana OneHot. Con tan pocas filas, buscar entre
+más combinaciones sobreajusta la validación cruzada.
 
 Imprime las 5 mejores combinaciones de cada uno, la tabla "por defecto vs. afinado" y, lo que cuenta,
 la comparación con asociados **nuevos** (el puntaje de validación cruzada del mejor es optimista: se
@@ -251,11 +266,15 @@ regla a conciencia, actualiza su caso en el mismo PR.
 - `data/`, `models/`, `mlflow.db`, `.env` y `*.bundle` están en `.gitignore`.
 - Pre-commit bloquea archivos de datos, borra salidas de notebooks (nbstripout) y escanea secretos (Gitleaks).
 - Los datos reales se anonimizan con `scripts/anonimizar.py` **por quien los custodia, antes de compartirlos**.
+  Con `--limpiar`, antes aplica `contrato.limpiar_extracto` (espacios, textos tipo 'N/A', números como texto,
+  filas repetidas) con una configuración que no rompe el contrato: `clean_dataset` con sus valores por
+  defecto renombra `#RETIROS`, borra columnas opcionales vacías y vuelve números los teléfonos.
 - Cualquier demo pública se hace con datos sintéticos.
 
 ## Experimentos (MLflow)
 
-Cada `make train` registra parámetros, métricas y modelo en `mlflow.db` (local, no versionado).
+Cada `make train` registra parámetros, métricas y modelo en `mlflow.db` (local, no versionado), incluidas
+las opciones de limpieza (`clip_outliers`, `clip_columns`, `drop_columns`) para comparar con y sin ellas.
 El JSON de métricas en `reports/metrics/` sí se versiona para que el equipo compare resultados.
 
 ## Respaldo offline

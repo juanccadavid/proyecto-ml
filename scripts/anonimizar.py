@@ -7,6 +7,9 @@ Ejemplo:
         --id-cols cedula --drop-cols nombre,correo,telefono,direccion \
         --bin "edad:18,25,35,45,55,65,100" --bin "salario:0,2000000,4000000,8000000,1000000000"
 
+Con --limpiar, antes de anonimizar aplica contrato.limpiar_extracto (espacios, textos tipo 'N/A' -> vacío,
+números escritos como texto, filas repetidas) sin romper el contrato de asociados.
+
 La sal se toma de ANON_SALT (.env). Guárdala solo quien anonimiza: sin ella no se revierte.
 """
 
@@ -16,6 +19,7 @@ import argparse
 from pathlib import Path
 
 from proyecto_ml.anonymize import anonymize
+from proyecto_ml.contrato import limpiar_extracto
 from proyecto_ml.data import load_dataset
 
 
@@ -35,9 +39,12 @@ def main() -> None:
     parser.add_argument("--id-cols", type=_csv, default=[])
     parser.add_argument("--drop-cols", type=_csv, default=[])
     parser.add_argument("--bin", type=_bin, action="append", default=[])
+    parser.add_argument("--limpiar", action="store_true", help="Limpiar el extracto antes de anonimizar")
     args = parser.parse_args()
 
     df = load_dataset(args.input)
+    if args.limpiar:
+        df = limpiar_extracto(df, verbose=True)
     out = anonymize(df, id_columns=args.id_cols, drop_columns=args.drop_cols, bins=dict(args.bin))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     out.to_parquet(args.output, index=False)

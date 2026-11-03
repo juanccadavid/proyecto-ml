@@ -35,3 +35,20 @@ def test_grillas_validas_y_el_afinado_generaliza():
     grilla = {**cli.GRILLAS["pycaret_lr"], "lr__C": [0.01, 1.0]}
     busqueda = afinar(base["pycaret_lr"], grilla, a.preparar(train), train[a.TARGET], folds=3)
     assert a.metricas_supervisado(busqueda.best_estimator_, nuevos)["roc_auc"] > 0.8
+
+
+@pytest.mark.integration
+def test_pycaret_lr_reproducido_predice_igual_que_el_de_pycaret():
+    import numpy as np
+    from pycaret.classification import ClassificationExperiment
+
+    train = GeneradorAsociados(n=300, seed=1).generar()
+    nuevos = GeneradorAsociados(n=300, seed=2).generar()
+    X, y = a.preparar(train), train[a.TARGET]
+
+    exp = ClassificationExperiment(target=a.TARGET, session_id=42, fold=3, normalize=True).fit(X, y)
+    original = clone(exp.create_model("lr").pipeline).fit(X, y)  # preprocesamiento de PyCaret
+    reproducido = clone(cli.modelos_base(train, folds=3)["pycaret_lr"]).fit(X, y)  # media + ordinal nuestros
+
+    Xn = a.preparar(nuevos)
+    assert np.allclose(original.predict_proba(Xn), reproducido.predict_proba(Xn))

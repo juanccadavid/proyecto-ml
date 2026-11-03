@@ -69,3 +69,60 @@ def test_pagina_pipelines_con_el_diagrama_de_cada_uno():
     for paso in ("ColumnTransformer", "SimpleImputer", "StandardScaler", "OneHotEncoder", "RidgeClassifier"):
         assert paso in html
     assert "#SOLICITUD_DISMINUCIONCUOTAS" in html and "TIPOCONTRATO" in html  # columnas de cada rama
+
+
+def test_variantes_de_preprocesamiento_y_rama_de_recorte():
+    from proyecto_ml import abandono as a
+    from proyecto_ml.generador import FALTANTES, GeneradorAsociados
+
+    X = a.preparar(GeneradorAsociados(n=300, seed=1, faltantes=FALTANTES).generar())
+    pre = build_preprocessor(
+        a.NUMERICAS,
+        a.CATEGORICAS,
+        numeric_strategy="mean",
+        encoding="ordinal",
+        clip_outliers="iqr",
+        clip_columns=a.COLUMNAS_RECORTE,
+    ).fit(X)
+
+    assert [nombre for nombre, *_ in pre.transformers_ if nombre != "remainder"] == ["num", "clip", "cat"]
+    assert list(pre.named_transformers_["clip"].feature_names_in_) == a.COLUMNAS_RECORTE
+    assert "outliers" not in pre.named_transformers_["num"].named_steps  # los conteos no se recortan
+    assert pre.named_transformers_["num"].named_steps["imputer"].strategy == "mean"
+    assert pre.transform(X).shape[1] == len(a.NUMERICAS) + len(a.CATEGORICAS)  # ordinal: una columna por categórica
+
+    # Recortar TODAS las numéricas aplasta los conteos (IQR [0, 0]); con clip_columns se conservan.
+    def valores_distintos(**kwargs) -> int:
+        p = build_preprocessor(a.NUMERICAS, [], scale=False, **kwargs).fit(X)
+        salida = pd.DataFrame(p.transform(X), columns=p.get_feature_names_out())
+        return salida["CANCELACIONCREDITOS_ULT3MESES"].nunique()
+
+    assert valores_distintos(clip_outliers="iqr") == 1
+    assert valores_distintos(clip_outliers="iqr", clip_columns=a.COLUMNAS_RECORTE) > 1
+
+    with pytest.raises(ValueError, match="numéricas"):
+        build_preprocessor(a.NUMERICAS, a.CATEGORICAS, clip_outliers="iqr", clip_columns=["SEXO"])
+    with pytest.raises(ValueError, match="encoding"):
+        build_preprocessor(a.NUMERICAS, a.CATEGORICAS, encoding="target")
+
+
+def test_preprocesador_para_gridsearch_y_aplanar():
+    from sklearn.pipeline import Pipeline
+
+    from proyecto_ml import abandono as a
+    from proyecto_ml.features import Preprocesador, aplanar
+    from proyecto_ml.generador import GeneradorAsociados
+
+    df = GeneradorAsociados(n=300, seed=2).generar()
+    X, y = a.preparar(df), df[a.TARGET]
+    opciones = {"numeric_strategy": "mean", "encoding": "ordinal", "clip_outliers": "iqr"}
+    envuelto = Preprocesador(a.NUMERICAS, a.CATEGORICAS, clip_columns=a.COLUMNAS_RECORTE, **opciones).fit(X)
+    directo = build_preprocessor(a.NUMERICAS, a.CATEGORICAS, clip_columns=a.COLUMNAS_RECORTE, **opciones).fit(X)
+    assert np.array_equal(envuelto.transform(X), directo.transform(X))
+    assert list(envuelto.get_feature_names_out()) == list(directo.get_feature_names_out())
+
+    modelo = Pipeline([("preprocess", Preprocesador(a.NUMERICAS, a.CATEGORICAS)), ("model", a.modelo_ridge()[-1])])
+    modelo.set_params(preprocess__encoding="ordinal").fit(X, y)  # como lo cambia GridSearchCV
+    plano = aplanar(modelo)
+    assert type(plano.named_steps["preprocess"]).__name__ == "ColumnTransformer"  # ramas visibles en el diagrama
+    assert np.array_equal(plano.predict(X), modelo.predict(X))

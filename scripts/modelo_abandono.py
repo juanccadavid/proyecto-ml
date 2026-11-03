@@ -52,6 +52,11 @@ def main() -> None:
     parser.add_argument(
         "--ordenar", default="AUC", choices=COLUMNAS_COMPARATIVA, help="Columna para ordenar la tabla comparativa"
     )
+    parser.add_argument(
+        "--clip-outliers",
+        choices=["iqr", "quantile"],
+        help="Recortar atípicos de SALARIO, EDAD y ANTIGUEDAD (aprendido en train). Por defecto: no",
+    )
     args = parser.parse_args()
 
     train = load_dataset(args.datos)
@@ -71,7 +76,7 @@ def main() -> None:
     X, y = a.preparar(train), train[a.TARGET]
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
     supervisados, m_supervisados = {}, {}
-    for nombre, modelo in a.modelos_supervisados(args.alpha).items():
+    for nombre, modelo in a.modelos_supervisados(args.alpha, clip_outliers=args.clip_outliers).items():
         metodo = a.metodo_puntaje(modelo)
         puntaje_cv = cross_val_predict(modelo, X, y, cv=cv, method=metodo)  # clona: no toca `modelo`
         puntaje_cv = puntaje_cv[:, 1] if puntaje_cv.ndim == 2 else puntaje_cv
@@ -90,7 +95,7 @@ def main() -> None:
     print(f"\n=== Comparación sobre {nombre_nuevos} ===")
     print(_tabla({n: m[nombre_nuevos] for n, m in m_supervisados.items()}))
 
-    comparativa = tabla_comparativa(a.modelos_supervisados(args.alpha), X, y, ordenar=args.ordenar)
+    comparativa = tabla_comparativa(supervisados, X, y, ordenar=args.ordenar)  # clona: entrena de cero por partición
     print(f"\n=== Tabla comparativa: validación cruzada (5), mismas particiones, por {args.ordenar} ===")
     print(comparativa.round(4).to_string())
 
@@ -126,6 +131,7 @@ def main() -> None:
     resumen = {
         "datos": str(args.datos.name),
         "alpha": args.alpha,
+        "clip_outliers": args.clip_outliers,
         **m_supervisados,
         "kmeans": m_kmeans,
         "comparativa": comparativa.to_dict(orient="index"),
