@@ -42,6 +42,7 @@ from proyecto_ml.evaluate import (
     resultados_busqueda,
     tabla_comparativa,
 )
+from proyecto_ml.features import pagina_pipelines
 from proyecto_ml.generador import GeneradorAsociados
 
 REGULARIZACION = np.logspace(-3, 3, 13)  # 0.001 ... 1000, 13 valores igual de espaciados en escala log
@@ -140,6 +141,8 @@ def main() -> None:
     figura_busqueda(busquedas, EJE_X).savefig(grafico, dpi=150)
     tabla_html = FIGURES_DIR / "afinamiento_comparativa.html"  # con el mejor de cada columna en amarillo
     tabla_html.write_text(resaltar(comparativa).to_html(), encoding="utf-8", newline="\n")
+    diagramas = FIGURES_DIR / "afinamiento_pipelines.html"  # los afinados, con los hiperparámetros elegidos
+    diagramas.write_text(pagina_pipelines(afinados, "Pipelines afinados"), encoding="utf-8")
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     salida = METRICS_DIR / f"afinamiento_{stamp}.json"
     resumen = {
@@ -155,6 +158,7 @@ def main() -> None:
     print(f"Métricas -> {salida}")
     print(f"Curvas -> {grafico} | tabla comparativa -> {tabla_html}")
     print(f"Predicciones ({len(predicciones)} asociados nuevos) -> {tabla_csv}")
+    print(f"Diagramas de los pipelines -> {diagramas}")
 
 
 if __name__ == "__main__":

@@ -109,6 +109,14 @@ y las mismas particiones para todos. Se guarda en `reports/figures/abandono_comp
 de cada columna en amarillo. Se ordena con `make abandono ARGS="--ordenar Recall"` (o `"--ordenar 'TT (Sec)'"`).
 En un notebook: `resaltar(tabla_comparativa(modelos, X, y))` de `proyecto_ml.evaluate`.
 
+**Diagrama de los pipelines.** `make abandono` guarda `reports/figures/abandono_pipelines.html` con el diagrama
+interactivo de cada modelo (el mismo de Jupyter): el `ColumnTransformer` con su rama numérica (SimpleImputer →
+StandardScaler) y su rama categórica (SimpleImputer → OneHotEncoder), y luego el modelo. Cada caja se despliega con
+un clic para ver parámetros y columnas. `make afinar` hace lo mismo con los afinados en
+`afinamiento_pipelines.html`: ahí se ve que PyCaret usa OrdinalEncoder en la rama categórica. En un notebook basta
+con dejar el pipeline al final de una celda; desde código: `pagina_pipelines({"ridge": modelo})` de
+`proyecto_ml.features`.
+
 Se excluyen las columnas que solo existen porque el asociado ya se fue (fecha/motivo de retiro, `ESTADO`,
 fechas de actualización...): con ellas cualquier modelo acierta el 100 % pero no anticipa nada.
 
