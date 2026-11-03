@@ -21,6 +21,7 @@ MLflow y demo en Streamlit.
 │   ├── evaluate.py       PR-AUC, ROC-AUC, recall@10 %, F1
 │   ├── train.py          Entrenamiento + MLflow + exportación del mejor modelo
 │   ├── abandono.py       Modelos de abandono: supervisados (Ridge, logística, bagging, boosting) y KMeans
+│   ├── busqueda_optuna.py  Optuna para afinar Random Forest y HistGB (make optuna)
 │   ├── contrato.py       Contrato de datos (pandera, 3 niveles) + SQL de Supabase + campos del formulario
 │   ├── generador.py      GeneradorAsociados: asociados ficticios con el esquema real
 │   ├── anonymize.py      Hash con sal, eliminación de PII, agrupación en rangos
@@ -209,6 +210,44 @@ no como probabilidad literal. En código: `a.tabla_predicciones({"ridge": modelo
 ```bash
 make afinar                         # elige por AUC
 make afinar ARGS="--metrica F1"     # o Recall, MCC... (las columnas de la tabla comparativa)
+```
+
+### Afinar los árboles con Optuna: Random Forest y HistGB
+
+`make optuna` ([`scripts/afinar_optuna.py`](scripts/afinar_optuna.py), lógica en
+[`busqueda_optuna.py`](src/proyecto_ml/busqueda_optuna.py)) afina los dos modelos de árboles, que tienen
+demasiados hiperparámetros para una grilla. Optuna busca en **rangos** y su muestreador TPE propone cada
+intento cerca de los que mejor van. Cada intento usa las mismas 5 particiones y métricas que la tabla
+comparativa, y la **poda** (`MedianPruner`) corta a mitad de la validación cruzada los intentos que van
+peor que la mediana. No necesita PyCaret.
+
+| Modelo | Hiperparámetros (rangos) |
+|---|---|
+| Random Forest | `n_estimators` 100–600, `max_depth` 2–20, `min_samples_leaf` 1–10, `max_features` 0.1–1 (fracción), `class_weight` None/balanced/balanced_subsample |
+| HistGB | `learning_rate` 0.01–0.3 (log), `max_iter` 50–500, `max_leaf_nodes` 4–64 (log), `max_depth` 2–10, `min_samples_leaf` 2–20, `l2_regularization` 0.0001–10 (log), `class_weight` None/balanced |
+| los dos | preprocesamiento: mediana/media × OneHot/ordinal × sin/IQR (como en `make afinar`) |
+
+Imprime los 5 mejores intentos, la importancia de cada hiperparámetro y "por defecto vs. Optuna" en
+validación cruzada y con asociados **nuevos**. Guarda los afinados como `models/abandono_<m>_optuna*.joblib`
+(los mismos tres archivos que `make afinar`), un HTML interactivo por estudio en
+`reports/figures/optuna_<m>.html` (historia de la búsqueda, importancia, cortes y poda) y el resumen en
+`reports/metrics/optuna_*.json`.
+
+Con `data/ejemplo` (50 filas), 60 intentos por modelo, unos 2 minutos:
+
+- **HistGB es el que más gana.** Por defecto (`min_samples_leaf=20`) casi no puede cortar con ~40 filas
+  por partición: AUC de validación cruzada 0.22. Optuna baja la hoja a 4 y sube `learning_rate`; con
+  nuevos, AUC 0.853 → 0.938 y F1 0.674 → 0.782.
+- **La métrica que se maximiza importa.** Por AUC, Random Forest elige `class_weight=None`: ordena igual
+  de bien (AUC 0.967 con nuevos) pero casi nunca supera el umbral de 0.5 y el recall cae de 0.44 a 0.18.
+  Con `--metrica F1` elige `balanced_subsample` y hojas de 10: recall 0.84 y F1 0.80 con nuevos (AUC 0.948).
+
+```bash
+make optuna                                         # 60 intentos por modelo, maximiza AUC
+make optuna ARGS="--metrica F1"                     # o Recall, MCC... (columnas de la tabla comparativa)
+make optuna ARGS="--modelos hist_gb --intentos 200" # un solo modelo, más intentos
+make optuna ARGS="--timeout 60"                     # máximo 60 segundos por modelo
+make optuna ARGS="--storage sqlite:///optuna.db"    # guarda el estudio; al repetir, continúa donde quedó
 ```
 
 ## Contrato de datos y Supabase

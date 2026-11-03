@@ -1,0 +1,145 @@
+{
+  "datos": "asociados_ejemplo.parquet",
+  "metrica": "F1",
+  "intentos": 60,
+  "semilla": 42,
+  "estudios": {
+    "random_forest": {
+      "intentos": 60,
+      "complete": 57,
+      "pruned": 3,
+      "mejor_valor": 0.5504761904761903,
+      "mejores": {
+        "numeric_strategy": "mean",
+        "encoding": "onehot",
+        "clip_outliers": null,
+        "n_estimators": 150,
+        "max_depth": 11,
+        "min_samples_leaf": 10,
+        "max_features": 0.9883131551040516,
+        "class_weight": "balanced_subsample"
+      },
+      "importancia": {
+        "min_samples_leaf": 0.56236636541502,
+        "n_estimators": 0.22133907859002294,
+        "max_depth": 0.11565095563260874,
+        "max_features": 0.07791050582338799,
+        "encoding": 0.008742344560840734,
+        "class_weight": 0.008237265107751584,
+        "clip_outliers": 0.00490549739096547,
+        "numeric_strategy": 0.000847987479402437
+      },
+      "top5": [
+        {
+          "intento": 10,
+          "F1": 0.5504761904761903,
+          "std": 0.257276861027094,
+          "numeric_strategy": "mean",
+          "encoding": "onehot",
+          "clip_outliers": null,
+          "n_estimators": 150,
+          "max_depth": 11,
+          "min_samples_leaf": 10,
+          "max_features": 0.9883131551040516,
+          "class_weight": "balanced_subsample"
+        },
+        {
+          "intento": 34,
+          "F1": 0.5504761904761903,
+          "std": 0.257276861027094,
+          "numeric_strategy": "mean",
+          "encoding": "onehot",
+          "clip_outliers": null,
+          "n_estimators": 150,
+          "max_depth": 15,
+          "min_samples_leaf": 10,
+          "max_features": 0.9750743199359344,
+          "class_weight": "balanced_subsample"
+        },
+        {
+          "intento": 11,
+          "F1": 0.5399999999999999,
+          "std": 0.233238075793812,
+          "numeric_strategy": "mean",
+          "encoding": "onehot",
+          "clip_outliers": null,
+          "n_estimators": 200,
+          "max_depth": 17,
+          "min_samples_leaf": 10,
+          "max_features": 0.7701517335942509,
+          "class_weight": "balanced_subsample"
+        },
+        {
+          "intento": 38,
+          "F1": 0.5399999999999999,
+          "std": 0.233238075793812,
+          "numeric_strategy": "mean",
+          "encoding": "onehot",
+          "clip_outliers": null,
+          "n_estimators": 250,
+          "max_depth": 19,
+          "min_samples_leaf": 10,
+          "max_features": 0.8945720660937602,
+          "class_weight": "balanced_subsample"
+        },
+        {
+          "intento": 41,
+          "F1": 0.5399999999999999,
+          "std": 0.233238075793812,
+          "numeric_strategy": "mean",
+          "encoding": "onehot",
+          "clip_outliers": null,
+          "n_estimators": 200,
+          "max_depth": 18,
+          "min_samples_leaf": 10,
+          "max_features": 0.8940984718910562,
+          "class_weight": "balanced_subsample"
+        }
+      ]
+    }
+  },
+  "comparativa": {
+    "random_forest_optuna": {
+      "Model": "RandomForestClassifier",
+      "Accuracy": 0.74,
+      "AUC": 0.7511904761904761,
+      "Recall": 0.6,
+      "Prec.": 0.5166666666666666,
+      "F1": 0.5504761904761903,
+      "Kappa": 0.3715811267298681,
+      "MCC": 0.3742316447288067,
+      "TT (Sec)": 0.18307137489318848
+    },
+    "random_forest": {
+      "Model": "RandomForestClassifier",
+      "Accuracy": 0.78,
+      "AUC": 0.8711309523809524,
+      "Recall": 0.16666666666666666,
+      "Prec.": 0.4,
+      "F1": 0.2333333333333333,
+      "Kappa": 0.17466063348416294,
+      "MCC": 0.2018350154434631,
+      "TT (Sec)": 0.3504741668701172
+    }
+  },
+  "nuevos (n=1000)": {
+    "random_forest": {
+      "base_rate": 0.268,
+      "roc_auc": 0.9661146113693826,
+      "pr_auc": 0.9320124415125584,
+      "precision": 1.0,
+      "recall": 0.44402985074626866,
+      "f1": 0.6149870801033591,
+      "recall_at_10pct": 0.373134328358209
+    },
+    "random_forest_optuna": {
+      "base_rate": 0.268,
+      "roc_auc": 0.9484748389201534,
+      "pr_auc": 0.8896534441257116,
+      "precision": 0.7697594501718213,
+      "recall": 0.835820895522388,
+      "f1": 0.8014311270125224,
+      "recall_at_10pct": 0.35074626865671643
+    }
+  }
+}
