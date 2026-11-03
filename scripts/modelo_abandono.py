@@ -1,4 +1,7 @@
-"""Entrena los modelos de abandono (Ridge y KMeans) y los valida con asociados que nunca vieron.
+"""Entrena los modelos de abandono y los valida con asociados que nunca vieron.
+
+Supervisados: Ridge, regresión logística, Random Forest (bagging) y HistGradientBoosting (boosting).
+Sin objetivo: KMeans.
 
 Uso:
     uv run python scripts/modelo_abandono.py                         # entrena con DATOS_ASOCIADOS del .env
@@ -60,20 +63,28 @@ def main() -> None:
         print(f"Asociados nuevos guardados en {args.exportar_nuevos}")
     print(f"Entrenamiento: {args.datos} ({len(train)} filas, {train[a.TARGET].mean():.0%} abandono)\n")
 
-    # ---- Ridge (supervisado)
+    # ---- Supervisados: Ridge, logística, Random Forest (bagging), HistGB (boosting)
     X, y = a.preparar(train), train[a.TARGET]
-    ridge = a.modelo_ridge(args.alpha).fit(X, y)
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
-    puntaje_cv = cross_val_predict(a.modelo_ridge(args.alpha), X, y, cv=cv, method="decision_function")
-    m_ridge = {
-        "entrenamiento": a.metricas_ridge(ridge, train),
-        "validación cruzada (5)": compute_metrics(y, puntaje_cv, threshold=0.0),
-        **{nombre: a.metricas_ridge(ridge, df) for nombre, df in validaciones.items()},
-    }
-    print(f"=== Ridge (alpha={args.alpha}): ¿abandona? ===")
-    print(_tabla(m_ridge))
-    print("\nVariables con más peso (+ empuja a abandono):")
-    print(a.coeficientes(ridge, 8).round(3).to_string())
+    supervisados, m_supervisados = {}, {}
+    for nombre, modelo in a.modelos_supervisados(args.alpha).items():
+        metodo = a.metodo_puntaje(modelo)
+        puntaje_cv = cross_val_predict(modelo, X, y, cv=cv, method=metodo)  # clona: no toca `modelo`
+        puntaje_cv = puntaje_cv[:, 1] if puntaje_cv.ndim == 2 else puntaje_cv
+        supervisados[nombre] = modelo.fit(X, y)
+        m_supervisados[nombre] = {
+            "entrenamiento": a.metricas_supervisado(modelo, train),
+            "validación cruzada (5)": compute_metrics(y, puntaje_cv, threshold=a.UMBRAL[metodo]),
+            **{nombre_df: a.metricas_supervisado(modelo, df) for nombre_df, df in validaciones.items()},
+        }
+        print(f"=== {a.TITULOS[nombre]}: ¿abandona? ===")
+        print(_tabla(m_supervisados[nombre]) + "\n")
+    print("Variables con más peso en Ridge (+ empuja a abandono):")
+    print(a.coeficientes(supervisados["ridge"], 8).round(3).to_string())
+
+    nombre_nuevos = next(iter(validaciones))  # las predicciones que cuentan: asociados nunca vistos
+    print(f"\n=== Comparación sobre {nombre_nuevos} ===")
+    print(_tabla({n: m[nombre_nuevos] for n, m in m_supervisados.items()}))
 
     # ---- KMeans (sin objetivo)
     agrupador = a.AgrupadorAbandono().fit(train)
@@ -91,15 +102,15 @@ def main() -> None:
     METRICS_DIR.mkdir(parents=True, exist_ok=True)
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     grafico = FIGURES_DIR / "abandono_matriz_confusion.png"
-    nombre, nuevos = next(iter(validaciones.items()))  # las predicciones que cuentan: asociados nunca vistos
-    fig = a.figura_matrices_confusion(ridge, agrupador, nuevos)
-    fig.suptitle(f"Matriz de confusión - {nombre}", fontsize=14)
+    fig = a.figura_matrices_confusion(supervisados, agrupador, validaciones[nombre_nuevos])
+    fig.suptitle(f"Matriz de confusión - {nombre_nuevos}", fontsize=14)
     fig.savefig(grafico, dpi=150)
-    joblib.dump(ridge, MODELS_DIR / "abandono_ridge.joblib")
+    for nombre, modelo in supervisados.items():
+        joblib.dump(modelo, MODELS_DIR / f"abandono_{nombre}.joblib")
     joblib.dump(agrupador, MODELS_DIR / "abandono_kmeans.joblib")
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     salida = METRICS_DIR / f"abandono_{stamp}.json"
-    resumen = {"datos": str(args.datos.name), "alpha": args.alpha, "ridge": m_ridge, "kmeans": m_kmeans}
+    resumen = {"datos": str(args.datos.name), "alpha": args.alpha, **m_supervisados, "kmeans": m_kmeans}
     salida.write_text(json.dumps(resumen, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
     print(f"\nModelos -> {MODELS_DIR / 'abandono_*.joblib'} | métricas -> {salida} | gráfico -> {grafico}")
 

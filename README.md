@@ -20,7 +20,7 @@ MLflow y demo en Streamlit.
 │   ├── models.py         Logística, Random Forest, HistGB, TabPFN (opcional)
 │   ├── evaluate.py       PR-AUC, ROC-AUC, recall@10 %, F1
 │   ├── train.py          Entrenamiento + MLflow + exportación del mejor modelo
-│   ├── abandono.py       Modelos de abandono: Ridge (supervisado) y KMeans (sin objetivo)
+│   ├── abandono.py       Modelos de abandono: supervisados (Ridge, logística, bagging, boosting) y KMeans
 │   ├── contrato.py       Contrato de datos (pandera, 3 niveles) + SQL de Supabase + campos del formulario
 │   ├── generador.py      GeneradorAsociados: asociados ficticios con el esquema real
 │   ├── anonymize.py      Hash con sal, eliminación de PII, agrupación en rangos
@@ -78,12 +78,20 @@ docker compose up --build    # app :8501 + servidor MLflow :5000
 
 La imagen no contiene datos ni modelos: `data/` y `models/` se montan como volúmenes de solo lectura.
 
-## Modelos de abandono (Ridge y KMeans)
+## Modelos de abandono (supervisados y KMeans)
 
 `make abandono` responde "¿este asociado abandona el fondo?" con dos enfoques
 ([`src/proyecto_ml/abandono.py`](src/proyecto_ml/abandono.py)):
 
-- **Ridge** (supervisado, aprende de `#RETIROS`): métricas en entrenamiento, validación cruzada y datos nuevos.
+- **Supervisados** (aprenden de `#RETIROS`), con el mismo preprocesador: métricas en entrenamiento,
+  validación cruzada y datos nuevos, más una tabla que los compara sobre los nuevos.
+
+  | Modelo | Tipo | Idea |
+  |---|---|---|
+  | Ridge | lineal | regresión con penalización sobre la clase -1/+1; coeficientes interpretables |
+  | Regresión logística | lineal | probabilidad de abandono; también interpretable |
+  | Random Forest | **bagging** | muchos árboles independientes (muestras bootstrap) que votan |
+  | HistGradientBoosting | **boosting** | árboles en secuencia, cada uno corrige al anterior (estilo LightGBM) |
 - **KMeans** (sin objetivo): agrupa por comportamiento (solicitudes, ahorros, intención de retiro) en 2 grupos;
   el de "riesgo" se elige por su perfil, no por el objetivo. Después se compara con el abandono real.
 
@@ -97,6 +105,22 @@ make abandono ARGS="--validar mi_archivo.parquet"    # validar además con otro 
 
 Se excluyen las columnas que solo existen porque el asociado ya se fue (fecha/motivo de retiro, `ESTADO`,
 fechas de actualización...): con ellas cualquier modelo acierta el 100 % pero no anticipa nada.
+
+### Comparación automática con PyCaret (opcional)
+
+`make pycaret` ([`scripts/comparar_pycaret.py`](scripts/comparar_pycaret.py)) le da las mismas variables a
+**PyCaret**, que arma solo el preprocesamiento (imputación, codificación, escalado) y compara con validación
+cruzada `lr`, `rf`, `et` (bagging), `ada`, `gbc` y `lightgbm` (boosting). Luego valida sus mejores modelos y
+los nuestros con los mismos asociados nuevos.
+
+```bash
+make pycaret                                   # instala el extra la primera vez (uv sync --extra pycaret)
+make pycaret ARGS="--ordenar Recall --top 5"
+```
+
+Usa **PyCaret 4.0 alfa**: la estable (3.3) exige pandas < 2.2 y no es compatible con el proyecto. Por eso es un
+extra opcional (no lo instala `make setup` ni el CI). A diferencia de nuestro preprocesador, PyCaret codifica
+las categóricas con OrdinalEncoder (no OneHot) y no compensa el desbalance (`class_weight`).
 
 ## Contrato de datos y Supabase
 

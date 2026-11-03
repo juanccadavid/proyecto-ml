@@ -116,8 +116,11 @@
                            publica solo al fusionar cambios de web/ en main. Ver README.)
 
  3.3 Modelos
-     make abandono         Ridge + KMeans de abandono, validados con 1000 asociados NUEVOS
+     make abandono         Ridge, logística, Random Forest (bagging), HistGB (boosting) y KMeans,
+                           validados con 1000 asociados NUEVOS
                            ej.: make abandono ARGS="--nuevos 5000 --semilla-nuevos 7 --alpha 10"
+     make pycaret          PyCaret (AutoML) compara lr/rf/et/ada/gbc/lightgbm contra los de abandono
+                           (opcional: instala el extra pycaret). ej.: make pycaret ARGS="--ordenar Recall"
      make train            compara logística / random forest / HistGB con MLflow (DATA=... ARGS=...)
      make demo             dataset sintético genérico + entrenamiento
      make mlflow-ui        ver experimentos en http://localhost:5000
@@ -159,7 +162,7 @@
        models.py      catálogo de modelos + armado del pipeline          -> get_models, build_pipeline
        evaluate.py    métricas (ROC-AUC, PR-AUC, recall@10 %, F1)       -> compute_metrics
        train.py       entrenamiento comparado + MLflow                   -> run
-       abandono.py    Ridge y KMeans de abandono                         -> modelo_ridge,
+       abandono.py    modelos de abandono (supervisados y KMeans)        -> modelos_supervisados,
                                                                             AgrupadorAbandono
        contrato.py    contrato de datos (pandera, SQL, web)              -> validar, esquema
        generador.py   asociados ficticios                                -> GeneradorAsociados
