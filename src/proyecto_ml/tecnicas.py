@@ -118,12 +118,21 @@ def comparar(
     random_state: int = 42,
 ) -> pd.DataFrame:
     """Una fila por técnica: PR-AUC y ROC-AUC (media y desviación entre particiones), diferencia de PR-AUC
-    con la base y segundos de entrenamiento por partición."""
+    con la base y segundos de entrenamiento por partición.
+
+    Todas usan las mismas particiones, así que la diferencia con la base se mide partición a partición
+    (``campeon.comparar_particiones``, t corregida de Nadeau y Bengio): ``dif_ic_inf`` / ``dif_ic_sup`` es su
+    intervalo del 95 % y ``concluyente`` dice si no toca el 0. La desviación de una sola técnica (``pr_auc_std``)
+    exagera el ruido de la diferencia, porque las particiones difíciles lo son para todas.
+    """
+    from proyecto_ml.campeon import comparar_particiones
+
     cv = RepeatedStratifiedKFold(n_splits=folds, n_repeats=repeticiones, random_state=random_state)
-    filas = []
+    filas, por_particion = [], {}
     for t in tecnicas:
         inicio = time.perf_counter()
         r = cross_validate(modelo(t, nombre_clasificador, random_state), X, y, cv=cv, scoring=SCORING)
+        por_particion[t.nombre] = r["test_pr_auc"]
         filas.append(
             {
                 "grupo": t.grupo,
@@ -139,6 +148,12 @@ def comparar(
     tabla = pd.DataFrame(filas)
     base = tabla.loc[tabla["tecnica"] == "base", "pr_auc"]
     tabla["dif_pr_auc"] = tabla["pr_auc"] - (base.iloc[0] if len(base) else np.nan)
+    if "base" in por_particion:
+        pareada = [comparar_particiones(por_particion[t], por_particion["base"], folds) for t in tabla["tecnica"]]
+        tabla["dif_ic_inf"] = [d["ic_inf"] for d in pareada]
+        tabla["dif_ic_sup"] = [d["ic_sup"] for d in pareada]
+        tabla["concluyente"] = (tabla["dif_ic_inf"] > 0) | (tabla["dif_ic_sup"] < 0)
+        tabla.loc[tabla["tecnica"] == "base", "concluyente"] = False
     return tabla
 
 

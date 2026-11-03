@@ -14,7 +14,7 @@ campeón) aprenden directamente del retiro.
 El mapa pone a cada asociado en dos ejes que se leen directo (promedios del comportamiento estandarizado):
 **señales de salida** (``SALIDA``: cancelaciones, disminuciones, retiros parciales, intención de retiro) y
 **vínculo con el fondo** (``VINCULO``: ahorros, créditos, servicios), y dibuja el contorno de cada segmento.
-Con PCA, dos componentes solo explican el 29 % de la variación y los segmentos se enciman.
+Con PCA, dos componentes solo explican el 28 % de la variación y los segmentos se enciman.
 """
 
 from __future__ import annotations

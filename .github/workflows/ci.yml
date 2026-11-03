@@ -45,21 +45,7 @@ jobs:
       - name: Ejecutar el flujo completo (make pipeline)
         run: make pipeline
       - name: Resumen del campeón
-        run: |
-          uv run python - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
-          import json
-          from pathlib import Path
-          info = json.loads(Path("models/campeon.json").read_text(encoding="utf-8"))
-          cv = info["metricas_cv"]
-          print(f"## Campeón: {info['titulo']}")
-          print(f"PR-AUC {cv['pr_auc']:.3f} ± {cv['pr_auc_std']:.3f} · recall {cv['recall']:.0%} · "
-                f"precisión {cv['precision']:.0%} · MCC {cv['mcc']:.2f} ({info['filas']} asociados, foto a "
-                f"{info.get('horizonte_meses') or 0} meses)\n")
-          print("| Candidato | PR-AUC | ROC-AUC | MCC |\n|---|---|---|---|")
-          for nombre, m in info["candidatos"].items():
-              print(f"| {nombre} | {m['pr_auc']:.3f} | {m['roc_auc']:.3f} | {m['mcc']:.2f} |")
-          print("\nZonas en asociados nuevos: " + ", ".join(f"{z['zona']} {z['asociados']}" for z in info["zonas_nuevos"]))
-          EOF
+        run: uv run python scripts/resumen_campeon.py >> "$GITHUB_STEP_SUMMARY"
       - name: Guardar resultados
         if: always()
         uses: actions/upload-artifact@v4

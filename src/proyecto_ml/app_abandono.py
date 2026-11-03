@@ -11,7 +11,7 @@ Cada control es una variable de ``abandono.preparar``: al moverlo, la predicció
 
 Uso:  make simulador   (o: uv run streamlit run src/proyecto_ml/app_abandono.py)
 Sin el campeón en models/ (Streamlit Community Cloud: los .joblib no van a Git), lo elige al arrancar, en
-memoria, con los mismos datos de desarrollo (2.000 asociados, semilla 7) y una sola repetición.
+memoria, con los mismos datos de desarrollo (5.000 asociados, semilla 7) y una sola repetición.
 """
 
 from __future__ import annotations
@@ -74,7 +74,8 @@ def elegir_campeon_aqui():
     """Como ``make campeon`` pero en memoria y con una repetición: (modelo, agrupador, info)."""
     df, fuente = c.datos_eleccion()
     h = a.HORIZONTE_MESES
-    elegido = c.elegir(a.foto(df, h), repeticiones=1, info={"datos": fuente, "horizonte_meses": h})
+    info = {"datos": fuente, "horizonte_meses": h}
+    elegido = c.elegir(a.foto(df, h), repeticiones=1, info=info, honestos=False)  # sin la anidada: arranca antes
     return elegido.con_zonas(), elegido.agrupador, c.resumen(elegido)
 
 
@@ -142,8 +143,16 @@ with st.sidebar:
     st.markdown(f"**{info['titulo']}**")
     cv = info["metricas_cv"]
     st.caption(
-        f"Elegido por PR-AUC en validación cruzada: {cv['pr_auc']:.3f} (± {cv.get('pr_auc_std', 0):.3f}). "
-        f"Datos: `{info.get('datos', 'sin nombre')}` ({info['filas']} asociados, {info['tasa_retiro']:.1%} retiro), "
+        f"Elegido por PR-AUC en validación cruzada: {cv['pr_auc']:.3f} "
+        f"(± {cv.get('pr_auc_std', 0):.3f} entre particiones"
+        + (f"; IC 95 % {cv['pr_auc_ic_inf']:.2f}–{cv['pr_auc_ic_sup']:.2f}" if "pr_auc_ic_inf" in cv else "")
+        + "). "
+        + (
+            f"Empata con {len(info['empatados'])} candidato(s): la diferencia está dentro del ruido. "
+            if info.get("empatados")
+            else ""
+        )
+        + f"Datos: `{info.get('datos', 'sin nombre')}` ({info['filas']} asociados, {info['tasa_retiro']:.1%} retiro), "
         f"foto a {info.get('horizonte_meses') or 0} meses."
     )
     alerta = (
@@ -152,6 +161,12 @@ with st.sidebar:
     )
     if umbral_alto is None:
         st.markdown(alerta + " Ningún umbral llega a la precisión pedida: no hay zona 'se retira'.")
+    elif umbral_alto <= umbral:  # el umbral de alerta ya alcanza la precisión pedida: toda alerta es "se retira"
+        st.markdown(
+            f"**Se retira** desde {formato_puntaje(umbral, metodo)} (encuentra al {cv['recall']:.0%} de los que se "
+            f"van; precisión {cv['precision']:.0%}). El umbral de alerta ya alcanza la precisión pedida, así que no "
+            "hay zona gris."
+        )
     else:
         st.markdown(
             alerta + f" **Se retira** desde {formato_puntaje(umbral_alto, metodo)} "

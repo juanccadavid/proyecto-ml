@@ -55,7 +55,7 @@ def test_sin_umbral_alto_todo_lo_alertado_es_zona_gris():
 def test_elige_el_de_mejor_pr_auc_y_lo_deja_entrenado(elegido, foto):
     tabla = elegido.tabla()
     assert list(tabla.index)[0] == elegido.nombre == tabla[c.CRITERIO].idxmax()
-    assert set(tabla.index) == set(a.TITULOS)
+    assert set(tabla.index) == set(c.lista_candidatos(a.separar(foto)[0]))  # los 4 + técnicas concluyentes
     assert elegido.candidatos[elegido.nombre].puntajes.shape == (2, len(foto))
     zonas = elegido.zona(a.preparar(foto))
     assert set(zonas) <= set(c.ZONAS) and "se queda" in zonas

@@ -155,7 +155,7 @@
                            data/processed/predicciones.csv. ej.: make predecir DATA=data/raw/extracto.parquet
      make pipeline         todo el flujo en orden: campeon, predecir, segmentos, validacion, regresion
                            (es lo que corre el CI en cada push; los resultados quedan como artefacto)
-     make datos-desarrollo los 2.000 asociados de desarrollo (semilla 7, 10 % de retiro) en data/processed/
+     make datos-desarrollo los 5.000 asociados de desarrollo (semilla 7, 10 % de retiro) en data/processed/
      make optuna           Optuna afina Random Forest y HistGB (60 intentos por modelo, con poda), con
                            el preprocesamiento como hiperparámetro; compara por defecto vs. afinado con
                            asociados nuevos. ej.: ARGS="--intentos 200 --metrica F1 --modelos hist_gb"

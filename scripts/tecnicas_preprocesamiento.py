@@ -48,7 +48,7 @@ def _slug(texto: str) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("--datos", type=Path, help="Por defecto los de desarrollo (2.000, semilla 7, 10 %%)")
+    parser.add_argument("--datos", type=Path, help="Por defecto los de desarrollo (5.000, semilla 7, 10 %%)")
     parser.add_argument(
         "--horizonte", type=int, default=a.HORIZONTE_MESES, help="Meses de la foto (0 = todos al corte)"
     )
@@ -86,9 +86,11 @@ def main() -> None:
     with pd.option_context("display.width", 200, "display.max_colwidth", 60):
         print(tabla.drop(columns="descripcion").round(3).to_string(index=False))
     ruido = tabla.loc[tabla["tecnica"] == "base", "pr_auc_std"].iloc[0]
+    concluyentes = tabla.loc[tabla["concluyente"].astype(bool), "tecnica"].tolist()
     print(
-        f"\nOjo: la PR-AUC varía ±{ruido:.3f} entre particiones; una diferencia con la base menor que eso "
-        "puede ser azar (con pocos retirados, cada partición tiene pocos positivos)."
+        f"\nOjo: la PR-AUC de una técnica varía ±{ruido:.3f} entre particiones, pero la diferencia con la base se mide "
+        "partición a partición (dif_ic_inf / dif_ic_sup, IC 95 %). Concluyentes (el intervalo no toca el 0): "
+        + (", ".join(concluyentes) if concluyentes else "ninguna")
     )
 
     # ---- Guardar

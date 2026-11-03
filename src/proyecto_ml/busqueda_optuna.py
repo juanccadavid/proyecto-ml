@@ -102,7 +102,8 @@ def objetivo(modelo: Pipeline, espacio, X, y, folds: int = 5, metrica: str = "AU
         puntajes = []
         for paso, (entrena, prueba) in enumerate(particiones):
             m = clone(modelo).set_params(**params).fit(X.iloc[entrena], y.iloc[entrena])
-            puntajes.append(float(check_scoring(m, SCORING[metrica])(m, X.iloc[prueba], y.iloc[prueba])))
+            puntaje = check_scoring(m, SCORING.get(metrica, metrica))  # o un scoring de sklearn
+            puntajes.append(float(puntaje(m, X.iloc[prueba], y.iloc[prueba])))
             trial.report(float(np.mean(puntajes)), paso)
             if trial.should_prune():
                 trial.set_user_attr("folds", puntajes)

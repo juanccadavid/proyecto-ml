@@ -139,6 +139,10 @@ def test_comparar_una_fila_por_tecnica_con_diferencia_contra_la_base(datos):
     assert tabla.loc[0, "dif_pr_auc"] == 0
     assert tabla["pr_auc"].between(0, 1).all() and tabla["roc_auc"].between(0, 1).all()
     assert len(t.figura(tabla).data) == tabla["grupo"].nunique()
+    # diferencia con la base partición a partición: su intervalo contiene la diferencia media
+    assert (tabla["dif_ic_inf"] <= tabla["dif_pr_auc"] + 1e-12).all()
+    assert (tabla["dif_pr_auc"] <= tabla["dif_ic_sup"] + 1e-12).all()
+    assert not tabla.loc[0, "concluyente"]  # la base contra sí misma
 
 
 def test_muestreo_solo_con_el_pipeline_de_imblearn():
