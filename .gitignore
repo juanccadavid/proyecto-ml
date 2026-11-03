@@ -74,3 +74,6 @@ desktop.ini
 
 # ---------- Formulario web: conexión local a Supabase ----------
 web/config.js
+
+# PyCaret escribe su registro en la carpeta actual
+logs.log

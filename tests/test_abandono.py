@@ -1,8 +1,9 @@
-"""Pruebas de los modelos de abandono: Ridge (supervisado) y KMeans (sin objetivo)."""
+"""Pruebas de los modelos de abandono: supervisados (Ridge, logística, bagging, boosting) y KMeans."""
 
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
 
 from proyecto_ml import abandono as a
 from proyecto_ml.generador import FALTANTES, GeneradorAsociados
@@ -38,10 +39,34 @@ def test_columnas_de_fuga_no_cambian_las_predicciones(entrenamiento, nuevos):
 
 def test_ridge_generaliza_a_asociados_nuevos(entrenamiento, nuevos):
     ridge = a.modelo_ridge().fit(a.preparar(entrenamiento), entrenamiento[a.TARGET])
-    m = a.metricas_ridge(ridge, nuevos)
+    m = a.metricas_supervisado(ridge, nuevos)
     assert m["roc_auc"] > 0.8
     assert m["recall"] > 0.6
     assert len(a.coeficientes(ridge, 5)) == 5
+
+
+@pytest.fixture(scope="module")
+def supervisados(entrenamiento) -> dict:
+    X, y = a.preparar(entrenamiento), entrenamiento[a.TARGET]
+    return {nombre: modelo.fit(X, y) for nombre, modelo in a.modelos_supervisados().items()}
+
+
+def test_hay_un_modelo_de_bagging_y_uno_de_boosting(supervisados):
+    assert list(supervisados) == list(a.TITULOS)
+    assert isinstance(supervisados["random_forest"].named_steps["model"], RandomForestClassifier)  # bagging
+    assert isinstance(supervisados["hist_gb"].named_steps["model"], HistGradientBoostingClassifier)  # boosting
+
+
+@pytest.mark.parametrize("nombre", list(a.TITULOS))
+def test_supervisados_generalizan_a_asociados_nuevos(supervisados, nuevos, nombre):
+    modelo = supervisados[nombre]
+    m = a.metricas_supervisado(modelo, nuevos)
+    assert m["roc_auc"] > 0.8
+    assert m["recall"] > 0.6
+    # El umbral de cada tipo de puntaje coincide con lo que decide predict().
+    X = a.preparar(nuevos)
+    decide = (a.puntaje(modelo, X) >= a.UMBRAL[a.metodo_puntaje(modelo)]).astype(int)
+    assert (decide == modelo.predict(X)).mean() > 0.99  # empates exactos en el umbral pueden diferir
 
 
 def test_kmeans_se_entrena_sin_el_objetivo(entrenamiento):
@@ -68,18 +93,17 @@ def test_modelos_toleran_datos_faltantes():
     assert X.isna().any().any()  # hay vacíos de verdad...
     assert not X[a.CATEGORICAS].isin(["nan", "None", "<NA>"]).any().any()  # ...y no texto "nan"
 
-    ridge = a.modelo_ridge().fit(X, sucio[a.TARGET])
-    assert a.metricas_ridge(ridge, nuevos_sucios)["roc_auc"] > 0.8
+    for modelo in a.modelos_supervisados().values():
+        assert a.metricas_supervisado(modelo.fit(X, sucio[a.TARGET]), nuevos_sucios)["roc_auc"] > 0.8
     agrupador = a.AgrupadorAbandono().fit(sucio)
     assert a.metricas_agrupacion(agrupador, nuevos_sucios)["recall"] > 0.7
 
 
-def test_figura_matrices_confusion(entrenamiento, nuevos):
-    ridge = a.modelo_ridge().fit(a.preparar(entrenamiento), entrenamiento[a.TARGET])
+def test_figura_matrices_confusion(entrenamiento, nuevos, supervisados):
     agrupador = a.AgrupadorAbandono().fit(entrenamiento)
-    fig = a.figura_matrices_confusion(ridge, agrupador, nuevos)
-    ejes = fig.get_axes()
-    assert [ax.get_title() for ax in ejes] == ["Ridge (supervisado)", "KMeans (sin objetivo)"]
+    fig = a.figura_matrices_confusion(supervisados, agrupador, nuevos)
+    ejes = fig.get_axes()  # 5 paneles en una cuadrícula de 2x3: el sexto se quita
+    assert [ax.get_title() for ax in ejes] == [*a.TITULOS.values(), "KMeans (sin objetivo)"]
     for ax in ejes:
         conteos = [int(t.get_text().split("\n")[0]) for t in ax.texts]
         assert sum(conteos) == len(nuevos)  # las 4 celdas suman todos los asociados

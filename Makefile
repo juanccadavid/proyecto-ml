@@ -26,7 +26,7 @@ ARGS ?=
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup setup-hf demo-data demo train train-hf abandono mlflow-ui app \
+.PHONY: help setup setup-hf demo-data demo train train-hf abandono pycaret mlflow-ui app \
         ejemplo contrato contrato-sql contrato-web supabase-subir supabase-bajar formulario \
         test test-fast cov lint format check hooks secrets up down logs salt bundle clean clean-all
 
@@ -66,8 +66,11 @@ train: ## Entrena y compara modelos (DATA del .env; acepta DATA=... ARGS=...)
 train-hf: ## Entrena incluyendo TabPFN (requiere make setup-hf)
 	$(UV) run --extra hf python -m proyecto_ml.train --tabpfn $(if $(DATA),--data $(DATA)) $(ARGS)
 
-abandono: ## Ridge + KMeans de abandono, validados con asociados nuevos (acepta DATA=... ARGS=...)
+abandono: ## Ridge, logística, bagging, boosting y KMeans de abandono, validados con asociados nuevos
 	$(PY) scripts/modelo_abandono.py $(if $(DATA),--datos $(DATA)) $(ARGS)
+
+pycaret: ## Compara con PyCaret (AutoML) vs. los modelos de abandono (instala el extra pycaret)
+	$(UV) run --extra pycaret python scripts/comparar_pycaret.py $(if $(DATA),--datos $(DATA)) $(ARGS)
 
 # ==============================================================================
 # Servicios locales

@@ -1,6 +1,7 @@
-"""Abandono de asociados del fondo de empleados: modelo Ridge (supervisado) y KMeans (sin objetivo).
+"""Abandono de asociados del fondo de empleados: modelos supervisados y KMeans (sin objetivo).
 
-Ambos usan las mismas variables, elegidas para no hacer trampa: se excluyen las columnas que
+Supervisados: Ridge, regresión logística, Random Forest (bagging) y HistGradientBoosting (boosting).
+Todos usan las mismas variables, elegidas para no hacer trampa: se excluyen las columnas que
 solo existen PORQUE el asociado ya se retiró (fecha y motivo de retiro, ESTADO, fechas de
 actualización que coinciden con el retiro...). Con ellas cualquier modelo acierta el 100 %
 pero no sirve para anticipar un retiro.
@@ -21,6 +22,7 @@ from sklearn.preprocessing import StandardScaler
 
 from proyecto_ml.evaluate import compute_metrics
 from proyecto_ml.features import build_preprocessor
+from proyecto_ml.models import build_pipeline, get_models
 
 if TYPE_CHECKING:
     from matplotlib.figure import Figure
@@ -82,7 +84,16 @@ def preparar(df: pd.DataFrame) -> pd.DataFrame:
     return X[NUMERICAS + CATEGORICAS]
 
 
-# ---------------------------------------------------------------- supervisado: Ridge
+# ---------------------------------------------------------------- supervisados
+
+TITULOS = {
+    "ridge": "Ridge",
+    "logreg": "Regresión logística",
+    "random_forest": "Random Forest (bagging)",
+    "hist_gb": "HistGradientBoosting (boosting)",
+}
+# Umbral de "abandona" según el puntaje que da cada modelo.
+UMBRAL = {"predict_proba": 0.5, "decision_function": 0.0}
 
 
 def modelo_ridge(alpha: float = 1.0) -> Pipeline:
@@ -99,9 +110,33 @@ def modelo_ridge(alpha: float = 1.0) -> Pipeline:
     )
 
 
-def metricas_ridge(modelo: Pipeline, df: pd.DataFrame) -> dict[str, float]:
-    puntaje = modelo.decision_function(preparar(df))
-    return compute_metrics(df[TARGET], puntaje, threshold=0.0)
+def modelos_supervisados(alpha: float = 1.0, random_state: int = 42) -> dict[str, Pipeline]:
+    """Ridge + el catálogo de models.py (logística, Random Forest, HistGB), con el mismo preprocesador.
+
+    Random Forest es *bagging*: muchos árboles independientes, cada uno con una muestra bootstrap,
+    que votan. HistGradientBoosting es *boosting*: árboles en secuencia, cada uno corrige los errores
+    de los anteriores (la versión de scikit-learn inspirada en LightGBM).
+    """
+    catalogo = {
+        nombre: build_pipeline(build_preprocessor(NUMERICAS, CATEGORICAS), modelo)
+        for nombre, modelo in get_models(random_state).items()
+    }
+    return {"ridge": modelo_ridge(alpha), **catalogo}
+
+
+def metodo_puntaje(modelo: Pipeline) -> str:
+    """Probabilidad si el modelo la da; si no (Ridge), la distancia a la frontera."""
+    return "predict_proba" if hasattr(modelo, "predict_proba") else "decision_function"
+
+
+def puntaje(modelo: Pipeline, X: pd.DataFrame) -> np.ndarray:
+    """Puntaje de abandono: más alto = más riesgo. Se compara con ``UMBRAL[metodo_puntaje(modelo)]``."""
+    valores = getattr(modelo, metodo_puntaje(modelo))(X)
+    return valores[:, 1] if valores.ndim == 2 else valores
+
+
+def metricas_supervisado(modelo: Pipeline, df: pd.DataFrame) -> dict[str, float]:
+    return compute_metrics(df[TARGET], puntaje(modelo, preparar(df)), threshold=UMBRAL[metodo_puntaje(modelo)])
 
 
 def coeficientes(modelo: Pipeline, top: int = 10) -> pd.Series:
@@ -165,23 +200,29 @@ def metricas_agrupacion(agrupador: AgrupadorAbandono, df: pd.DataFrame) -> dict[
 # ---------------------------------------------------------------- gráfico: matrices de confusión
 
 
-def figura_matrices_confusion(ridge: Pipeline, agrupador: AgrupadorAbandono, df: pd.DataFrame) -> Figure:
+def figura_matrices_confusion(
+    supervisados: dict[str, Pipeline], agrupador: AgrupadorAbandono, df: pd.DataFrame, columnas: int = 3
+) -> Figure:
     """Matriz de confusión de cada modelo sobre ``df`` (filas = real, columnas = predicción).
 
+    Un panel por modelo supervisado (en el orden del dict) y uno final para KMeans.
     Cada celda muestra el conteo y el % de su fila: en la fila 1, el % de la columna 1 es el recall.
     """
     from matplotlib import colormaps
     from matplotlib.figure import Figure  # sin pyplot: no abre ventanas ni depende del backend
 
-    y = df[TARGET].to_numpy()
+    y, X = df[TARGET].to_numpy(), preparar(df)
     reales = ["0\nse queda", "1\nabandona"]
-    paneles = {
-        "Ridge (supervisado)": (ridge.predict(preparar(df)), reales),
-        "KMeans (sin objetivo)": (agrupador.predict(df), ["0\nestable", "1\nriesgo"]),
-    }
-    fig = Figure(figsize=(9, 4.4), layout="constrained")
+    paneles = {TITULOS.get(nombre, nombre): (modelo.predict(X), reales) for nombre, modelo in supervisados.items()}
+    paneles["KMeans (sin objetivo)"] = (agrupador.predict(df), ["0\nestable", "1\nriesgo"])
+    columnas = min(columnas, len(paneles))
+    filas = -(-len(paneles) // columnas)  # división hacia arriba
+    fig = Figure(figsize=(4.5 * columnas, 4.4 * filas), layout="constrained")
     fig.suptitle(f"Matriz de confusión (n={len(y)})", fontsize=14)
-    for ax, (titulo, (pred, etiquetas)) in zip(fig.subplots(1, 2), paneles.items(), strict=True):
+    ejes = fig.subplots(filas, columnas, squeeze=False).ravel()
+    for ax in ejes[len(paneles) :]:
+        ax.remove()  # cuadrícula incompleta: sin paneles vacíos
+    for ax, (titulo, (pred, etiquetas)) in zip(ejes, paneles.items(), strict=False):
         cm = confusion_matrix(y, pred, labels=[0, 1])
         ax.imshow(cm, cmap=colormaps["Blues"], vmin=0, vmax=cm.max())
         por_fila = cm / np.maximum(cm.sum(axis=1, keepdims=True), 1)

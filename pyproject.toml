@@ -30,6 +30,10 @@ hf = [
 ]
 # Explicabilidad para la demo. uv sync --extra explain
 explain = ["shap>=0.46"]
+pycaret = [
+    "lightgbm>=4.5",
+    "pycaret==4.0.0a8",
+]
 
 [dependency-groups]
 dev = [
