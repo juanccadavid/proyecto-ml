@@ -70,6 +70,7 @@ def main() -> None:
     pagina = '<!doctype html><meta charset="utf-8"><title>Segmentos de asociados</title>' + "".join(partes)
     figura.write_text(pagina + "\n", encoding="utf-8", newline="\n")
     params = {
+        **r.parametros_datos(df),
         "datos": fuente,
         "filas": len(df),
         "horizonte_meses": h,
@@ -99,7 +100,7 @@ def main() -> None:
         for m in ("tasa_retiro", "precision", "recall", "ari")
     }
     with r.corrida("segmentos", params, propias, artefactos=[metricas, figura]):
-        pass
+        r.registrar_datos(df, fuente, "eleccion", fuente)
     print(f"MLflow: experimento '{r.EXPERIMENTO}', corrida 'segmentos'. Ver con: make mlflow-ui")
 
 

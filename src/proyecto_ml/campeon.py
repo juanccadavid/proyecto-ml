@@ -88,6 +88,7 @@ def datos_eleccion(ruta: Path | None = None) -> tuple[pd.DataFrame, str]:
     """Los asociados con que se elige el campeón y de dónde salieron: ``ruta``, o el archivo de
     ``make datos-desarrollo``, o los mismos 5.000 generados en memoria (Streamlit Community Cloud)."""
     from proyecto_ml.config import PROCESSED_DIR
+    from proyecto_ml.contrato import limpiar_extracto
     from proyecto_ml.generador import NOMBRE_DESARROLLO, datos_desarrollo
 
     if ruta:
@@ -95,7 +96,8 @@ def datos_eleccion(ruta: Path | None = None) -> tuple[pd.DataFrame, str]:
     desarrollo = PROCESSED_DIR / f"{NOMBRE_DESARROLLO}.parquet"
     if desarrollo.exists():
         return a.cargar(desarrollo), desarrollo.name
-    return datos_desarrollo(), "datos_desarrollo() en memoria"
+    # La misma limpieza que a.cargar aplica al leer el archivo: así los dos caminos dan los mismos datos.
+    return limpiar_extracto(datos_desarrollo()), "datos_desarrollo() en memoria"
 
 
 def lista_candidatos(X: pd.DataFrame | None = None, random_state: int = 42) -> dict[str, Pipeline]:

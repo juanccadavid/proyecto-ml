@@ -51,3 +51,66 @@ def test_corridas_y_alias_del_campeon(tmp_path, monkeypatch):
     assert mlflow.get_run(ids["kmeans"]).data.params["model__n_clusters"] == "2"  # el KMeans del agrupador
     cargado = mlflow.sklearn.load_model(f"models:/{r.MODELO_REGISTRADO}@{r.ALIAS_CAMPEON}")
     assert (cargado.predict_proba(X) == modelo.predict_proba(X)).all()
+
+
+# ---------------------------------------------------------------- versión de los datos
+
+
+def test_huella_cambia_con_una_sola_celda():
+    from proyecto_ml.generador import FALTANTES
+
+    df = a.foto(GeneradorAsociados(n=300, seed=1, faltantes=FALTANTES).generar(), 3)
+    huella = r.huella(df)
+    assert len(huella) == 12 and huella == r.huella(df.copy())  # mismos datos, misma huella
+    assert huella == r.huella(GeneradorAsociados(n=300, seed=1, faltantes=FALTANTES).generar().pipe(a.foto, 3))
+
+    otro = df.copy()
+    otro.iloc[-1, otro.columns.get_loc("SALARIO")] += 1  # una celda, en la última fila (MLflow solo mira 10.000)
+    assert r.huella(otro) != huella
+    texto = df.copy()
+    texto.iloc[0, texto.columns.get_loc("CARGO")] = None  # un vacío en una categórica
+    assert r.huella(texto) != huella
+    assert r.huella(df.astype({"ESTRATO": "float64"})) != huella  # mismo valor, otro tipo
+    assert r.huella(df.iloc[::-1]) != huella  # el orden de las filas cuenta
+    assert r.huella(df.astype({"CARGO": object})) == r.huella(df.astype({"CARGO": "string"}))
+
+
+def test_huella_del_contrato(tmp_path):
+    contrato = tmp_path / "contrato.yaml"
+    contrato.write_text("columnas: [a]\n", encoding="utf-8")
+    antes = r.huella_contrato(contrato)
+    contrato.write_text("columnas: [a, b]\n", encoding="utf-8")
+    assert r.huella_contrato(contrato) != antes and len(r.huella_contrato()) == 12
+
+
+@pytest.mark.integration
+def test_registrar_datos_en_mlflow(tmp_path, monkeypatch):
+    import mlflow
+
+    monkeypatch.setenv("MLFLOW_TRACKING_URI", f"sqlite:///{(tmp_path / 'mlflow.db').as_posix()}")
+    df = GeneradorAsociados(n=120, seed=2).generar()
+    r.configurar("prueba_datos")
+    with r.corrida("con_datos", r.parametros_datos(df)) as run_id:
+        huella = r.registrar_datos(df, "asociados_prueba", "eleccion", "GeneradorAsociados(seed=2)")
+    corrida = mlflow.get_run(run_id)
+    (entrada,) = corrida.inputs.dataset_inputs
+    assert entrada.dataset.name == "asociados_prueba" and entrada.dataset.digest == huella == r.huella(df)
+    assert [t.value for t in entrada.tags if t.key == "mlflow.data.context"] == ["eleccion"]
+    assert '"num_rows": 120' in entrada.dataset.profile and "SALARIO" in entrada.dataset.schema
+    assert "GeneradorAsociados(seed=2)" in entrada.dataset.source  # la fuente, no los datos
+    assert corrida.data.params["datos_huella"] == huella and len(corrida.data.params["contrato_huella"]) == 12
+
+
+def test_misma_huella_en_memoria_y_en_archivo(tmp_path, monkeypatch):
+    """El CI genera los datos de desarrollo en memoria; en el PC se leen del parquet: deben dar la misma huella."""
+    from proyecto_ml import campeon as c
+    from proyecto_ml import config, generador
+
+    monkeypatch.setitem(generador.DESARROLLO, "n", 300)
+    monkeypatch.setattr(config, "PROCESSED_DIR", tmp_path)
+    memoria, fuente = c.datos_eleccion()
+    assert fuente == "datos_desarrollo() en memoria"
+    GeneradorAsociados(**generador.DESARROLLO).guardar(tmp_path, generador.NOMBRE_DESARROLLO)  # make datos-desarrollo
+    archivo, fuente = c.datos_eleccion()
+    assert fuente == f"{generador.NOMBRE_DESARROLLO}.parquet"
+    assert r.huella(archivo) == r.huella(memoria)

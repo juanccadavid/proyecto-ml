@@ -26,7 +26,12 @@ def resumen(info: dict) -> str:
     lineas = [
         f"## Campeón: {info['titulo']}",
         f"Foto a {h} meses · {info['filas']} asociados · {info['tasa_retiro']:.1%} se retira "
-        f"({round(info['filas'] * info['tasa_retiro'])} retiros)",
+        f"({round(info['filas'] * info['tasa_retiro'])} retiros)"
+        + (
+            f" · datos `{info['datos_huella']}` · contrato `{info['contrato_huella']}`"
+            if "datos_huella" in info
+            else ""
+        ),
         "",
         f"**PR-AUC {cv['pr_auc']:.3f} ± {cv['pr_auc_std']:.3f}** entre particiones"
         + (f" · IC 95 % {cv['pr_auc_ic_inf']:.3f}–{cv['pr_auc_ic_sup']:.3f}" if "pr_auc_ic_inf" in cv else ""),

@@ -87,6 +87,7 @@ def main() -> None:
     titulo = f"Salario real vs. predicho · {g.TITULOS[mejor]} · R² {tabla.loc[mejor, 'R2']:.3f} (KFold)"
     g.figura_real_vs_predicho(y, prediccion, titulo).write_html(figura, include_plotlyjs="cdn")
     params = {"datos": fuente, "filas": len(X), "objetivo": g.OBJETIVO, "folds": args.folds}
+    params |= r.parametros_datos(X)
     resultado = {**params, "cv": tabla.reset_index(names="modelo").to_dict(orient="records"), "nuevos": en_nuevos}
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     metricas = METRICS_DIR / f"regresion_{stamp}.json"
@@ -98,6 +99,7 @@ def main() -> None:
         return
     r.configurar(EXPERIMENTO)
     with r.corrida("regresion_salario", params, artefactos=[metricas, figura], tags={"mejor": mejor}):
+        r.registrar_datos(X, fuente, "entrenamiento", fuente, objetivo=g.OBJETIVO)  # solo quienes reportan salario
         for nombre, fila in tabla.iterrows():
             propias = r.con_prefijo("cv", fila.to_dict())
             if nombre in en_nuevos:

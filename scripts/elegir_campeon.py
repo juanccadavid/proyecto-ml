@@ -101,7 +101,7 @@ def main() -> None:
         repeticiones=args.repeticiones,
         beta=args.beta,
         precision_min=args.precision_min,
-        info={"datos": fuente, "horizonte_meses": h, "fecha_observacion": str(t0)},
+        info={"datos": fuente, "horizonte_meses": h, "fecha_observacion": str(t0), **r.parametros_datos(df)},
     )
     print("=== Candidatos (fuera de partición; umbral = máximo F2, umbral_alto = precisión mínima) ===")
     columnas = ["pr_auc", "pr_auc_std", "pr_auc_ic_inf", "pr_auc_ic_sup", "roc_auc", "umbral", "precision"]
@@ -219,6 +219,7 @@ def main() -> None:
     r.configurar()
     params = {"datos": fuente, "filas": len(df), "horizonte_meses": h, "folds": args.folds}
     params |= {"repeticiones": args.repeticiones, "beta": args.beta, "precision_min": args.precision_min}
+    params |= r.parametros_datos(df)
     slugs = {e.nombre: _slug(e) for e in v.ESCENARIOS}
     por_escenario = {
         n: {
@@ -235,6 +236,8 @@ def main() -> None:
     )
     artefactos = [rutas["info"], *figuras]
     with r.corrida("campeon", params, artefactos=artefactos, tags={"campeon": campeon.nombre}):
+        r.registrar_datos(df, fuente, "eleccion", fuente)  # versión de los datos (huella, sin copiarlos)
+        r.registrar_datos(nuevos, "nuevos", "nuevos", f"GeneradorAsociados(seed={args.semilla_nuevos})")
         r.registrar_modelos(entrenados, params, metricas_mlflow, titulos=c.TITULOS, guardar_modelo=False)
         propios = {**params, "modelo": campeon.nombre, "umbral": campeon.umbral, "umbral_alto": campeon.umbral_alto}
         with r.corrida(f"campeon_{campeon.nombre}", propios, metricas_mlflow[campeon.nombre], anidada=True):
