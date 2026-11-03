@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 import joblib
 import numpy as np
 import pandas as pd
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.cluster import KMeans
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import RidgeClassifier
@@ -143,6 +144,35 @@ def preparar(df: pd.DataFrame) -> pd.DataFrame:
         # Los códigos (ciudad, agencia) son categorías, no cantidades. El vacío sigue vacío (no el texto "nan").
         X[c] = df[c].map(lambda v: np.nan if pd.isna(v) else str(v))
     return X[NUMERICAS + CATEGORICAS]
+
+
+# Feature engineering (creación y transformación): variables nuevas a partir de las de ``preparar``.
+SALIDA = [c for c, signo in SENAL_RIESGO.items() if signo > 0]  # solicitudes que anuncian un retiro
+PRODUCTOS = ["#CANTIDAD_AHORROSALAVISTA", "#CANTIDAD_AHORROSCONTRACTUALES", "#CANTIDAD_SERVICIOS"]
+VARIABLES_NUEVAS = ["SENALES_SALIDA", "PRODUCTOS", "SALIDA_POR_PRODUCTO", "SALARIO_LOG"]
+
+
+class CrearVariables(TransformerMixin, BaseEstimator):
+    """Agrega VARIABLES_NUEVAS a la salida de ``preparar`` (sin estado: no aprende nada de train).
+
+    - SENALES_SALIDA: suma de las solicitudes de SALIDA (agregación).
+    - PRODUCTOS: ahorros a la vista + contractuales + servicios (agregación).
+    - SALIDA_POR_PRODUCTO: SENALES_SALIDA / (1 + PRODUCTOS): pedir salir teniendo poco que perder (interacción).
+    - SALARIO_LOG: log(1 + SALARIO), que acerca a una normal un salario sesgado a la derecha (transformación).
+
+    Un vacío en una de las columnas no vacía la suma (cuenta como 0); si todas están vacías, queda vacía.
+    """
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        X = X.copy()
+        X["SENALES_SALIDA"] = X[SALIDA].sum(axis=1, min_count=1)
+        X["PRODUCTOS"] = X[PRODUCTOS].sum(axis=1, min_count=1)
+        X["SALIDA_POR_PRODUCTO"] = X["SENALES_SALIDA"] / (1 + X["PRODUCTOS"])
+        X["SALARIO_LOG"] = np.log1p(X["SALARIO"])
+        return X
 
 
 # ---------------------------------------------------------------- supervisados

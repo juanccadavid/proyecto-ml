@@ -2675,7 +2675,7 @@ requires-dist = [
     { name = "pyarrow", specifier = ">=16" },
     { name = "pycaret", marker = "extra == 'pycaret'", specifier = "==4.0.0a8" },
     { name = "python-dotenv", specifier = ">=1.0" },
-    { name = "scikit-learn", specifier = ">=1.5" },
+    { name = "scikit-learn", specifier = ">=1.9" },
     { name = "sentence-transformers", marker = "extra == 'hf'", specifier = ">=3.0" },
     { name = "shap", marker = "extra == 'explain'", specifier = ">=0.46" },
     { name = "streamlit", specifier = ">=1.50" },

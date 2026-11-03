@@ -103,7 +103,7 @@ def test_variantes_de_preprocesamiento_y_rama_de_recorte():
     with pytest.raises(ValueError, match="numéricas"):
         build_preprocessor(a.NUMERICAS, a.CATEGORICAS, clip_outliers="iqr", clip_columns=["SEXO"])
     with pytest.raises(ValueError, match="encoding"):
-        build_preprocessor(a.NUMERICAS, a.CATEGORICAS, encoding="target")
+        build_preprocessor(a.NUMERICAS, a.CATEGORICAS, encoding="label")  # LabelEncoder es para y, no para X
 
 
 def test_preprocesador_para_gridsearch_y_aplanar():
