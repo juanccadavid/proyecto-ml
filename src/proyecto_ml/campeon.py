@@ -29,7 +29,15 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, clone
-from sklearn.metrics import average_precision_score, precision_recall_curve, roc_auc_score
+from sklearn.metrics import (
+    average_precision_score,
+    cohen_kappa_score,
+    confusion_matrix,
+    matthews_corrcoef,
+    precision_recall_curve,
+    roc_auc_score,
+    roc_curve,
+)
 from sklearn.model_selection import StratifiedKFold, cross_val_predict
 from sklearn.utils.metaestimators import available_if
 from sklearn.utils.validation import check_is_fitted
@@ -163,7 +171,12 @@ class Candidato:
     modelo: Pipeline  # sin entrenar
     puntajes: np.ndarray  # fuera de partición, repeticiones x filas
     umbrales: dict
-    metricas: dict  # cv_pr_auc (media y std entre repeticiones), cv_roc_auc...
+    metricas: dict  # cv_pr_auc (media y std entre repeticiones), cv_roc_auc, mcc y kappa al umbral...
+
+    @property
+    def promedio(self) -> np.ndarray:
+        """El puntaje fuera de partición de cada asociado, promedio de las repeticiones."""
+        return self.puntajes.mean(axis=0)
 
 
 def evaluar(nombre: str, modelo: Pipeline, X, y, folds: int = FOLDS, repeticiones: int = REPETICIONES, **kw):
@@ -172,11 +185,14 @@ def evaluar(nombre: str, modelo: Pipeline, X, y, folds: int = FOLDS, repeticione
     roc = [roc_auc_score(y, p) for p in puntajes]
     promedio = puntajes.mean(axis=0)  # el umbral se elige sobre el promedio de las repeticiones
     umbrales = elegir_umbrales(y, promedio, **kw)
+    alerta = (promedio >= umbrales["umbral"]).astype(int)
     metricas = {
         "pr_auc": float(np.mean(pr)),
         "pr_auc_std": float(np.std(pr)),
         "roc_auc": float(np.mean(roc)),
         **{k: v for k, v in umbrales.items() if v is not None},
+        "mcc": float(matthews_corrcoef(y, alerta)),  # al umbral de alerta, corrigen el desbalance
+        "kappa": float(cohen_kappa_score(y, alerta)),
     }
     return Candidato(nombre, modelo, puntajes, umbrales, metricas)
 
@@ -275,6 +291,10 @@ def resumen(campeon: Campeon) -> dict:
         "criterio": CRITERIO,
         "metricas_cv": campeon.candidatos[campeon.nombre].metricas,
         "candidatos": {n: c.metricas for n, c in campeon.candidatos.items()},
+        "confusion_cv": {  # fuera de partición, con cada umbral: tn, fp, fn, tp
+            n: dict(zip(("tn", "fp", "fn", "tp"), map(int, m.ravel()), strict=True))
+            for n, m in (matrices_confusion(campeon).items() if campeon.y is not None else ())
+        },
         "grupos": campeon.grupos,
         **campeon.info,
     }
@@ -316,7 +336,7 @@ def figura_umbrales(campeon: Campeon):
 
     candidato = campeon.candidatos[campeon.nombre]
     y = campeon.y
-    precision, recall, cortes = precision_recall_curve(y, candidato.puntajes.mean(axis=0))
+    precision, recall, cortes = precision_recall_curve(y, candidato.promedio)
     fig = go.Figure()
     for valores, nombre, color in ((precision[:-1], "Precisión", "#2a78d6"), (recall[:-1], "Recall", "#eb6834")):
         fig.add_scatter(
@@ -352,5 +372,145 @@ def figura_umbrales(campeon: Campeon):
         template="plotly_white",
         hovermode="x unified",
         legend={"orientation": "h", "y": -0.2},
+    )
+    return fig
+
+
+# ---------------------------------------------------------------- curva ROC y matriz de confusión del campeón
+
+_COLORES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]  # paleta de referencia, un color fijo por candidato
+_GRIS, _TINTA = "#898781", "#0b0b0b"
+
+
+def matrices_confusion(campeon: Campeon) -> dict[str, np.ndarray]:
+    """Matriz de confusión del campeón (filas = real, columnas = predicción) con cada uno de sus umbrales.
+
+    Con los puntajes fuera de partición: cada asociado lo clasificó un modelo que no lo vio, así que cuadra con
+    la precisión y el recall de ``metricas_cv``. "alerta" = zona gris o se retira; "se retira" = umbral alto.
+    """
+    puntaje = campeon.candidatos[campeon.nombre].promedio
+    cortes = {"alerta": campeon.umbral}
+    if campeon.umbral_alto is not None:
+        cortes["se retira"] = campeon.umbral_alto
+    return {
+        nombre: confusion_matrix(campeon.y, (puntaje >= corte).astype(int), labels=[0, 1])
+        for nombre, corte in cortes.items()
+    }
+
+
+def figura_confusion(campeon: Campeon):
+    """Plotly: un panel por umbral del campeón con el conteo y el % de su fila (en la fila 'se retira', el recall)."""
+    from plotly.subplots import make_subplots
+
+    matrices = matrices_confusion(campeon)
+    corte = {"alerta": campeon.umbral, "se retira": campeon.umbral_alto}
+    formato = ".1%" if campeon.metodo == "predict_proba" else "+.2f"
+    titulos = [f"Umbral {n} ({corte[n]:{formato}})" for n in matrices]
+    fig = make_subplots(rows=1, cols=len(matrices), subplot_titles=titulos, horizontal_spacing=0.12)
+    reales = ["se queda (0)", "se retira (1)"]
+    for k, (nombre, cm) in enumerate(matrices.items(), start=1):
+        por_fila = cm / np.maximum(cm.sum(axis=1, keepdims=True), 1)
+        predichas = ["sin alerta", "alerta"] if nombre == "alerta" else ["no 'se retira'", "se retira"]
+        celdas = [
+            [f"<b>{n}</b><br>{p:.1%} de la fila" for n, p in zip(fila, pf, strict=True)]
+            for fila, pf in zip(cm, por_fila, strict=True)
+        ]
+        fig.add_heatmap(
+            z=por_fila,
+            x=predichas,
+            y=reales,
+            text=celdas,
+            texttemplate="%{text}",
+            customdata=cm,
+            colorscale=[[0, "#cde2fb"], [1, "#104281"]],  # azul secuencial de la paleta, claro -> oscuro
+            zmin=0,
+            zmax=1,
+            showscale=False,
+            xgap=2,
+            ygap=2,
+            hovertemplate="real: %{y}<br>predicción: %{x}<br>%{customdata} asociados (%{z:.1%} de la fila)"
+            "<extra></extra>",
+            row=1,
+            col=k,
+        )
+        fig.update_xaxes(title_text="Predicción", side="bottom", row=1, col=k)
+    fig.update_yaxes(title_text="Real", autorange="reversed", row=1, col=1)
+    fig.update_yaxes(autorange="reversed")
+    fig.update_layout(
+        title=f"Campeón: {a.TITULOS.get(campeon.nombre, campeon.nombre)} — matriz de confusión "
+        f"(fuera de partición, n={len(campeon.y)})",
+        template="plotly_white",
+        height=420,
+        width=440 * len(matrices) + 80,
+        font={"color": _TINTA},
+    )
+    return fig
+
+
+def figura_roc(campeon: Campeon):
+    """Plotly: curva ROC fuera de partición de cada candidato, con los umbrales del campeón marcados.
+
+    Eje x: falsos positivos entre los que se quedan (1 − especificidad); eje y: recall. La diagonal es el azar
+    (AUC 0,5). Con pocos retiros el AUC se ve alto aunque muchas alertas sean falsas: por eso el criterio es
+    la PR-AUC y esta curva se lee junto con la de precisión y recall (``figura_umbrales``).
+    """
+    import plotly.graph_objects as go
+
+    y = campeon.y
+    fig = go.Figure()
+    fig.add_scatter(
+        x=[0, 1], y=[0, 1], mode="lines", name="azar (AUC 0,50)", line={"color": _GRIS, "width": 1, "dash": "dot"}
+    )
+    for color, (nombre, candidato) in zip(_COLORES, campeon.candidatos.items(), strict=False):
+        fpr, tpr, cortes = roc_curve(y, candidato.promedio)
+        es_campeon = nombre == campeon.nombre
+        titulo = a.TITULOS.get(nombre, nombre)
+        fig.add_scatter(
+            x=fpr,
+            y=tpr,
+            customdata=cortes,
+            mode="lines",
+            name=f"{titulo}{' (campeón)' if es_campeon else ''} · AUC {roc_auc_score(y, candidato.promedio):.3f}",
+            line={"color": color, "width": 3 if es_campeon else 2},
+            opacity=1 if es_campeon else 0.6,
+            hovertemplate=f"{titulo}<br>falsos positivos=%{{x:.1%}}<br>recall=%{{y:.1%}}<br>umbral=%{{customdata:.3f}}"
+            "<extra></extra>",
+        )
+    puntaje = campeon.candidatos[campeon.nombre].promedio
+    negativos, positivos = max(int((y == 0).sum()), 1), max(int((y == 1).sum()), 1)
+    umbrales = {"alerta (zona gris)": (campeon.umbral, "circle")}
+    if campeon.umbral_alto is not None:
+        umbrales["se retira"] = (campeon.umbral_alto, "diamond")
+    for texto, (corte, simbolo) in umbrales.items():
+        alerta = puntaje >= corte
+        fpr, tpr = (alerta & (y == 0)).sum() / negativos, (alerta & (y == 1)).sum() / positivos
+        fig.add_scatter(
+            x=[fpr],
+            y=[tpr],
+            mode="markers",
+            name=f"umbral {texto}",
+            marker={"size": 12, "symbol": simbolo, "color": _COLORES[0], "line": {"color": "#fcfcfb", "width": 2}},
+            hovertemplate=f"umbral {texto} = {corte:.3f}<br>falsos positivos=%{{x:.1%}}<br>recall=%{{y:.1%}}"
+            "<extra></extra>",
+        )
+    fig.update_layout(
+        title="Curva ROC fuera de partición (cada asociado puntuado por un modelo que no lo vio)",
+        xaxis={
+            "title": "Falsos positivos (de los que se quedan, % con alerta)",
+            "tickformat": ".0%",
+            "range": [0, 1],
+            "gridcolor": "#e1e0d9",
+        },
+        yaxis={
+            "title": "Recall (de los que se retiran, % con alerta)",
+            "tickformat": ".0%",
+            "range": [0, 1.02],
+            "gridcolor": "#e1e0d9",
+        },
+        template="plotly_white",
+        height=620,
+        width=720,
+        legend={"x": 0.98, "y": 0.02, "xanchor": "right", "yanchor": "bottom"},
+        font={"color": _TINTA},
     )
     return fig

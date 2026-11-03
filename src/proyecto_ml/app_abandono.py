@@ -3,7 +3,8 @@
 Usa solo el modelo campeón (``make campeon``: models/abandono_campeon.joblib + campeon.json) y sus tres
 zonas: **se retira** (puntaje >= umbral_alto: al menos 8 de cada 10 alertas así son retiros reales),
 **zona gris** (entre el umbral de alerta y el alto) y **se queda**. Muestra también en qué grupo de KMeans
-(entrenado sin el objetivo) cae el asociado y la tasa de retiro real de ese grupo.
+(entrenado sin el objetivo) cae el asociado y la tasa de retiro real de ese grupo, y con SHAP, qué variables de
+este asociado suben o bajan su puntaje.
 
 Cada control es una variable de ``abandono.preparar``: al moverlo, la predicción se recalcula al instante.
 
@@ -23,6 +24,7 @@ import streamlit as st
 
 from proyecto_ml import abandono as a
 from proyecto_ml import campeon as c
+from proyecto_ml import explicar as e
 from proyecto_ml.config import MODELS_DIR
 
 ETIQUETAS = {
@@ -79,6 +81,12 @@ def cargar_referencia(horizonte: int | None) -> pd.DataFrame:
     """Variables de los datos del campeón, para rangos, valores iniciales y categorías."""
     df, _ = c.datos_eleccion()
     return a.preparar(a.foto(df, horizonte) if horizonte else df)
+
+
+@st.cache_resource(show_spinner="Preparando la explicación (SHAP)...")
+def explicador(_modelo, horizonte: int | None) -> e.Explicador:
+    """SHAP del campeón frente a los asociados de referencia (``_modelo``: Streamlit no lo usa como llave)."""
+    return e.Explicador(_modelo, cargar_referencia(horizonte))
 
 
 def rango(serie: pd.Series, paso: float) -> tuple[float, float]:
@@ -183,6 +191,16 @@ st.metric(
 if metodo == "predict_proba":
     st.progress(min(max(puntaje, 0.0), 1.0))
 getattr(st, tipo)(texto)
+
+# ---- SHAP: de dónde sale el puntaje de este asociado
+st.subheader("¿Por qué este puntaje?")
+explicacion = explicador(modelo, info.get("horizonte_meses"))
+tabla = explicacion.explicar(asociado)
+st.plotly_chart(e.figura_explicacion(tabla, explicacion.base, metodo, etiquetas=ETIQUETAS), width="stretch", key="shap")
+st.caption(
+    f"SHAP: cada barra es cuánto sube (rojo) o baja (azul) esa variable el puntaje de este asociado frente al "
+    f"promedio de {len(explicacion.fondo)} asociados de referencia. La suma da exactamente el puntaje del modelo."
+)
 
 # ---- KMeans: el grupo de comportamiento (entrenado sin el objetivo)
 grupo = "riesgo" if agrupador.grupos(asociado)[0] == 1 else "estable"
