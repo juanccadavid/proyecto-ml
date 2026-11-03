@@ -103,6 +103,12 @@ make abandono ARGS="--nuevos 5000 --semilla-nuevos 7 --alpha 10"
 make abandono ARGS="--validar mi_archivo.parquet"    # validar además con otro archivo
 ```
 
+Al final imprime una **tabla comparativa** al estilo de `compare_models` de PyCaret: Accuracy, AUC, Recall,
+Prec., F1, Kappa, MCC y **TT (Sec)** (tiempo promedio de entrenamiento por partición), con validación cruzada
+y las mismas particiones para todos. Se guarda en `reports/figures/abandono_comparativa.html` con el mejor
+de cada columna en amarillo. Se ordena con `make abandono ARGS="--ordenar Recall"` (o `"--ordenar 'TT (Sec)'"`).
+En un notebook: `resaltar(tabla_comparativa(modelos, X, y))` de `proyecto_ml.evaluate`.
+
 Se excluyen las columnas que solo existen porque el asociado ya se fue (fecha/motivo de retiro, `ESTADO`,
 fechas de actualización...): con ellas cualquier modelo acierta el 100 % pero no anticipa nada.
 
@@ -110,12 +116,13 @@ fechas de actualización...): con ellas cualquier modelo acierta el 100 % pero n
 
 `make pycaret` ([`scripts/comparar_pycaret.py`](scripts/comparar_pycaret.py)) le da las mismas variables a
 **PyCaret**, que arma solo el preprocesamiento (imputación, codificación, escalado) y compara con validación
-cruzada `lr`, `rf`, `et` (bagging), `ada`, `gbc` y `lightgbm` (boosting). Luego valida sus mejores modelos y
-los nuestros con los mismos asociados nuevos.
+cruzada `lr`, `rf`, `et` (bagging), `ada`, `gbc` y `lightgbm` (boosting). La tabla comparativa junta esos 6
+y nuestros 4 (con tiempo; PyCaret 4.0 ya no lo entrega) en `reports/figures/pycaret_comparativa.html`, y luego
+todos se validan con los mismos asociados nuevos.
 
 ```bash
 make pycaret                                   # instala el extra la primera vez (uv sync --extra pycaret)
-make pycaret ARGS="--ordenar Recall --top 5"
+make pycaret ARGS="--ordenar Recall"
 ```
 
 Usa **PyCaret 4.0 alfa**: la estable (3.3) exige pandas < 2.2 y no es compatible con el proyecto. Por eso es un

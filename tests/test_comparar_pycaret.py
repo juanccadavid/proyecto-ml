@@ -20,13 +20,13 @@ _spec.loader.exec_module(cli)
 def test_pycaret_compara_y_devuelve_pipelines_que_generalizan():
     train = GeneradorAsociados(n=400, seed=1).generar()
     nuevos = GeneradorAsociados(n=400, seed=2).generar()
-    tabla, mejores = cli.experimento(train, folds=3, top=2)
+    tabla, modelos = cli.experimento(train, folds=3)
 
     assert sorted(tabla.index) == sorted(cli.MODELOS)
-    assert list(mejores) == list(tabla.index[:2])  # los mejores, en el orden de la tabla
+    assert list(modelos) == list(tabla.index)  # todos, en el orden de PyCaret
     clases = {"lr": "LogisticRegression", "rf": "RandomForest", "et": "ExtraTrees", "ada": "AdaBoost"}
     clases |= {"gbc": "GradientBoosting", "lightgbm": "LGBM"}
-    for nombre, pipeline in mejores.items():
+    for nombre, pipeline in modelos.items():
         assert type(pipeline.steps[-1][1]).__name__.startswith(clases[nombre])  # el nombre es el modelo correcto
         assert not set(pipeline.feature_names_in_) & set(a.FUGA)
         puntaje = pipeline.predict_proba(a.preparar(nuevos))[:, 1]
