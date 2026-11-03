@@ -1,12 +1,14 @@
-"""Preprocesamiento con Pipeline + ColumnTransformer (imputación, escalado, OneHot, PCA)."""
+"""Preprocesamiento con Pipeline + ColumnTransformer (imputación, recorte, escalado, OneHot/ordinal, PCA)."""
 
 from __future__ import annotations
 
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.decomposition import PCA
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler
+from sklearn.utils.validation import check_is_fitted
 
 from proyecto_ml.cleaning import ColumnDropper, OutlierClipper
 
@@ -17,42 +19,63 @@ def build_preprocessor(
     *,
     scale: bool = True,
     max_categories: int = 20,
+    numeric_strategy: str = "median",
+    encoding: str = "onehot",
     pca_components: int | float | None = None,
     clip_outliers: str | None = None,
+    clip_columns: list[str] | None = None,
     drop_columns: ColumnDropper | None = None,
     random_state: int = 42,
 ):
     """Construye el preprocesador.
 
+    ``numeric_strategy`` rellena los vacíos numéricos: ``"median"`` (robusta a atípicos) o ``"mean"``.
+    ``encoding`` codifica las categóricas: ``"onehot"`` (una columna 0/1 por categoría) u ``"ordinal"``
+    (un número por categoría, como PyCaret; las categorías que train no vio valen -1).
+
     ``pca_components`` activa reducción de dimensionalidad después del ColumnTransformer
     (entero = nº de componentes, float en (0, 1) = varianza explicada a conservar).
 
     ``clip_outliers`` (``"iqr"`` o ``"quantile"``) recorta atípicos de las numéricas tras imputar.
+    Con ``clip_columns`` solo se recortan esas columnas, en una rama aparte (imputar -> recortar ->
+    escalar): en conteos con casi todo en 0 el IQR vale [0, 0] y recortar borraría la señal.
+    Sin ``clip_outliers``, ``clip_columns`` no hace nada (así se puede apagar el recorte en una búsqueda).
     ``drop_columns`` (ej. ``ColumnDropper(max_missing=0.5)``) descarta columnas antes del
     ColumnTransformer; las columnas descartadas se ignoran sin error.
-    Ambos aprenden sus límites solo con los datos de ``fit`` (train): sin fuga.
+    Todos aprenden sus valores solo con los datos de ``fit`` (train): sin fuga.
     """
-    numeric_steps = [("imputer", SimpleImputer(strategy="median"))]
-    if clip_outliers:
-        numeric_steps.append(("outliers", OutlierClipper(method=clip_outliers)))
-    if scale:
-        numeric_steps.append(("scaler", StandardScaler()))
+    if clip_outliers and clip_columns:
+        sobran = sorted(set(clip_columns) - set(numeric))
+        if sobran:
+            raise ValueError(f"clip_columns deben ser numéricas: {sobran}")
+        recortar = [c for c in numeric if c in clip_columns]
+        numeric = [c for c in numeric if c not in clip_columns]
+    else:
+        recortar = []
 
-    categorical_steps = [
-        ("imputer", SimpleImputer(strategy="most_frequent")),
-        (
-            "onehot",
-            OneHotEncoder(
-                handle_unknown="infrequent_if_exist",
-                max_categories=max_categories,
-                sparse_output=False,
-            ),
-        ),
-    ]
+    def numeric_steps(clip: str | None) -> list:
+        steps = [("imputer", SimpleImputer(strategy=numeric_strategy))]
+        if clip:
+            steps.append(("outliers", OutlierClipper(method=clip)))
+        if scale:
+            steps.append(("scaler", StandardScaler()))
+        return steps
+
+    if encoding == "onehot":
+        encoder = OneHotEncoder(
+            handle_unknown="infrequent_if_exist", max_categories=max_categories, sparse_output=False
+        )
+    elif encoding == "ordinal":
+        encoder = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)
+    else:
+        raise ValueError(f"encoding debe ser 'onehot' u 'ordinal', no '{encoding}'")
+    categorical_steps = [("imputer", SimpleImputer(strategy="most_frequent")), ("encoder", encoder)]
 
     transformers = []
     if numeric:
-        transformers.append(("num", Pipeline(numeric_steps), numeric))
+        transformers.append(("num", Pipeline(numeric_steps(None if recortar else clip_outliers)), numeric))
+    if recortar:
+        transformers.append(("clip", Pipeline(numeric_steps(clip_outliers)), recortar))
     if categorical:
         transformers.append(("cat", Pipeline(categorical_steps), categorical))
     if not transformers:
@@ -87,6 +110,65 @@ class _present:
 
     def __call__(self, X):
         return [c for c in self.columns if c in X.columns]
+
+
+class Preprocesador(TransformerMixin, BaseEstimator):
+    """``build_preprocessor`` como estimador con parámetros simples, para buscarlos con GridSearchCV.
+
+    Ej. en un Pipeline con el paso ``"preprocess"``::
+
+        {"preprocess__numeric_strategy": ["median", "mean"], "preprocess__encoding": ["onehot", "ordinal"],
+         "preprocess__clip_outliers": [None, "iqr"]}
+
+    El preprocesador real se arma y se ajusta en ``fit`` (``preprocessor_``). Para guardarlo o verlo en
+    el diagrama, ``aplanar`` lo cambia por ese preprocesador ya ajustado.
+    """
+
+    def __init__(
+        self,
+        numeric: list[str] = (),
+        categorical: list[str] = (),
+        numeric_strategy: str = "median",
+        encoding: str = "onehot",
+        clip_outliers: str | None = None,
+        clip_columns: list[str] | None = None,
+    ):
+        self.numeric = numeric
+        self.categorical = categorical
+        self.numeric_strategy = numeric_strategy
+        self.encoding = encoding
+        self.clip_outliers = clip_outliers
+        self.clip_columns = clip_columns
+
+    def fit(self, X, y=None):
+        self.preprocessor_ = build_preprocessor(
+            list(self.numeric),
+            list(self.categorical),
+            numeric_strategy=self.numeric_strategy,
+            encoding=self.encoding,
+            clip_outliers=self.clip_outliers,
+            clip_columns=self.clip_columns,
+        ).fit(X, y)
+        return self
+
+    def transform(self, X):
+        check_is_fitted(self, "preprocessor_")
+        return self.preprocessor_.transform(X)
+
+    def get_feature_names_out(self, input_features=None):
+        check_is_fitted(self, "preprocessor_")
+        return self.preprocessor_.get_feature_names_out()
+
+
+def aplanar(pipeline: Pipeline) -> Pipeline:
+    """Cambia cada ``Preprocesador`` ajustado por el preprocesador real que armó (también ajustado).
+
+    Predice exactamente igual, pero el diagrama muestra cada rama y paso, y al guardarlo no depende
+    de ``Preprocesador``.
+    """
+    return Pipeline(
+        [(nombre, paso.preprocessor_ if isinstance(paso, Preprocesador) else paso) for nombre, paso in pipeline.steps]
+    )
 
 
 def pagina_pipelines(modelos: dict, titulo: str = "Pipelines") -> str:

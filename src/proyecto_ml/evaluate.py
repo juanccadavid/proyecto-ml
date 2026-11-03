@@ -102,15 +102,25 @@ def resaltar(tabla: pd.DataFrame) -> Styler:
 # ---------------------------------------------------------------- búsqueda de hiperparámetros
 
 
-def afinar(modelo, grilla: dict | list[dict], X, y, folds: int = 5, metrica: str = "AUC", random_state: int = 0):
+def afinar(
+    modelo,
+    grilla: dict | list[dict],
+    X,
+    y,
+    folds: int = 5,
+    metrica: str = "AUC",
+    random_state: int = 0,
+    n_jobs: int | None = None,
+):
     """Búsqueda en grilla (GridSearchCV) con las mismas particiones y métricas que ``tabla_comparativa``.
 
     Prueba todas las combinaciones de ``grilla`` (nombres ``paso__parametro`` del Pipeline), elige la de
     mejor ``metrica`` promedio y la reentrena con todo ``X`` (``best_estimator_``). Ojo: ``best_score_``
     es optimista, porque se eligió mirando esas mismas particiones; la prueba honesta son datos nuevos.
+    ``n_jobs=-1`` reparte los entrenamientos entre los núcleos (el tiempo TT de cada uno sube un poco).
     """
     cv = StratifiedKFold(n_splits=folds, shuffle=True, random_state=random_state)
-    return GridSearchCV(modelo, grilla, scoring=SCORING, refit=metrica, cv=cv).fit(X, y)
+    return GridSearchCV(modelo, grilla, scoring=SCORING, refit=metrica, cv=cv, n_jobs=n_jobs).fit(X, y)
 
 
 def _sin_paso(params: dict) -> dict:
@@ -135,25 +145,67 @@ def resultados_busqueda(busqueda, top: int = 5) -> pd.DataFrame:
     return tabla.sort_values(busqueda.refit, ascending=False, kind="stable").head(top).reset_index(drop=True)
 
 
+def _mejor_de_cada_grupo(busqueda, agrupar: list[str], nombre: str) -> pd.Series:
+    """Etiqueta del grupo -> posición en ``cv_results_`` de su mejor combinación."""
+    r = busqueda.cv_results_
+    params = pd.DataFrame([_sin_paso(p) for p in r["params"]], dtype=object)
+    etiquetas = params[agrupar].apply(lambda f: "_".join([nombre, *(str(v) for v in f if v is not None)]), axis=1)
+    return pd.Series(r[f"mean_test_{busqueda.refit}"]).groupby(etiquetas, sort=False).idxmax()
+
+
+def mejores_por_grupo(busqueda, agrupar: list[str], nombre: str) -> dict[str, dict]:
+    """La mejor combinación de cada grupo de la búsqueda: ``{"Ridge_median_onehot_iqr": params, ...}``.
+
+    Un grupo por cada combinación de los hiperparámetros de ``agrupar`` (p. ej. el preprocesamiento);
+    dentro de cada uno, la de mejor métrica de la búsqueda (p. ej. el mejor alpha con ese preprocesamiento).
+    El nombre une ``nombre`` y los valores del grupo (los ``None`` se omiten).
+    """
+    mejores = _mejor_de_cada_grupo(busqueda, agrupar, nombre)
+    return {etiqueta: busqueda.cv_results_["params"][i] for etiqueta, i in mejores.items()}
+
+
+def resultados_por_fold(
+    busqueda, agrupar: list[str], nombre: str, metricas: tuple[str, ...] = ("Accuracy",)
+) -> pd.DataFrame:
+    """Tabla larga ``pipeline | fold | métricas``: el puntaje de cada partición de la validación cruzada.
+
+    Una fila por partición para cada grupo de ``mejores_por_grupo`` (p. ej. cada preprocesamiento con
+    su mejor alpha). Las mismas particiones para todos, así que se puede comparar fila a fila.
+    """
+    r = busqueda.cv_results_
+    filas = [
+        {"pipeline": pipeline, "fold": k + 1, **{m: float(r[f"split{k}_test_{m}"][i]) for m in metricas}}
+        for pipeline, i in _mejor_de_cada_grupo(busqueda, agrupar, nombre).items()
+        for k in range(busqueda.n_splits_)
+    ]
+    return pd.DataFrame(filas)
+
+
 _LEGIBLE = {"l1_ratio=0.0": "L2", "l1_ratio=1.0": "L1"}  # nombres de la leyenda
 
 
-def figura_busqueda(busquedas: dict, eje_x: dict[str, str]) -> Figure:
+def figura_busqueda(busquedas: dict, eje_x: dict[str, str], fijar: tuple[str, ...] = ()) -> Figure:
     """Un panel por búsqueda: métrica de validación cruzada según el hiperparámetro ``eje_x[nombre]``.
 
     Una curva por combinación de los demás hiperparámetros: el color indica ``class_weight`` y el
     tipo de línea el resto (por ejemplo L2 / L1). El punto elegido va con un anillo y la línea punteada
-    gris es el valor por defecto (1, tanto para alpha como para C).
+    gris es el valor por defecto (1, tanto para alpha como para C). Los hiperparámetros de ``fijar``
+    (p. ej. el preprocesamiento) se dejan en el valor del mejor, para no llenar el panel de curvas.
     """
     from matplotlib.figure import Figure  # sin pyplot: no abre ventanas ni depende del backend
 
     colores = {"None": "#2a78d6", "balanced": "#eb6834"}  # paleta de referencia: azul y naranja
     tinta, gris = "#1f2937", "#9ca3af"
-    fig = Figure(figsize=(6 * len(busquedas), 4.4), layout="constrained")
+    fig = Figure(figsize=(6 * len(busquedas), 4.8 if fijar else 4.4), layout="constrained")
     for ax, (titulo, b) in zip(fig.subplots(1, len(busquedas), squeeze=False).ravel(), busquedas.items(), strict=True):
         x = eje_x[titulo]
         r = pd.DataFrame([_sin_paso(p) for p in b.cv_results_["params"]], dtype=object).astype({x: float})
-        y = b.cv_results_[f"mean_test_{b.refit}"]
+        y = pd.Series(b.cv_results_[f"mean_test_{b.refit}"], index=r.index)
+        mejor = _sin_paso(b.best_params_)
+        fijos = {c: mejor[c] for c in fijar if c in r}
+        for c, v in fijos.items():  # solo las combinaciones con el valor del mejor
+            r = r[r[c].map(str) == str(v)]
+        y = y[r.index]
         # dtype=object y map(str): en pandas 3, None se volvería NaN o vacío y groupby lo descartaría.
         texto = r.drop(columns=x).map(str)
         otros = [c for c in texto.columns if (texto[c] != texto[c].iloc[0]).any()]  # sin los constantes (solver)
@@ -173,11 +225,13 @@ def figura_busqueda(busquedas: dict, eje_x: dict[str, str]) -> Figure:
                 ms=6,
                 label=", ".join(etiqueta.values()),
             )
-        mejor = _sin_paso(b.best_params_)
         ax.plot(mejor[x], b.best_score_, "o", ms=14, mfc="none", mec=tinta, mew=2)  # anillo en el elegido
         ax.axvline(1, color=gris, lw=1, ls=":", label="por defecto")
         ax.set_xscale("log")
-        ax.set_title(f"{titulo} · mejor: {formato_params({x: float(mejor[x])})} ({b.refit} = {b.best_score_:.3f})")
+        titulo_panel = f"{titulo} · mejor: {formato_params({x: float(mejor[x])})} ({b.refit} = {b.best_score_:.3f})"
+        if fijos:  # solo los valores, para que quepa: "median · ordinal" (None = paso apagado, se omite)
+            titulo_panel += "\npreprocesamiento: " + " · ".join(str(v) for v in fijos.values() if v is not None)
+        ax.set_title(titulo_panel)
         ax.set_xlabel(f"{x} (escala log; más alto = {'menos' if x == 'C' else 'más'} regularización)")
         ax.set_ylabel(f"{b.refit} promedio (validación cruzada)")
         ax.grid(alpha=0.3, lw=0.5)

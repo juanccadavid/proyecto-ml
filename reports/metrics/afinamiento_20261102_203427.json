@@ -1,0 +1,820 @@
+{
+  "datos": "asociados_ejemplo.parquet",
+  "metrica": "AUC",
+  "mejores": {
+    "ridge": "alpha=1, class_weight=None, clip_outliers=None, encoding=ordinal, numeric_strategy=median",
+    "pycaret_lr": "C=0.01, class_weight=balanced, l1_ratio=0, solver=liblinear, clip_outliers=None, encoding=ordinal, numeric_strategy=median"
+  },
+  "top5": {
+    "ridge": [
+      {
+        "params": "alpha=1, class_weight=None, clip_outliers=None, encoding=ordinal, numeric_strategy=median",
+        "Accuracy": 0.9,
+        "AUC": 0.9654761904761905,
+        "Recall": 0.7333333333333333,
+        "Prec.": 0.85,
+        "F1": 0.7647619047619048,
+        "Kappa": 0.7019670832599895,
+        "MCC": 0.7214426016459827,
+        "TT (Sec)": 0.014745235443115234
+      },
+      {
+        "params": "alpha=1, class_weight=None, clip_outliers=None, encoding=ordinal, numeric_strategy=mean",
+        "Accuracy": 0.9,
+        "AUC": 0.9654761904761905,
+        "Recall": 0.7333333333333333,
+        "Prec.": 0.85,
+        "F1": 0.7647619047619048,
+        "Kappa": 0.7019670832599895,
+        "MCC": 0.7214426016459827,
+        "TT (Sec)": 0.014130592346191406
+      },
+      {
+        "params": "alpha=1, class_weight=None, clip_outliers=iqr, encoding=ordinal, numeric_strategy=median",
+        "Accuracy": 0.9,
+        "AUC": 0.9654761904761905,
+        "Recall": 0.7333333333333333,
+        "Prec.": 0.85,
+        "F1": 0.7647619047619048,
+        "Kappa": 0.7019670832599895,
+        "MCC": 0.7214426016459827,
+        "TT (Sec)": 0.02088003158569336
+      },
+      {
+        "params": "alpha=1, class_weight=None, clip_outliers=iqr, encoding=ordinal, numeric_strategy=mean",
+        "Accuracy": 0.9,
+        "AUC": 0.9654761904761905,
+        "Recall": 0.7333333333333333,
+        "Prec.": 0.85,
+        "F1": 0.7647619047619048,
+        "Kappa": 0.7019670832599895,
+        "MCC": 0.7214426016459827,
+        "TT (Sec)": 0.0172548770904541
+      },
+      {
+        "params": "alpha=3.16228, class_weight=None, clip_outliers=None, encoding=ordinal, numeric_strategy=median",
+        "Accuracy": 0.9,
+        "AUC": 0.9654761904761905,
+        "Recall": 0.7333333333333333,
+        "Prec.": 0.85,
+        "F1": 0.7647619047619048,
+        "Kappa": 0.7019670832599895,
+        "MCC": 0.7214426016459827,
+        "TT (Sec)": 0.01336355209350586
+      }
+    ],
+    "pycaret_lr": [
+      {
+        "params": "C=0.01, class_weight=balanced, l1_ratio=0, solver=liblinear, clip_outliers=None, encoding=ordinal, numeric_strategy=median",
+        "Accuracy": 0.9,
+        "AUC": 0.9654761904761905,
+        "Recall": 0.7333333333333333,
+        "Prec.": 0.8333333333333333,
+        "F1": 0.7666666666666666,
+        "Kappa": 0.7028388278388278,
+        "MCC": 0.713095238095238,
+        "TT (Sec)": 0.01373434066772461
+      },
+      {
+        "params": "C=0.01, class_weight=balanced, l1_ratio=0, solver=liblinear, clip_outliers=None, encoding=ordinal, numeric_strategy=mean",
+        "Accuracy": 0.9,
+        "AUC": 0.9654761904761905,
+        "Recall": 0.7333333333333333,
+        "Prec.": 0.8333333333333333,
+        "F1": 0.7666666666666666,
+        "Kappa": 0.7028388278388278,
+        "MCC": 0.713095238095238,
+        "TT (Sec)": 0.012857770919799805
+      },
+      {
+        "params": "C=0.01, class_weight=balanced, l1_ratio=0, solver=liblinear, clip_outliers=iqr, encoding=ordinal, numeric_strategy=median",
+        "Accuracy": 0.9,
+        "AUC": 0.9654761904761905,
+        "Recall": 0.7333333333333333,
+        "Prec.": 0.8333333333333333,
+        "F1": 0.7666666666666666,
+        "Kappa": 0.7028388278388278,
+        "MCC": 0.713095238095238,
+        "TT (Sec)": 0.018007421493530275
+      },
+      {
+        "params": "C=0.01, class_weight=balanced, l1_ratio=0, solver=liblinear, clip_outliers=iqr, encoding=ordinal, numeric_strategy=mean",
+        "Accuracy": 0.9,
+        "AUC": 0.9654761904761905,
+        "Recall": 0.7333333333333333,
+        "Prec.": 0.8333333333333333,
+        "F1": 0.7666666666666666,
+        "Kappa": 0.7028388278388278,
+        "MCC": 0.713095238095238,
+        "TT (Sec)": 0.020766448974609376
+      },
+      {
+        "params": "C=0.0316228, class_weight=balanced, l1_ratio=0, solver=liblinear, clip_outliers=None, encoding=ordinal, numeric_strategy=median",
+        "Accuracy": 0.8800000000000001,
+        "AUC": 0.9654761904761905,
+        "Recall": 0.7333333333333333,
+        "Prec.": 0.7666666666666666,
+        "F1": 0.7266666666666667,
+        "Kappa": 0.6502072488914594,
+        "MCC": 0.6658477612604328,
+        "TT (Sec)": 0.01476898193359375
+      }
+    ]
+  },
+  "comparativa": {
+    "ridge_afinado": {
+      "Model": "RidgeClassifier",
+      "Accuracy": 0.9,
+      "AUC": 0.9654761904761905,
+      "Recall": 0.7333333333333333,
+      "Prec.": 0.85,
+      "F1": 0.7647619047619048,
+      "Kappa": 0.7019670832599895,
+      "MCC": 0.7214426016459827,
+      "TT (Sec)": 0.01151900291442871
+    },
+    "pycaret_lr_afinado": {
+      "Model": "LogisticRegression",
+      "Accuracy": 0.9,
+      "AUC": 0.9654761904761905,
+      "Recall": 0.7333333333333333,
+      "Prec.": 0.8333333333333333,
+      "F1": 0.7666666666666666,
+      "Kappa": 0.7028388278388278,
+      "MCC": 0.713095238095238,
+      "TT (Sec)": 0.009337711334228515
+    },
+    "pycaret_lr": {
+      "Model": "LogisticRegression",
+      "Accuracy": 0.8800000000000001,
+      "AUC": 0.9369047619047619,
+      "Recall": 0.6666666666666666,
+      "Prec.": 0.8333333333333333,
+      "F1": 0.7266666666666666,
+      "Kappa": 0.6502072488914594,
+      "MCC": 0.6658477612604328,
+      "TT (Sec)": 0.013212251663208007
+    },
+    "ridge": {
+      "Model": "RidgeClassifier",
+      "Accuracy": 0.8800000000000001,
+      "AUC": 0.8678571428571429,
+      "Recall": 0.7333333333333333,
+      "Prec.": 0.75,
+      "F1": 0.7314285714285715,
+      "Kappa": 0.6538901601830663,
+      "MCC": 0.6631092683126493,
+      "TT (Sec)": 0.011738014221191407
+    }
+  },
+  "por_fold": [
+    {
+      "pipeline": "Ridge_median_onehot",
+      "fold": 1,
+      "Accuracy": 0.9,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "Ridge_median_onehot",
+      "fold": 2,
+      "Accuracy": 0.8,
+      "AUC": 0.75
+    },
+    {
+      "pipeline": "Ridge_median_onehot",
+      "fold": 3,
+      "Accuracy": 0.9,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "Ridge_median_onehot",
+      "fold": 4,
+      "Accuracy": 0.8,
+      "AUC": 0.9523809523809524
+    },
+    {
+      "pipeline": "Ridge_median_onehot",
+      "fold": 5,
+      "Accuracy": 0.9,
+      "AUC": 0.9523809523809524
+    },
+    {
+      "pipeline": "Ridge_mean_onehot",
+      "fold": 1,
+      "Accuracy": 0.9,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "Ridge_mean_onehot",
+      "fold": 2,
+      "Accuracy": 0.8,
+      "AUC": 0.75
+    },
+    {
+      "pipeline": "Ridge_mean_onehot",
+      "fold": 3,
+      "Accuracy": 0.9,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "Ridge_mean_onehot",
+      "fold": 4,
+      "Accuracy": 0.8,
+      "AUC": 0.9523809523809524
+    },
+    {
+      "pipeline": "Ridge_mean_onehot",
+      "fold": 5,
+      "Accuracy": 0.9,
+      "AUC": 0.9523809523809524
+    },
+    {
+      "pipeline": "Ridge_median_ordinal",
+      "fold": 1,
+      "Accuracy": 0.8,
+      "AUC": 0.9375
+    },
+    {
+      "pipeline": "Ridge_median_ordinal",
+      "fold": 2,
+      "Accuracy": 0.9,
+      "AUC": 0.9375
+    },
+    {
+      "pipeline": "Ridge_median_ordinal",
+      "fold": 3,
+      "Accuracy": 1.0,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "Ridge_median_ordinal",
+      "fold": 4,
+      "Accuracy": 0.9,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "Ridge_median_ordinal",
+      "fold": 5,
+      "Accuracy": 0.9,
+      "AUC": 0.9523809523809524
+    },
+    {
+      "pipeline": "Ridge_mean_ordinal",
+      "fold": 1,
+      "Accuracy": 0.8,
+      "AUC": 0.9375
+    },
+    {
+      "pipeline": "Ridge_mean_ordinal",
+      "fold": 2,
+      "Accuracy": 0.9,
+      "AUC": 0.9375
+    },
+    {
+      "pipeline": "Ridge_mean_ordinal",
+      "fold": 3,
+      "Accuracy": 1.0,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "Ridge_mean_ordinal",
+      "fold": 4,
+      "Accuracy": 0.9,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "Ridge_mean_ordinal",
+      "fold": 5,
+      "Accuracy": 0.9,
+      "AUC": 0.9523809523809524
+    },
+    {
+      "pipeline": "Ridge_median_onehot_iqr",
+      "fold": 1,
+      "Accuracy": 0.9,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "Ridge_median_onehot_iqr",
+      "fold": 2,
+      "Accuracy": 0.8,
+      "AUC": 0.75
+    },
+    {
+      "pipeline": "Ridge_median_onehot_iqr",
+      "fold": 3,
+      "Accuracy": 0.9,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "Ridge_median_onehot_iqr",
+      "fold": 4,
+      "Accuracy": 0.8,
+      "AUC": 0.9523809523809524
+    },
+    {
+      "pipeline": "Ridge_median_onehot_iqr",
+      "fold": 5,
+      "Accuracy": 0.9,
+      "AUC": 0.9523809523809524
+    },
+    {
+      "pipeline": "Ridge_mean_onehot_iqr",
+      "fold": 1,
+      "Accuracy": 0.9,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "Ridge_mean_onehot_iqr",
+      "fold": 2,
+      "Accuracy": 0.8,
+      "AUC": 0.75
+    },
+    {
+      "pipeline": "Ridge_mean_onehot_iqr",
+      "fold": 3,
+      "Accuracy": 0.9,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "Ridge_mean_onehot_iqr",
+      "fold": 4,
+      "Accuracy": 0.8,
+      "AUC": 0.9523809523809524
+    },
+    {
+      "pipeline": "Ridge_mean_onehot_iqr",
+      "fold": 5,
+      "Accuracy": 0.9,
+      "AUC": 0.9523809523809524
+    },
+    {
+      "pipeline": "Ridge_median_ordinal_iqr",
+      "fold": 1,
+      "Accuracy": 0.8,
+      "AUC": 0.9375
+    },
+    {
+      "pipeline": "Ridge_median_ordinal_iqr",
+      "fold": 2,
+      "Accuracy": 0.9,
+      "AUC": 0.9375
+    },
+    {
+      "pipeline": "Ridge_median_ordinal_iqr",
+      "fold": 3,
+      "Accuracy": 1.0,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "Ridge_median_ordinal_iqr",
+      "fold": 4,
+      "Accuracy": 0.9,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "Ridge_median_ordinal_iqr",
+      "fold": 5,
+      "Accuracy": 0.9,
+      "AUC": 0.9523809523809524
+    },
+    {
+      "pipeline": "Ridge_mean_ordinal_iqr",
+      "fold": 1,
+      "Accuracy": 0.8,
+      "AUC": 0.9375
+    },
+    {
+      "pipeline": "Ridge_mean_ordinal_iqr",
+      "fold": 2,
+      "Accuracy": 0.9,
+      "AUC": 0.9375
+    },
+    {
+      "pipeline": "Ridge_mean_ordinal_iqr",
+      "fold": 3,
+      "Accuracy": 1.0,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "Ridge_mean_ordinal_iqr",
+      "fold": 4,
+      "Accuracy": 0.9,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "Ridge_mean_ordinal_iqr",
+      "fold": 5,
+      "Accuracy": 0.9,
+      "AUC": 0.9523809523809524
+    },
+    {
+      "pipeline": "LogisticRegression_median_onehot",
+      "fold": 1,
+      "Accuracy": 0.9,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "LogisticRegression_median_onehot",
+      "fold": 2,
+      "Accuracy": 0.9,
+      "AUC": 0.8125
+    },
+    {
+      "pipeline": "LogisticRegression_median_onehot",
+      "fold": 3,
+      "Accuracy": 1.0,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "LogisticRegression_median_onehot",
+      "fold": 4,
+      "Accuracy": 0.9,
+      "AUC": 0.9523809523809524
+    },
+    {
+      "pipeline": "LogisticRegression_median_onehot",
+      "fold": 5,
+      "Accuracy": 0.8,
+      "AUC": 0.9523809523809524
+    },
+    {
+      "pipeline": "LogisticRegression_mean_onehot",
+      "fold": 1,
+      "Accuracy": 0.9,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "LogisticRegression_mean_onehot",
+      "fold": 2,
+      "Accuracy": 0.9,
+      "AUC": 0.8125
+    },
+    {
+      "pipeline": "LogisticRegression_mean_onehot",
+      "fold": 3,
+      "Accuracy": 1.0,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "LogisticRegression_mean_onehot",
+      "fold": 4,
+      "Accuracy": 0.9,
+      "AUC": 0.9523809523809524
+    },
+    {
+      "pipeline": "LogisticRegression_mean_onehot",
+      "fold": 5,
+      "Accuracy": 0.8,
+      "AUC": 0.9523809523809524
+    },
+    {
+      "pipeline": "LogisticRegression_median_ordinal",
+      "fold": 1,
+      "Accuracy": 0.9,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "LogisticRegression_median_ordinal",
+      "fold": 2,
+      "Accuracy": 0.8,
+      "AUC": 0.875
+    },
+    {
+      "pipeline": "LogisticRegression_median_ordinal",
+      "fold": 3,
+      "Accuracy": 1.0,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "LogisticRegression_median_ordinal",
+      "fold": 4,
+      "Accuracy": 0.8,
+      "AUC": 0.9523809523809524
+    },
+    {
+      "pipeline": "LogisticRegression_median_ordinal",
+      "fold": 5,
+      "Accuracy": 1.0,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "LogisticRegression_mean_ordinal",
+      "fold": 1,
+      "Accuracy": 0.9,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "LogisticRegression_mean_ordinal",
+      "fold": 2,
+      "Accuracy": 0.8,
+      "AUC": 0.875
+    },
+    {
+      "pipeline": "LogisticRegression_mean_ordinal",
+      "fold": 3,
+      "Accuracy": 1.0,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "LogisticRegression_mean_ordinal",
+      "fold": 4,
+      "Accuracy": 0.8,
+      "AUC": 0.9523809523809524
+    },
+    {
+      "pipeline": "LogisticRegression_mean_ordinal",
+      "fold": 5,
+      "Accuracy": 1.0,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "LogisticRegression_median_onehot_iqr",
+      "fold": 1,
+      "Accuracy": 0.9,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "LogisticRegression_median_onehot_iqr",
+      "fold": 2,
+      "Accuracy": 0.9,
+      "AUC": 0.8125
+    },
+    {
+      "pipeline": "LogisticRegression_median_onehot_iqr",
+      "fold": 3,
+      "Accuracy": 1.0,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "LogisticRegression_median_onehot_iqr",
+      "fold": 4,
+      "Accuracy": 0.9,
+      "AUC": 0.9523809523809524
+    },
+    {
+      "pipeline": "LogisticRegression_median_onehot_iqr",
+      "fold": 5,
+      "Accuracy": 0.9,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "LogisticRegression_mean_onehot_iqr",
+      "fold": 1,
+      "Accuracy": 0.9,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "LogisticRegression_mean_onehot_iqr",
+      "fold": 2,
+      "Accuracy": 0.9,
+      "AUC": 0.8125
+    },
+    {
+      "pipeline": "LogisticRegression_mean_onehot_iqr",
+      "fold": 3,
+      "Accuracy": 1.0,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "LogisticRegression_mean_onehot_iqr",
+      "fold": 4,
+      "Accuracy": 0.9,
+      "AUC": 0.9523809523809524
+    },
+    {
+      "pipeline": "LogisticRegression_mean_onehot_iqr",
+      "fold": 5,
+      "Accuracy": 0.9,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "LogisticRegression_median_ordinal_iqr",
+      "fold": 1,
+      "Accuracy": 0.9,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "LogisticRegression_median_ordinal_iqr",
+      "fold": 2,
+      "Accuracy": 0.8,
+      "AUC": 0.875
+    },
+    {
+      "pipeline": "LogisticRegression_median_ordinal_iqr",
+      "fold": 3,
+      "Accuracy": 1.0,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "LogisticRegression_median_ordinal_iqr",
+      "fold": 4,
+      "Accuracy": 0.8,
+      "AUC": 0.9523809523809524
+    },
+    {
+      "pipeline": "LogisticRegression_median_ordinal_iqr",
+      "fold": 5,
+      "Accuracy": 1.0,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "LogisticRegression_mean_ordinal_iqr",
+      "fold": 1,
+      "Accuracy": 0.9,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "LogisticRegression_mean_ordinal_iqr",
+      "fold": 2,
+      "Accuracy": 0.8,
+      "AUC": 0.875
+    },
+    {
+      "pipeline": "LogisticRegression_mean_ordinal_iqr",
+      "fold": 3,
+      "Accuracy": 1.0,
+      "AUC": 1.0
+    },
+    {
+      "pipeline": "LogisticRegression_mean_ordinal_iqr",
+      "fold": 4,
+      "Accuracy": 0.8,
+      "AUC": 0.9523809523809524
+    },
+    {
+      "pipeline": "LogisticRegression_mean_ordinal_iqr",
+      "fold": 5,
+      "Accuracy": 1.0,
+      "AUC": 1.0
+    }
+  ],
+  "preprocesamientos": {
+    "Ridge_mean_ordinal": {
+      "Accuracy_mean": 0.9,
+      "Accuracy_std": 0.07071067811865471,
+      "Accuracy_nuevos": 0.862,
+      "AUC_mean": 0.9654761904761905,
+      "AUC_std": 0.03209597551081644,
+      "AUC_nuevos": 0.9128741538210586
+    },
+    "Ridge_median_ordinal": {
+      "Accuracy_mean": 0.9,
+      "Accuracy_std": 0.07071067811865471,
+      "Accuracy_nuevos": 0.862,
+      "AUC_mean": 0.9654761904761905,
+      "AUC_std": 0.03209597551081644,
+      "AUC_nuevos": 0.9128741538210586
+    },
+    "Ridge_median_ordinal_iqr": {
+      "Accuracy_mean": 0.9,
+      "Accuracy_std": 0.07071067811865471,
+      "Accuracy_nuevos": 0.872,
+      "AUC_mean": 0.9654761904761905,
+      "AUC_std": 0.03209597551081644,
+      "AUC_nuevos": 0.9168246880352335
+    },
+    "Ridge_mean_ordinal_iqr": {
+      "Accuracy_mean": 0.9,
+      "Accuracy_std": 0.07071067811865471,
+      "Accuracy_nuevos": 0.872,
+      "AUC_mean": 0.9654761904761905,
+      "AUC_std": 0.03209597551081644,
+      "AUC_nuevos": 0.9168246880352335
+    },
+    "LogisticRegression_mean_ordinal_iqr": {
+      "Accuracy_mean": 0.9,
+      "Accuracy_std": 0.09999999999999998,
+      "Accuracy_nuevos": 0.928,
+      "AUC_mean": 0.9654761904761905,
+      "AUC_std": 0.054619379747402184,
+      "AUC_nuevos": 0.9682682896990458
+    },
+    "LogisticRegression_median_ordinal_iqr": {
+      "Accuracy_mean": 0.9,
+      "Accuracy_std": 0.09999999999999998,
+      "Accuracy_nuevos": 0.928,
+      "AUC_mean": 0.9654761904761905,
+      "AUC_std": 0.054619379747402184,
+      "AUC_nuevos": 0.9682682896990458
+    },
+    "LogisticRegression_median_ordinal": {
+      "Accuracy_mean": 0.9,
+      "Accuracy_std": 0.09999999999999998,
+      "Accuracy_nuevos": 0.929,
+      "AUC_mean": 0.9654761904761905,
+      "AUC_std": 0.054619379747402184,
+      "AUC_nuevos": 0.9683600440420846
+    },
+    "LogisticRegression_mean_ordinal": {
+      "Accuracy_mean": 0.9,
+      "Accuracy_std": 0.09999999999999998,
+      "Accuracy_nuevos": 0.929,
+      "AUC_mean": 0.9654761904761905,
+      "AUC_std": 0.054619379747402184,
+      "AUC_nuevos": 0.9683600440420846
+    },
+    "LogisticRegression_mean_onehot_iqr": {
+      "Accuracy_mean": 0.9199999999999999,
+      "Accuracy_std": 0.04472135954999579,
+      "Accuracy_nuevos": 0.873,
+      "AUC_mean": 0.9529761904761905,
+      "AUC_std": 0.08119056346874236,
+      "AUC_nuevos": 0.981511499877661
+    },
+    "LogisticRegression_median_onehot_iqr": {
+      "Accuracy_mean": 0.9199999999999999,
+      "Accuracy_std": 0.04472135954999579,
+      "Accuracy_nuevos": 0.873,
+      "AUC_mean": 0.9529761904761905,
+      "AUC_std": 0.08119056346874236,
+      "AUC_nuevos": 0.981511499877661
+    },
+    "LogisticRegression_median_onehot": {
+      "Accuracy_mean": 0.9,
+      "Accuracy_std": 0.07071067811865475,
+      "Accuracy_nuevos": 0.873,
+      "AUC_mean": 0.943452380952381,
+      "AUC_std": 0.07697926878796169,
+      "AUC_nuevos": 0.9816542288557214
+    },
+    "LogisticRegression_mean_onehot": {
+      "Accuracy_mean": 0.9,
+      "Accuracy_std": 0.07071067811865475,
+      "Accuracy_nuevos": 0.873,
+      "AUC_mean": 0.943452380952381,
+      "AUC_std": 0.07697926878796169,
+      "AUC_nuevos": 0.9816542288557214
+    },
+    "Ridge_median_onehot_iqr": {
+      "Accuracy_mean": 0.86,
+      "Accuracy_std": 0.054772255750516606,
+      "Accuracy_nuevos": 0.942,
+      "AUC_mean": 0.930952380952381,
+      "AUC_std": 0.1039197754418819,
+      "AUC_nuevos": 0.979778362286926
+    },
+    "Ridge_mean_onehot_iqr": {
+      "Accuracy_mean": 0.86,
+      "Accuracy_std": 0.054772255750516606,
+      "Accuracy_nuevos": 0.942,
+      "AUC_mean": 0.930952380952381,
+      "AUC_std": 0.1039197754418819,
+      "AUC_nuevos": 0.979778362286926
+    },
+    "Ridge_mean_onehot": {
+      "Accuracy_mean": 0.86,
+      "Accuracy_std": 0.054772255750516606,
+      "Accuracy_nuevos": 0.942,
+      "AUC_mean": 0.930952380952381,
+      "AUC_std": 0.1039197754418819,
+      "AUC_nuevos": 0.9796254383818611
+    },
+    "Ridge_median_onehot": {
+      "Accuracy_mean": 0.86,
+      "Accuracy_std": 0.054772255750516606,
+      "Accuracy_nuevos": 0.942,
+      "AUC_mean": 0.930952380952381,
+      "AUC_std": 0.1039197754418819,
+      "AUC_nuevos": 0.9796254383818611
+    }
+  },
+  "nuevos (n=1000)": {
+    "ridge": {
+      "base_rate": 0.268,
+      "roc_auc": 0.8529279830356414,
+      "pr_auc": 0.7244632466412217,
+      "precision": 0.5868263473053892,
+      "recall": 0.7313432835820896,
+      "f1": 0.6511627906976745,
+      "recall_at_10pct": 0.3283582089552239
+    },
+    "ridge_afinado": {
+      "base_rate": 0.268,
+      "roc_auc": 0.9128741538210586,
+      "pr_auc": 0.8503514164104184,
+      "precision": 0.7288732394366197,
+      "recall": 0.7723880597014925,
+      "f1": 0.75,
+      "recall_at_10pct": 0.3582089552238806
+    },
+    "pycaret_lr": {
+      "base_rate": 0.268,
+      "roc_auc": 0.9236196068836147,
+      "pr_auc": 0.862880957281571,
+      "precision": 0.8174273858921162,
+      "recall": 0.7350746268656716,
+      "f1": 0.7740667976424361,
+      "recall_at_10pct": 0.3619402985074627
+    },
+    "pycaret_lr_afinado": {
+      "base_rate": 0.268,
+      "roc_auc": 0.9683600440420846,
+      "pr_auc": 0.9401363501268479,
+      "precision": 0.8745247148288974,
+      "recall": 0.8582089552238806,
+      "f1": 0.8662900188323918,
+      "recall_at_10pct": 0.373134328358209
+    }
+  }
+}

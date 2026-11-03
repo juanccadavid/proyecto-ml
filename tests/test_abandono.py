@@ -142,3 +142,16 @@ def test_guardar_modelo_en_joblib_por_partes(supervisados, nuevos, tmp_path):
     # Por partes da exactamente lo mismo que el pipeline completo.
     assert np.array_equal(modelo.predict(preprocesamiento.transform(X)), pipeline.predict(X))
     assert type(modelo).__name__ == "RidgeClassifier"
+
+
+def test_recorte_opcional_solo_en_columnas_continuas(entrenamiento, nuevos):
+    X, y = a.preparar(entrenamiento), entrenamiento[a.TARGET]
+    for nombre, modelo in a.modelos_supervisados(clip_outliers="iqr").items():
+        modelo.fit(X, y)
+        ramas = modelo.named_steps["preprocess"].named_transformers_
+        assert list(ramas["clip"].feature_names_in_) == a.COLUMNAS_RECORTE, nombre
+        assert "outliers" not in ramas["num"].named_steps  # los conteos de comportamiento no se tocan
+        assert a.metricas_supervisado(modelo, nuevos)["roc_auc"] > 0.8, nombre
+    # Por defecto, sin recorte (no cambia nada de lo que ya había).
+    sin = a.modelos_supervisados()["ridge"].fit(X, y).named_steps["preprocess"].named_transformers_
+    assert "clip" not in sin

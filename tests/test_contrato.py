@@ -83,3 +83,30 @@ def test_sql_incluye_restricciones_y_seguridad(contrato):
 def test_archivos_generados_al_dia(archivo, generar):
     """Si cambias el contrato, regenera con make contrato-sql / make contrato-web."""
     assert (ROOT_DIR / archivo).read_text(encoding="utf-8") == generar()
+
+
+def test_limpiar_extracto_sigue_cumpliendo_el_contrato():
+    """clean_dataset sobre asociados: con la configuración de limpiar_extracto el contrato se mantiene."""
+    from proyecto_ml.cleaning import clean_dataset
+
+    asociados = GeneradorAsociados(n=200, seed=4).generar()
+    assert k.validar(asociados) == []
+    assert k.validar(k.limpiar_extracto(asociados)) == []
+    # Con los valores por defecto se rompe (renombra #RETIROS, borra opcionales vacías, teléfonos -> número).
+    assert k.validar(clean_dataset(asociados, verbose=False)) != []
+
+    # Un extracto "sucio" como el real: textos de relleno, números como texto, espacios y filas repetidas.
+    crudo = asociados.astype({"SALARIO": object, "SEGUNDONOMBRE": object, "CARGO": object})
+    crudo.loc[0, "SALARIO"] = " 4,860,000 "
+    crudo.loc[1, "SEGUNDONOMBRE"] = "N/A"
+    crudo.loc[2, "CARGO"] = f"  {asociados.loc[2, 'CARGO']}  "
+    crudo = pd.concat([crudo, crudo.head(3)], ignore_index=True)
+
+    limpio = k.limpiar_extracto(crudo)
+    assert k.validar(limpio) == []
+    assert len(limpio) == len(asociados)  # sin las 3 filas repetidas
+    assert limpio.loc[0, "SALARIO"] == 4_860_000
+    assert pd.isna(limpio.loc[1, "SEGUNDONOMBRE"])
+    assert limpio.loc[2, "CARGO"] == asociados.loc[2, "CARGO"]
+    assert list(limpio.columns) == list(asociados.columns)
+    assert limpio["TELEFONO1"].str.fullmatch(r"\d{7,10}").all()  # sigue como texto de dígitos

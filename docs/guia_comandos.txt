@@ -118,6 +118,7 @@
  3.3 Modelos
      make abandono         Ridge, logística, Random Forest (bagging), HistGB (boosting) y KMeans,
                            validados con 1000 asociados NUEVOS. Tabla comparativa con tiempo (TT):
+                           (ARGS="--clip-outliers iqr" recorta atípicos de SALARIO, EDAD y ANTIGUEDAD)
                            reports/figures/abandono_comparativa.html. ej.: ARGS="--ordenar Recall"
                            Diagrama interactivo de cada pipeline: reports/figures/abandono_pipelines.html
                            ej.: make abandono ARGS="--nuevos 5000 --semilla-nuevos 7 --alpha 10"
@@ -125,6 +126,8 @@
                            (tabla con tiempo: reports/figures/pycaret_comparativa.html)
      make afinar           GridSearchCV de Ridge (alpha) y pycaret_lr (C, L1/L2), ambos con class_weight;
                            compara por defecto vs. afinado con asociados nuevos. ej.: ARGS="--metrica F1"
+                           También busca el preprocesamiento (mediana/media, OneHot/ordinal, con/sin recorte)
+                           e imprime la tabla por partición: pipeline | fold | Accuracy | AUC.
                            (opcional: instala el extra pycaret). ej.: make pycaret ARGS="--ordenar Recall"
      make train            compara logística / random forest / HistGB con MLflow (DATA=... ARGS=...)
      make demo             dataset sintético genérico + entrenamiento

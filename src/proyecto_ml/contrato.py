@@ -17,6 +17,7 @@ import pandera.pandas as pa
 import yaml
 from pandera.errors import SchemaErrors
 
+from proyecto_ml.cleaning import clean_dataset
 from proyecto_ml.config import ROOT_DIR
 
 CONTRATO_ASOCIADOS = ROOT_DIR / "contratos" / "asociados.yaml"
@@ -251,6 +252,23 @@ def validar(df: pd.DataFrame, contrato: Contrato | None = None) -> list[str]:
     except SchemaErrors as e:
         return _mensajes(e.failure_cases, normalizado, contrato)
     return []
+
+
+def limpiar_extracto(df: pd.DataFrame, contrato: Contrato | None = None, *, verbose: bool = False) -> pd.DataFrame:
+    """``clean_dataset`` con la configuración que no rompe el contrato de asociados.
+
+    Para el extracto crudo del fondo, ANTES de anonimizar (scripts/anonimizar.py --limpiar). Con los
+    valores por defecto de ``clean_dataset`` el contrato falla: renombra todas las columnas (#RETIROS ->
+    retiros), borra columnas opcionales que vienen vacías y vuelve números los teléfonos y la cuenta
+    (pierden los ceros a la izquierda). Aquí:
+
+    - ``normalize_names=False``: los nombres del contrato no se tocan.
+    - ``numeric_columns``: solo las que el contrato declara ``entero`` (los textos de dígitos siguen como texto).
+    - ``drop_empty=False``: una columna opcional vacía sigue siendo parte del contrato.
+    """
+    contrato = contrato or cargar()
+    enteras = [c.nombre for c in contrato.columnas if c.tipo == "entero" and c.nombre in df]
+    return clean_dataset(df, normalize_names=False, numeric_columns=enteras, drop_empty=False, verbose=verbose)
 
 
 # ---------------------------------------------------------------------------- Supabase / web

@@ -10,9 +10,11 @@ from proyecto_ml.evaluate import (
     compute_metrics,
     figura_busqueda,
     formato_params,
+    mejores_por_grupo,
     recall_at_k,
     resaltar,
     resultados_busqueda,
+    resultados_por_fold,
     tabla_comparativa,
 )
 from proyecto_ml.generador import GeneradorAsociados
@@ -76,3 +78,32 @@ def test_afinar_usa_las_mismas_particiones_que_la_tabla():
     fig = figura_busqueda({"ridge": busqueda}, {"ridge": "alpha"})
     etiquetas = [t.get_text() for t in fig.get_axes()[0].get_legend().get_texts()]
     assert etiquetas == ["class_weight=None", "class_weight=balanced", "por defecto"]  # None no se pierde (pandas 3)
+
+
+def test_tabla_por_fold_un_pipeline_por_preprocesamiento():
+    from sklearn.pipeline import Pipeline
+
+    from proyecto_ml.features import Preprocesador
+
+    df = GeneradorAsociados(n=300, seed=3).generar()
+    X, y = a.preparar(df), df[a.TARGET]
+    modelo = Pipeline([("preprocess", Preprocesador(a.NUMERICAS, a.CATEGORICAS)), ("model", a.modelo_ridge()[-1])])
+    grilla = {"preprocess__encoding": ["onehot", "ordinal"], "model__alpha": [0.1, 10.0]}
+    busqueda = afinar(modelo, grilla, X, y, folds=3, metrica="AUC")
+
+    por_fold = resultados_por_fold(busqueda, ["encoding"], "Ridge", metricas=("Accuracy", "AUC"))
+    assert list(por_fold.columns) == ["pipeline", "fold", "Accuracy", "AUC"]
+    assert list(por_fold["pipeline"].unique()) == ["Ridge_onehot", "Ridge_ordinal"]
+    assert list(por_fold["fold"]) == [1, 2, 3, 1, 2, 3]
+
+    # Cada grupo usa su mejor alpha, y sus puntajes son los de esas particiones en cv_results_.
+    mejores = mejores_por_grupo(busqueda, ["encoding"], "Ridge")
+    r = busqueda.cv_results_
+    for pipeline, params in mejores.items():
+        i = r["params"].index(params)
+        mismo_grupo = [
+            j for j, p in enumerate(r["params"]) if p["preprocess__encoding"] == params["preprocess__encoding"]
+        ]
+        assert r["mean_test_AUC"][i] == max(r["mean_test_AUC"][j] for j in mismo_grupo)
+        filas = por_fold[por_fold["pipeline"] == pipeline]
+        assert np.allclose(filas["Accuracy"], [r[f"split{k}_test_Accuracy"][i] for k in range(3)])

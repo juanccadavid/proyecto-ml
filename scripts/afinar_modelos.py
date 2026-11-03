@@ -15,6 +15,11 @@ Hiperparámetros:
 - Ridge:     alpha (regularización, más alto = coeficientes más pequeños) y class_weight.
 - Logística: C (inverso de la regularización, más alto = menos), l1_ratio (0 = L2, 1 = L1:
              L1 puede dejar variables en 0) y class_weight. Solver liblinear: admite L1 y L2.
+- Preprocesamiento (los dos): vacíos numéricos con mediana o media, categóricas en OneHot u ordinal,
+             y con o sin recorte IQR de SALARIO, EDAD y ANTIGUEDAD (a.COLUMNAS_RECORTE).
+
+La tabla por partición (pipeline | fold | Accuracy) muestra, para cada preprocesamiento, su mejor
+combinación del resto de hiperparámetros en cada una de las particiones de la validación cruzada.
 """
 
 from __future__ import annotations
@@ -28,6 +33,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from sklearn.base import clone
+from sklearn.metrics import check_scoring
 from sklearn.pipeline import Pipeline
 
 from proyecto_ml import abandono as a
@@ -38,17 +44,26 @@ from proyecto_ml.evaluate import (
     afinar,
     figura_busqueda,
     formato_params,
+    mejores_por_grupo,
     resaltar,
     resultados_busqueda,
+    resultados_por_fold,
     tabla_comparativa,
 )
-from proyecto_ml.features import pagina_pipelines
+from proyecto_ml.features import Preprocesador, aplanar, pagina_pipelines
 from proyecto_ml.generador import GeneradorAsociados
 
 REGULARIZACION = np.logspace(-3, 3, 13)  # 0.001 ... 1000, 13 valores igual de espaciados en escala log
+PREPROCESAMIENTO = {
+    "preprocess__numeric_strategy": ["median", "mean"],
+    "preprocess__encoding": ["onehot", "ordinal"],
+    "preprocess__clip_outliers": [None, "iqr"],
+}
+PARAMS_PREPROCESAMIENTO = ("numeric_strategy", "encoding", "clip_outliers")  # sin el prefijo del paso
 GRILLAS = {
-    "ridge": {"model__alpha": REGULARIZACION, "model__class_weight": [None, "balanced"]},
+    "ridge": {**PREPROCESAMIENTO, "model__alpha": REGULARIZACION, "model__class_weight": [None, "balanced"]},
     "pycaret_lr": {
+        **PREPROCESAMIENTO,
         "lr__C": REGULARIZACION,
         "lr__l1_ratio": [0.0, 1.0],
         "lr__class_weight": [None, "balanced"],
@@ -56,21 +71,36 @@ GRILLAS = {
     },
 }
 EJE_X = {"ridge": "alpha", "pycaret_lr": "C"}  # el hiperparámetro de regularización de cada uno
+NOMBRE_FOLD = {"ridge": "Ridge", "pycaret_lr": "LogisticRegression"}  # prefijo en la tabla por partición
 # Variables que se muestran en la terminal (el CSV lleva todas).
 COLUMNAS_MUESTRA = ["EDAD", "SEXO", "TIPOCONTRATO", "#INTENCIONRETIROS_ULT3MESES", "#SOLICITUD_CANCELACIONAHORROS"]
 
 
 def modelos_base(train: pd.DataFrame, folds: int = 5) -> dict[str, Pipeline]:
-    """Los dos modelos con sus valores por defecto, sin entrenar.
+    """Los dos modelos con sus valores por defecto, sin entrenar, con el preprocesamiento como ``Preprocesador``.
 
-    pycaret_lr es el Pipeline que arma PyCaret (su preprocesamiento + LogisticRegression), el mismo
-    de ``make pycaret``.
+    - ridge: el de ``a.modelo_ridge()`` (mediana + OneHot).
+    - pycaret_lr: la LogisticRegression que arma PyCaret (``make pycaret``) con el preprocesamiento de
+      PyCaret reproducido con ``build_preprocessor``: media + ordinal. Predice igual que el Pipeline de
+      PyCaret, pero así el preprocesamiento entra en la búsqueda como un hiperparámetro más.
     """
     from pycaret.classification import ClassificationExperiment
 
     exp = ClassificationExperiment(target=a.TARGET, session_id=42, fold=folds, normalize=True)
     exp.fit(a.preparar(train), train[a.TARGET])
-    return {"ridge": a.modelo_ridge(), "pycaret_lr": clone(exp.create_model("lr").pipeline)}
+
+    def preprocesador(**kwargs) -> Preprocesador:
+        return Preprocesador(a.NUMERICAS, a.CATEGORICAS, clip_columns=a.COLUMNAS_RECORTE, **kwargs)
+
+    return {
+        "ridge": Pipeline([("preprocess", preprocesador()), ("model", clone(a.modelo_ridge()[-1]))]),
+        "pycaret_lr": Pipeline(
+            [
+                ("preprocess", preprocesador(numeric_strategy="mean", encoding="ordinal")),
+                ("lr", clone(exp.create_model("lr").pipeline[-1])),
+            ]
+        ),
+    }
 
 
 def main() -> None:
@@ -100,12 +130,37 @@ def main() -> None:
     base = modelos_base(train, args.folds)
     busquedas, modelos = {}, {}
     for nombre, modelo in base.items():
-        busqueda = afinar(modelo, GRILLAS[nombre], X, y, folds=args.folds, metrica=args.metrica)
+        busqueda = afinar(modelo, GRILLAS[nombre], X, y, folds=args.folds, metrica=args.metrica, n_jobs=-1)
         busquedas[nombre] = busqueda
         modelos[nombre], modelos[f"{nombre}_afinado"] = modelo, busqueda.best_estimator_
         print(f"=== {nombre}: {len(busqueda.cv_results_['params'])} combinaciones ===")
         print(f"Mejor: {formato_params(busqueda.best_params_)}")
         print(resultados_busqueda(busqueda).round(4).to_string() + "\n")
+
+    # Tabla por partición (como pipeline | fold | accuracy): un pipeline por preprocesamiento y modelo.
+    metricas_fold = tuple(dict.fromkeys(["Accuracy", args.metrica]))  # sin repetir si --metrica Accuracy
+    por_fold = pd.concat(
+        [
+            resultados_por_fold(b, list(PARAMS_PREPROCESAMIENTO), NOMBRE_FOLD[n], metricas_fold)
+            for n, b in busquedas.items()
+        ],
+        ignore_index=True,
+    )
+    print(f"=== Por partición: cada preprocesamiento con su mejor {'/'.join(EJE_X.values())} y class_weight ===")
+    with pd.option_context("display.max_rows", None):
+        print(por_fold.round(6))
+    por_preprocesamiento = por_fold.groupby("pipeline", sort=False)[list(metricas_fold)].agg(["mean", "std"])
+    # La prueba honesta de cada preprocesamiento: su mejor combinación, reentrenada, sobre asociados nuevos.
+    Xn, yn = a.preparar(nuevos), nuevos[a.TARGET]
+    for n, b in busquedas.items():
+        for pipeline, params in mejores_por_grupo(b, list(PARAMS_PREPROCESAMIENTO), NOMBRE_FOLD[n]).items():
+            modelo = clone(base[n]).set_params(**params).fit(X, y)
+            for m in metricas_fold:
+                por_preprocesamiento.loc[pipeline, (m, "nuevos")] = check_scoring(modelo, SCORING[m])(modelo, Xn, yn)
+    por_preprocesamiento = por_preprocesamiento[[(m, e) for m in metricas_fold for e in ("mean", "std", "nuevos")]]
+    por_preprocesamiento = por_preprocesamiento.sort_values((args.metrica, "mean"), ascending=False)
+    print(f"\n=== Preprocesamientos: promedio y desviación entre particiones, y sobre nuevos, por {args.metrica} ===")
+    print(por_preprocesamiento.round(4).to_string() + "\n")
 
     comparativa = tabla_comparativa(modelos, X, y, folds=args.folds, ordenar=args.metrica)
     print("=== Por defecto vs. afinado: validación cruzada (los afinados salen optimistas) ===")
@@ -118,7 +173,7 @@ def main() -> None:
     print(en_nuevos.round(3).to_string())
 
     # Tabla de predicciones de los afinados (como predict_model de PyCaret), sobre los nuevos.
-    afinados = {f"{n}_afinado": b.best_estimator_ for n, b in busquedas.items()}
+    afinados = {f"{n}_afinado": aplanar(b.best_estimator_) for n, b in busquedas.items()}  # ramas a la vista
     predicciones = a.tabla_predicciones(afinados, nuevos)
     columnas = [*COLUMNAS_MUESTRA, a.TARGET, *[c for c in predicciones if c.endswith(("_label", "_score"))]]
     print(f"\n=== Predicciones de los afinados: muestra de {args.muestra} asociados nuevos ===")
@@ -133,12 +188,12 @@ def main() -> None:
     METRICS_DIR.mkdir(parents=True, exist_ok=True)
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
-    for nombre, busqueda in busquedas.items():
-        a.guardar_modelo(busqueda.best_estimator_, MODELS_DIR, f"abandono_{nombre}_afinado")
+    for nombre, modelo in afinados.items():
+        a.guardar_modelo(modelo, MODELS_DIR, f"abandono_{nombre}")
     tabla_csv = PROCESSED_DIR / "predicciones_afinados.csv"  # todas las filas y variables; ignorado por Git
     predicciones.to_csv(tabla_csv, index_label="fila", encoding="utf-8-sig")  # -sig: tildes bien en Excel
     grafico = FIGURES_DIR / "afinamiento_curvas.png"
-    figura_busqueda(busquedas, EJE_X).savefig(grafico, dpi=150)
+    figura_busqueda(busquedas, EJE_X, fijar=PARAMS_PREPROCESAMIENTO).savefig(grafico, dpi=150)
     tabla_html = FIGURES_DIR / "afinamiento_comparativa.html"  # con el mejor de cada columna en amarillo
     tabla_html.write_text(resaltar(comparativa).to_html(), encoding="utf-8", newline="\n")
     diagramas = FIGURES_DIR / "afinamiento_pipelines.html"  # los afinados, con los hiperparámetros elegidos
@@ -151,6 +206,10 @@ def main() -> None:
         "mejores": {n: formato_params(b.best_params_) for n, b in busquedas.items()},
         "top5": {n: resultados_busqueda(b).to_dict(orient="records") for n, b in busquedas.items()},
         "comparativa": comparativa.to_dict(orient="index"),
+        "por_fold": por_fold.to_dict(orient="records"),
+        "preprocesamientos": {
+            p: {f"{m}_{e}": v for (m, e), v in fila.items()} for p, fila in por_preprocesamiento.iterrows()
+        },
         f"nuevos (n={args.nuevos})": en_nuevos.to_dict(orient="index"),
     }
     salida.write_text(json.dumps(resumen, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")

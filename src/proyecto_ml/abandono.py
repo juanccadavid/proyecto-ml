@@ -59,6 +59,9 @@ COMPORTAMIENTO = [
 ]
 NUMERICAS = [*COMPORTAMIENTO, "SALARIO", "ESTRATO", "EDAD", "ANTIGUEDAD"]
 CATEGORICAS = ["SEXO", "TIPOCONTRATO", "TIPOPACTO", "PERIODODEDUCE", "TIPOCUENTA", "CARGO", "CODCIUDAD", "AGENCIA"]
+# Las únicas que tiene sentido recortar (clip_outliers): continuas. Los conteos de COMPORTAMIENTO casi
+# siempre valen 0, su IQR queda en [0, 0] y recortarlos borraría a quienes sí tienen solicitudes.
+COLUMNAS_RECORTE = ["SALARIO", "EDAD", "ANTIGUEDAD"]
 
 # Señales que, sin mirar el objetivo, indican intención de irse (+) o de quedarse (-).
 # Se usan para decidir cuál de los dos grupos de KMeans es el de "riesgo".
@@ -99,7 +102,12 @@ TITULOS = {
 UMBRAL = {"predict_proba": 0.5, "decision_function": 0.0}
 
 
-def modelo_ridge(alpha: float = 1.0) -> Pipeline:
+def preprocesador(clip_outliers: str | None = None):
+    """El preprocesador de los supervisados. ``clip_outliers`` ("iqr"/"quantile") recorta solo COLUMNAS_RECORTE."""
+    return build_preprocessor(NUMERICAS, CATEGORICAS, clip_outliers=clip_outliers, clip_columns=COLUMNAS_RECORTE)
+
+
+def modelo_ridge(alpha: float = 1.0, clip_outliers: str | None = None) -> Pipeline:
     """Ridge para clasificación: regresión Ridge sobre la clase codificada como -1/+1.
 
     class_weight="balanced" compensa que los retiros son minoría. El puntaje
@@ -107,13 +115,15 @@ def modelo_ridge(alpha: float = 1.0) -> Pipeline:
     """
     return Pipeline(
         [
-            ("preprocess", build_preprocessor(NUMERICAS, CATEGORICAS)),
+            ("preprocess", preprocesador(clip_outliers)),
             ("model", RidgeClassifier(alpha=alpha, class_weight="balanced")),
         ]
     )
 
 
-def modelos_supervisados(alpha: float = 1.0, random_state: int = 42) -> dict[str, Pipeline]:
+def modelos_supervisados(
+    alpha: float = 1.0, random_state: int = 42, clip_outliers: str | None = None
+) -> dict[str, Pipeline]:
     """Ridge + el catálogo de models.py (logística, Random Forest, HistGB), con el mismo preprocesador.
 
     Random Forest es *bagging*: muchos árboles independientes, cada uno con una muestra bootstrap,
@@ -121,10 +131,10 @@ def modelos_supervisados(alpha: float = 1.0, random_state: int = 42) -> dict[str
     de los anteriores (la versión de scikit-learn inspirada en LightGBM).
     """
     catalogo = {
-        nombre: build_pipeline(build_preprocessor(NUMERICAS, CATEGORICAS), modelo)
+        nombre: build_pipeline(preprocesador(clip_outliers), modelo)
         for nombre, modelo in get_models(random_state).items()
     }
-    return {"ridge": modelo_ridge(alpha), **catalogo}
+    return {"ridge": modelo_ridge(alpha, clip_outliers), **catalogo}
 
 
 def metodo_puntaje(modelo: Pipeline) -> str:

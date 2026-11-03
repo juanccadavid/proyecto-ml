@@ -4,6 +4,7 @@ Uso:
     uv run python -m proyecto_ml.train                       # usa variables del .env
     uv run python -m proyecto_ml.train --data data/processed/sintetico.parquet --pca 0.95
     uv run python -m proyecto_ml.train --tabpfn --smote
+    uv run python -m proyecto_ml.train --clip-outliers iqr --clip-columns salario,edad --drop-columns 0.5
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ import mlflow
 import mlflow.sklearn
 import pandas as pd
 
+from proyecto_ml.cleaning import ColumnDropper
 from proyecto_ml.config import METRICS_DIR, MODELS_DIR, get_settings
 from proyecto_ml.data import infer_column_types, load_dataset, split_data, split_features_target
 from proyecto_ml.evaluate import compute_metrics
@@ -34,6 +36,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--models", default="logreg,random_forest,hist_gb", help="Lista separada por comas")
     parser.add_argument("--pca", type=float, default=None, help="Componentes PCA (int) o varianza (0-1)")
     parser.add_argument("--smote", action="store_true", help="Aplicar SMOTE dentro del pipeline")
+    parser.add_argument(
+        "--clip-outliers", choices=["iqr", "quantile"], help="Recortar atípicos de las numéricas (aprendido en train)"
+    )
+    parser.add_argument(
+        "--clip-columns",
+        type=lambda v: [c.strip() for c in v.split(",") if c.strip()],
+        help="Solo recortar estas columnas, separadas por comas (por defecto: todas las numéricas)",
+    )
+    parser.add_argument(
+        "--drop-columns",
+        type=float,
+        metavar="MAX_NULOS",
+        help="Descartar columnas con más de esta fracción de nulos o constantes (ej. 0.5), decidido en train",
+    )
     parser.add_argument("--tabpfn", action="store_true", help="Incluir TabPFN (requiere extra hf)")
     parser.add_argument("--no-log-model", action="store_true", help="No guardar el modelo en MLflow")
     parser.add_argument("--output-dir", type=Path, default=None, help="Carpeta para métricas/modelo")
@@ -92,7 +108,17 @@ def run(argv: list[str] | None = None) -> dict[str, dict[str, float]]:
     results: dict[str, dict[str, float]] = {}
     best_name, best_score, best_pipeline = None, float("-inf"), None
     for name, model in selected.items():
-        preprocessor = build_preprocessor(numeric, categorical, pca_components=pca, random_state=settings.random_state)
+        # Un ColumnDropper nuevo por modelo: cada pipeline aprende sus propias columnas a descartar.
+        dropper = ColumnDropper(max_missing=args.drop_columns) if args.drop_columns is not None else None
+        preprocessor = build_preprocessor(
+            numeric,
+            categorical,
+            pca_components=pca,
+            clip_outliers=args.clip_outliers,
+            clip_columns=args.clip_columns,
+            drop_columns=dropper,
+            random_state=settings.random_state,
+        )
         pipeline = build_pipeline(preprocessor, model, sampler)
         with mlflow.start_run(run_name=name):
             mlflow.log_params(
@@ -103,6 +129,9 @@ def run(argv: list[str] | None = None) -> dict[str, dict[str, float]]:
                     "n_test": len(X_test),
                     "pca": pca,
                     "smote": args.smote,
+                    "clip_outliers": args.clip_outliers,
+                    "clip_columns": ",".join(args.clip_columns) if args.clip_columns else None,
+                    "drop_columns": args.drop_columns,
                     "split": "temporal" if time is not None else "grupos" if groups is not None else "estratificado",
                 }
             )
