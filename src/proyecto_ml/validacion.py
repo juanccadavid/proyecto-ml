@@ -67,7 +67,7 @@ def evaluar_escenarios(
     filas = []
     for escenario in escenarios:
         df = datos_escenario(escenario, n, seed, horizonte)
-        X, y = a.preparar(df), df[a.TARGET]
+        X, y = a.separar(df)
         for nombre, modelo in modelos.items():
             umbral = umbrales.get(nombre, a.UMBRAL[a.metodo_puntaje(modelo)])
             m = compute_metrics(y, a.puntaje(modelo, X), threshold=umbral)

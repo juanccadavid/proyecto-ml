@@ -25,7 +25,6 @@ from sklearn.pipeline import Pipeline
 
 from proyecto_ml import abandono as a
 from proyecto_ml.evaluate import SCORING
-from proyecto_ml.features import Preprocesador
 from proyecto_ml.models import get_models
 
 if TYPE_CHECKING:
@@ -37,14 +36,7 @@ MODELOS = ("random_forest", "hist_gb")
 def modelo_base(nombre: str, random_state: int = 42) -> Pipeline:
     """El modelo de ``a.modelos_supervisados()`` (mismos valores por defecto), con el preprocesamiento
     como ``Preprocesador`` para que sus opciones entren en la búsqueda."""
-    preprocesador = Preprocesador(
-        a.NUMERICAS,
-        a.CATEGORICAS,
-        clip_outliers=a.CLIP_OUTLIERS,
-        clip_columns=a.COLUMNAS_RECORTE,
-        max_nulos=a.MAX_NULOS,
-    )
-    return Pipeline([("preprocess", preprocesador), ("model", clone(get_models(random_state)[nombre]))])
+    return a.armar_pipeline(clone(get_models(random_state)[nombre]), buscable=True, random_state=random_state)
 
 
 def _preprocesamiento(trial: optuna.Trial) -> dict:

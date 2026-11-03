@@ -286,7 +286,7 @@
      from proyecto_ml.generador import GeneradorAsociados
 
      df = GeneradorAsociados(n=1000, seed=1).generar()
-     X, y = a.preparar(df), df[a.TARGET]
+     X, y = a.separar(df)                                 # el pipeline prepara las variables
      X_train, X_test, y_train, y_test = split_data(X, y, test_size=0.25)
      modelo = a.modelo_ridge().fit(X_train, y_train)      # aprende solo de train
      predicciones = modelo.predict(X_test)                # aplica a test

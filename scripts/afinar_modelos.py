@@ -57,7 +57,7 @@ from proyecto_ml.evaluate import (
     tabla_comparativa,
     top_importancia,
 )
-from proyecto_ml.features import Preprocesador, aplanar, pagina_pipelines
+from proyecto_ml.features import aplanar, pagina_pipelines
 from proyecto_ml.generador import GeneradorAsociados
 
 REGULARIZACION = np.logspace(-3, 3, 13)  # 0.001 ... 1000, 13 valores igual de espaciados en escala log
@@ -71,10 +71,10 @@ GRILLAS = {
     "ridge": {**PREPROCESAMIENTO, "model__alpha": REGULARIZACION, "model__class_weight": [None, "balanced"]},
     "pycaret_lr": {
         **PREPROCESAMIENTO,
-        "lr__C": REGULARIZACION,
-        "lr__l1_ratio": [0.0, 1.0],
-        "lr__class_weight": [None, "balanced"],
-        "lr__solver": ["liblinear"],
+        "model__C": REGULARIZACION,
+        "model__l1_ratio": [0.0, 1.0],
+        "model__class_weight": [None, "balanced"],
+        "model__solver": ["liblinear"],
     },
 }
 EJE_X = {"ridge": "alpha", "pycaret_lr": "C"}  # el hiperparámetro de regularización de cada uno
@@ -97,22 +97,12 @@ def modelos_base(train: pd.DataFrame, folds: int = 5) -> dict[str, Pipeline]:
     exp = ClassificationExperiment(target=a.TARGET, session_id=42, fold=folds, normalize=True)
     exp.fit(a.preparar(train), train[a.TARGET])
 
-    def preprocesador(**kwargs) -> Preprocesador:
-        return Preprocesador(a.NUMERICAS, a.CATEGORICAS, clip_columns=a.COLUMNAS_RECORTE, **kwargs)
-
+    # pycaret_lr: el preprocesamiento de PyCaret (media + ordinal, sin recorte ni ColumnDropper)
+    lr = clone(exp.create_model("lr").pipeline[-1])
+    sin_limpieza = {"numeric_strategy": "mean", "encoding": "ordinal", "clip_outliers": None, "max_nulos": None}
     return {
-        "ridge": Pipeline(
-            [
-                ("preprocess", preprocesador(clip_outliers=a.CLIP_OUTLIERS, max_nulos=a.MAX_NULOS)),
-                ("model", clone(a.modelo_ridge()[-1])),
-            ]
-        ),
-        "pycaret_lr": Pipeline(
-            [
-                ("preprocess", preprocesador(numeric_strategy="mean", encoding="ordinal")),
-                ("lr", clone(exp.create_model("lr").pipeline[-1])),
-            ]
-        ),
+        "ridge": a.armar_pipeline(clone(a.modelo_ridge()[-1]), buscable=True),
+        "pycaret_lr": a.armar_pipeline(lr, buscable=True, **sin_limpieza),
     }
 
 
@@ -137,7 +127,7 @@ def main() -> None:
 
     train = a.cargar(args.datos)  # con limpiar_extracto
     nuevos = GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos).generar()
-    X, y = a.preparar(train), train[a.TARGET]
+    X, y = a.separar(train)
     print(f"Entrenamiento: {args.datos} ({len(train)} filas, {train[a.TARGET].mean():.0%} abandono)")
     print(f"Elige por: {args.metrica} (validación cruzada, {args.folds} particiones)\n")
 
@@ -165,7 +155,7 @@ def main() -> None:
         print(por_fold.round(6))
     por_preprocesamiento = por_fold.groupby("pipeline", sort=False)[list(metricas_fold)].agg(["mean", "std"])
     # La prueba honesta de cada preprocesamiento: su mejor combinación, reentrenada, sobre asociados nuevos.
-    Xn, yn = a.preparar(nuevos), nuevos[a.TARGET]
+    Xn, yn = a.separar(nuevos)
     for n, b in busquedas.items():
         for pipeline, params in mejores_por_grupo(b, list(PARAMS_PREPROCESAMIENTO), NOMBRE_FOLD[n]).items():
             modelo = clone(base[n]).set_params(**params).fit(X, y)

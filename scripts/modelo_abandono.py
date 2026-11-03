@@ -124,7 +124,7 @@ def main() -> None:
         print("Limpieza: apagada (--sin-limpieza)\n")
 
     # ---- Supervisados: Ridge, logística, Random Forest (bagging), HistGB (boosting)
-    X, y = a.preparar(train), train[a.TARGET]
+    X, y = a.separar(train)
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
     supervisados, m_supervisados = {}, {}
     for nombre, modelo in a.modelos_supervisados(args.alpha, clip_outliers=clip, max_nulos=max_nulos).items():

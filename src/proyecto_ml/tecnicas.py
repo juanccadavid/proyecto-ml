@@ -16,27 +16,14 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
-from imblearn.over_sampling import ADASYN, SMOTE
-from imblearn.pipeline import Pipeline as ImbPipeline
 from sklearn.model_selection import RepeatedStratifiedKFold, cross_validate
-from sklearn.pipeline import Pipeline
 
 from proyecto_ml import abandono as a
-from proyecto_ml.features import Preprocesador
 from proyecto_ml.models import get_models
 
 if TYPE_CHECKING:
     import plotly.graph_objects as go
 
-# La base: el mismo preprocesador que abandono.preprocesador (mediana, OneHot, StandardScaler, recorte IQR
-# de COLUMNAS_RECORTE, ColumnDropper al 50 %).
-BASE = {
-    "numeric": a.NUMERICAS,
-    "categorical": a.CATEGORICAS,
-    "clip_outliers": a.CLIP_OUTLIERS,
-    "clip_columns": a.COLUMNAS_RECORTE,
-    "max_nulos": a.MAX_NULOS,
-}
 CLASIFICADORES = ("logreg", "random_forest", "hist_gb")
 # Para que comparar imputadores tenga sentido: vacíos al azar en estas columnas (los datos generados no traen).
 COLUMNAS_VACIOS = ["SALARIO", "ESTRATO", "EDAD", "ANTIGUEDAD", "#CANTIDAD_SERVICIOS"]
@@ -45,7 +32,7 @@ SCORING = {"pr_auc": "average_precision", "roc_auc": "roc_auc"}
 
 @dataclass(frozen=True)
 class Tecnica:
-    """Una variante: ``preproceso`` cambia parámetros de ``Preprocesador`` respecto a BASE."""
+    """Una variante: ``preproceso`` cambia parámetros del preprocesador de ``abandono.armar_pipeline``."""
 
     grupo: str
     nombre: str
@@ -110,16 +97,15 @@ def clasificador(nombre: str = "logreg", balance: bool = True, random_state: int
 
 
 def modelo(tecnica: Tecnica, nombre_clasificador: str = "logreg", random_state: int = 42):
-    """El pipeline de una técnica: [crear variables] -> preprocesar -> [SMOTE/ADASYN] -> clasificador."""
-    numeric = [*a.NUMERICAS, *a.VARIABLES_NUEVAS] if tecnica.crear_variables else a.NUMERICAS
-    pre = Preprocesador(**{**BASE, "numeric": numeric, "random_state": random_state, **tecnica.preproceso})
-    pasos = [("crear", a.CrearVariables())] if tecnica.crear_variables else []
-    pasos.append(("preprocess", pre))
-    clf = clasificador(nombre_clasificador, tecnica.balance, random_state)
-    if tecnica.muestreo is None:
-        return Pipeline([*pasos, ("model", clf)])
-    muestreador = {"smote": SMOTE, "adasyn": ADASYN}[tecnica.muestreo](random_state=random_state)
-    return ImbPipeline([*pasos, ("sampler", muestreador), ("model", clf)])
+    """El pipeline de una técnica (``abandono.armar_pipeline``): preparar -> [crear variables] -> preprocesar
+    -> [SMOTE/ADASYN] -> clasificador."""
+    return a.armar_pipeline(
+        clasificador(nombre_clasificador, tecnica.balance, random_state),
+        crear_variables=tecnica.crear_variables,
+        muestreo=tecnica.muestreo,
+        random_state=random_state,
+        **tecnica.preproceso,
+    )
 
 
 def comparar(

@@ -181,7 +181,7 @@ def elegir(
     info: dict | None = None,
 ) -> Campeon:
     """Evalúa los candidatos (por defecto los 4 supervisados), elige el de mejor PR-AUC y lo entrena con todo."""
-    X, y = a.preparar(df), df[a.TARGET]
+    X, y = a.separar(df)  # filas crudas: el pipeline prepara las variables (PrepararVariables)
     candidatos = candidatos or a.modelos_supervisados()
     evaluados = {
         n: evaluar(n, m, X, y, folds, repeticiones, beta=beta, precision_min=precision_min)

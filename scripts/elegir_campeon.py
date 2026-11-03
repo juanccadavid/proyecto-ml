@@ -85,13 +85,13 @@ def main() -> None:
     print(f"\nCampeón: {a.TITULOS[campeon.nombre]} · umbral {campeon.umbral:.3f} · umbral_alto {alto}")
 
     # Todos los candidatos entrenados con todo, cada uno con su umbral, para nuevos y escenarios.
-    X, y = a.preparar(df), df[a.TARGET]
+    X, y = a.separar(df)
     entrenados = {n: clone(cand.modelo).fit(X, y) for n, cand in campeon.candidatos.items()}
     umbrales = {n: cand.umbrales["umbral"] for n, cand in campeon.candidatos.items()}
     nuevos = GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos, tasa_retiro=DESARROLLO["tasa_retiro"])
     nuevos = nuevos.generar()
     nuevos = a.foto(nuevos, h) if h else nuevos
-    Xn, yn = a.preparar(nuevos), nuevos[a.TARGET]
+    Xn, yn = a.separar(nuevos)
     en_nuevos = {n: compute_metrics(yn, a.puntaje(m, Xn), threshold=umbrales[n]) for n, m in entrenados.items()}
     print(f"\n=== Asociados nuevos ({len(nuevos)}, {yn.mean():.1%} retiro), cada uno con su umbral ===")
     print(pd.DataFrame(en_nuevos).T.round(3).to_string())

@@ -142,9 +142,28 @@ y las mismas particiones para todos. Se guarda en `reports/figures/abandono_comp
 de cada columna en amarillo. Se ordena con `make abandono ARGS="--ordenar Recall"` (o `"--ordenar 'TT (Sec)'"`).
 En un notebook: `resaltar(tabla_comparativa(modelos, X, y))` de `proyecto_ml.evaluate`.
 
+**Un solo pipeline para todos** (`abandono.armar_pipeline`). Supervisados, campeón, Optuna, `make afinar` y
+`make tecnicas` arman el modelo con la misma fábrica:
+
+```
+preparar → [crear variables] → preprocess → [SMOTE/ADASYN] → model
+```
+
+El primer paso (`PrepararVariables`) calcula EDAD y ANTIGUEDAD y elige las columnas. Por eso el modelo recibe la
+**fila tal como llega** (extracto, Supabase, formulario): `modelo.predict(df)`, sin llamar a `preparar()` antes.
+Eso vale también para el campeón guardado y para `models:/abandono@campeon` en MLflow. Si la fila ya viene
+preparada, la deja igual; así siguen funcionando el simulador y la importancia por permutación.
+
+```python
+X, y = a.separar(vista)  # quita #RETIROS; el pipeline prepara el resto
+modelo = a.armar_pipeline(LogisticRegression(class_weight="balanced"), crear_variables=True, scaler="robust")
+modelo.fit(X, y).predict_proba(fila_de_supabase)
+a.armar_pipeline(modelo_rf, buscable=True)  # preprocess__<opción> para GridSearchCV u Optuna
+```
+
 **Diagrama de los pipelines.** `make abandono` guarda `reports/figures/abandono_pipelines.html` con el diagrama
-interactivo de cada modelo (el mismo de Jupyter): el `ColumnTransformer` con su rama numérica (SimpleImputer →
-StandardScaler) y su rama categórica (SimpleImputer → OneHotEncoder), y luego el modelo. Cada caja se despliega con
+interactivo de cada modelo (el mismo de Jupyter): `PrepararVariables`, el `ColumnTransformer` con su rama
+numérica (SimpleImputer → StandardScaler) y su rama categórica (SimpleImputer → OneHotEncoder), y luego el modelo. Cada caja se despliega con
 un clic para ver parámetros y columnas. `make afinar` hace lo mismo con los afinados en
 `afinamiento_pipelines.html`: ahí se ve que PyCaret usa OrdinalEncoder en la rama categórica. En un notebook basta
 con dejar el pipeline al final de una celda; desde código: `pagina_pipelines({"ridge": modelo})` de
@@ -165,7 +184,7 @@ en la práctica predice "¿se retiró en el último año?". El diseño correcto 
 
 ```python
 vista = a.foto(df, horizonte_meses=3)  # t0 = 2026-07-31
-X, y = a.preparar(vista), vista[a.TARGET]
+X, y = a.separar(vista)  # el pipeline calcula EDAD y ANTIGUEDAD a t0
 a.resumen_foto(df)  # por horizonte: asociados, retiros y tasa en la foto
 ```
 
