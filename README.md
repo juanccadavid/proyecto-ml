@@ -25,7 +25,8 @@ MLflow y demo en Streamlit.
 │   ├── generador.py      GeneradorAsociados: asociados ficticios con el esquema real
 │   ├── anonymize.py      Hash con sal, eliminación de PII, agrupación en rangos
 │   ├── synthetic.py      Generador sintético genérico (make demo)
-│   └── app.py            Demo Streamlit
+│   ├── app.py            Demo Streamlit
+│   └── app_abandono.py   Simulador Streamlit del abandono (make simulador)
 ├── scripts/              Ingesta, anonimización, generadores, contrato, modelo de abandono
 ├── contratos/            Contratos de datos (YAML)
 ├── supabase/             SQL de la tabla y migraciones
@@ -56,6 +57,7 @@ make train ARGS="--clip-outliers iqr --clip-columns salario"  # además recorta 
 make train ARGS="--sin-limpieza"  # sin la limpieza de cleaning.py, para comparar en MLflow
 make mlflow-ui               # http://localhost:5000
 make app                     # http://localhost:8501
+make simulador               # http://localhost:8501: mueve las variables y mira si el asociado se retira
 make check                   # lint + pruebas, antes de abrir un PR
 ```
 

@@ -26,7 +26,7 @@ ARGS ?=
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup setup-hf demo-data demo train train-hf abandono pycaret afinar mlflow-ui app \
+.PHONY: help setup setup-hf demo-data demo train train-hf abandono pycaret afinar mlflow-ui app simulador \
         ejemplo contrato contrato-sql contrato-web supabase-subir supabase-bajar formulario \
         test test-fast cov lint format check hooks secrets up down logs salt bundle clean clean-all
 
@@ -83,6 +83,9 @@ mlflow-ui: ## Abre la interfaz de MLflow en http://localhost:5000
 
 app: ## Lanza la demo de Streamlit en http://localhost:8501
 	$(RUN) streamlit run src/proyecto_ml/app.py --server.port $(APP_PORT)
+
+simulador: ## Simulador interactivo del abandono en http://localhost:8501 (requiere make abandono)
+	$(RUN) streamlit run src/proyecto_ml/app_abandono.py --server.port $(APP_PORT)
 
 # ==============================================================================
 # Contrato de datos y Supabase
