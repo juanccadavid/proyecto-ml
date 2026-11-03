@@ -14,7 +14,7 @@ Uso:
     uv run python scripts/afinar_optuna.py --sin-mlflow                      # sin registrar en MLflow
 
 Hiperparámetros (rangos en busqueda_optuna.py):
-- Random Forest: n_estimators, max_depth, min_samples_leaf, max_features (fracción) y class_weight.
+- Random Forest: n_estimators, max_depth, min_samples_split, min_samples_leaf, max_features y class_weight.
 - HistGB:        learning_rate, max_iter, max_leaf_nodes, max_depth, min_samples_leaf,
                  l2_regularization y class_weight.
 

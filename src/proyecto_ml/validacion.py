@@ -8,6 +8,8 @@ funciona en el fondo real (validación circular). Mientras llega el extracto, do
   degrada el modelo si el fondo real no se parece al generador.
 - **Partición temporal** (``particion_temporal``): con el extracto real, entrenar con una foto vieja y
   probar con la más reciente. Es la validación honesta; aquí queda lista y probada con datos generados.
+- **Estrategias de validación cruzada** (``comparar_validaciones``): KFold, StratifiedKFold y TimeSeriesSplit
+  sobre los mismos datos, para ver por qué el campeón usa la estratificada.
 """
 
 from __future__ import annotations
@@ -15,7 +17,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pandas as pd
+from sklearn.base import clone
+from sklearn.metrics import average_precision_score, roc_auc_score
+from sklearn.model_selection import KFold, StratifiedKFold, TimeSeriesSplit
 
 from proyecto_ml import abandono as a
 from proyecto_ml.evaluate import compute_metrics
@@ -108,3 +114,110 @@ def particion_temporal(
     entrenamiento = a.foto(df, horizonte_meses, corte - pd.DateOffset(months=meses_prueba))
     prueba = a.foto(df, horizonte_meses, corte)
     return entrenamiento, prueba
+
+
+# ---------------------------------------------------------------- estrategias de validación cruzada
+
+# TimeSeriesSplit necesita las filas en orden de tiempo. La foto no tiene una fecha por fila (todos se observan
+# en t0), así que se ordena por fecha de ingreso: entrena con los asociados más antiguos y prueba con los
+# más nuevos (cohortes). Con el extracto real, la validación temporal de verdad es ``particion_temporal``.
+ORDEN_TEMPORAL = "FECHAINGRESOLABORA"
+
+
+def estrategias_cv(folds: int = 5, random_state: int = 0) -> dict:
+    """Las tres formas de partir: KFold (al azar), StratifiedKFold (misma tasa de retiro en cada partición)
+    y TimeSeriesSplit (cada partición prueba con filas posteriores a todas las de su entrenamiento)."""
+    return {
+        "KFold": KFold(folds, shuffle=True, random_state=random_state),
+        "StratifiedKFold": StratifiedKFold(folds, shuffle=True, random_state=random_state),
+        "TimeSeriesSplit": TimeSeriesSplit(folds),
+    }
+
+
+def _puntuar(y, puntaje, metrica) -> float:
+    return float(metrica(y, puntaje)) if 0 < y.sum() < len(y) else float("nan")  # sin retirados no se define
+
+
+def comparar_validaciones(
+    modelo: Pipeline, df: pd.DataFrame, folds: int = 5, random_state: int = 0, orden: str = ORDEN_TEMPORAL
+) -> pd.DataFrame:
+    """Una fila por estrategia y partición: tamaños, retirados en la prueba, PR-AUC y ROC-AUC.
+
+    ``df`` son filas crudas con el objetivo (p. ej. ``a.foto(...)``); se ordenan por ``orden`` para
+    TimeSeriesSplit (KFold y StratifiedKFold barajan, así que el orden no les cambia nada).
+    """
+    df = df.sort_values(orden, kind="stable").reset_index(drop=True)
+    X, y = a.separar(df)
+    filas = []
+    for estrategia, cv in estrategias_cv(folds, random_state).items():
+        for k, (entrena, prueba) in enumerate(cv.split(X, y), start=1):
+            y_entrena, y_prueba = y.iloc[entrena], y.iloc[prueba]
+            fila = {
+                "estrategia": estrategia,
+                "particion": k,
+                "filas_entrenamiento": len(entrena),
+                "filas_prueba": len(prueba),
+                "retirados_prueba": int(y_prueba.sum()),
+                "tasa_prueba": float(y_prueba.mean()),
+                "pr_auc": float("nan"),
+                "roc_auc": float("nan"),
+            }
+            if y_entrena.nunique() == 2:  # sin las dos clases en el entrenamiento no hay modelo
+                puntaje = a.puntaje(clone(modelo).fit(X.iloc[entrena], y_entrena), X.iloc[prueba])
+                fila["pr_auc"] = _puntuar(y_prueba, puntaje, average_precision_score)
+                fila["roc_auc"] = _puntuar(y_prueba, puntaje, roc_auc_score)
+            filas.append(fila)
+    return pd.DataFrame(filas)
+
+
+def resumen_validaciones(por_particion: pd.DataFrame) -> pd.DataFrame:
+    """Por estrategia: PR-AUC media, su desviación entre particiones y cuántos retirados tuvo cada prueba."""
+    g = por_particion.groupby("estrategia", sort=False)
+    return pd.DataFrame(
+        {
+            "pr_auc": g["pr_auc"].mean(),
+            "pr_auc_std": g["pr_auc"].std(),
+            "roc_auc": g["roc_auc"].mean(),
+            "retirados_min": g["retirados_prueba"].min(),
+            "retirados_max": g["retirados_prueba"].max(),
+            "tasa_prueba_std": g["tasa_prueba"].std(),
+            "entrenamiento_medio": g["filas_entrenamiento"].mean().round().astype(int),
+        }
+    )
+
+
+def figura_validaciones(por_particion: pd.DataFrame, titulo: str):
+    """Plotly: la PR-AUC de cada partición (puntos) y su promedio (raya), una fila por estrategia."""
+    import plotly.graph_objects as go
+
+    colores = {"KFold": "#2a78d6", "StratifiedKFold": "#eb6834", "TimeSeriesSplit": "#1baf7a"}
+    fig = go.Figure()
+    for estrategia, datos in por_particion.groupby("estrategia", sort=False):
+        color = colores.get(estrategia, "#898781")
+        fig.add_scatter(
+            x=datos["pr_auc"],
+            y=[estrategia] * len(datos),
+            mode="markers",
+            name=estrategia,
+            marker={"size": 11, "color": color, "line": {"color": "#fcfcfb", "width": 2}},
+            customdata=np.column_stack([datos["particion"], datos["retirados_prueba"], datos["filas_prueba"]]),
+            hovertemplate=f"{estrategia} · partición %{{customdata[0]}}<br>PR-AUC=%{{x:.3f}}"
+            "<br>%{customdata[1]} retirados de %{customdata[2]}<extra></extra>",
+        )
+        fig.add_scatter(
+            x=[datos["pr_auc"].mean()],
+            y=[estrategia],
+            mode="markers",
+            showlegend=False,
+            marker={"symbol": "line-ns", "size": 26, "line": {"color": "#0b0b0b", "width": 2}},
+            hovertemplate=f"{estrategia}: promedio %{{x:.3f}}<extra></extra>",
+        )
+    fig.update_layout(
+        title=titulo,
+        xaxis={"title": "PR-AUC de la partición (raya negra = promedio)", "gridcolor": "#e1e0d9"},
+        yaxis={"autorange": "reversed"},
+        template="plotly_white",
+        height=360,
+        legend={"orientation": "h", "y": -0.25},
+    )
+    return fig

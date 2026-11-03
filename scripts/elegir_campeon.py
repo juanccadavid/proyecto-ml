@@ -6,7 +6,10 @@ umbrales salen de las predicciones fuera de partición (ver ``campeon.py``). Des
 
 - asociados nuevos (misma tasa de retiro) y escenarios menos favorables (tasa 10 %, señal al 50 % y 25 %):
   cuánto se degrada cada candidato con su umbral, en vez de una cifra perfecta;
-- KMeans con los mismos datos: perfil y tasa de retiro real de cada grupo.
+- KMeans con los mismos datos: perfil y tasa de retiro real de cada grupo;
+- curva ROC y matriz de confusión del campeón con sus umbrales (fuera de partición);
+- SHAP: qué variables mueven el puntaje de cada asociado nuevo (importancia global y la explicación del de
+  mayor riesgo).
 
 Guarda en models/ solo el campeón (abandono_campeon.joblib, abandono_kmeans.joblib y campeon.json). En MLflow
 (experimento ``abandono``): una corrida "campeon" con una hija por candidato (cv_, nuevos_, esc_) y el
@@ -32,6 +35,7 @@ from sklearn.base import clone
 
 from proyecto_ml import abandono as a
 from proyecto_ml import campeon as c
+from proyecto_ml import explicar as e
 from proyecto_ml import registro as r
 from proyecto_ml import validacion as v
 from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, MODELS_DIR
@@ -55,6 +59,7 @@ def main() -> None:
     parser.add_argument("--precision-min", type=float, default=c.PRECISION_MIN, help="Precisión de la zona 'se retira'")
     parser.add_argument("--nuevos", type=int, default=1000, help="Asociados nuevos (y por escenario)")
     parser.add_argument("--semilla-nuevos", type=int, default=2026)
+    parser.add_argument("--shap", type=int, default=100, help="Asociados nuevos a explicar con SHAP (0 = ninguno)")
     parser.add_argument("--sin-mlflow", action="store_true", help="No registrar en MLflow")
     args = parser.parse_args()
 
@@ -111,6 +116,22 @@ def main() -> None:
     print("\n=== KMeans (sin objetivo) en los mismos datos ===")
     print(pd.DataFrame({g: {k: d[k] for k in ("asociados", "tasa_retiro")} for g, d in campeon.grupos.items()}))
 
+    print("\n=== Matriz de confusión del campeón (fuera de partición; filas = real, columnas = predicción) ===")
+    for nombre, cm in c.matrices_confusion(campeon).items():
+        print(f"Umbral {nombre}:")
+        print(pd.DataFrame(cm, index=["real 0", "real 1"], columns=["pred 0", "pred 1"]).to_string())
+
+    explicaciones = None
+    if args.shap:
+        modelo = campeon.con_zonas()
+        explicador = e.Explicador(modelo, X)
+        muestra = Xn.sample(min(args.shap, len(Xn)), random_state=0)
+        importancia_shap = e.importancia(explicador.contribuciones(muestra))
+        mayor_riesgo = muestra.iloc[[int(a.puntaje(modelo, muestra).argmax())]]
+        explicaciones = (explicador, importancia_shap, mayor_riesgo)
+        print(f"\n=== SHAP: |contribución| promedio en {len(muestra)} asociados nuevos (top 8) ===")
+        print(importancia_shap.head(8).round(4).to_string())
+
     # ---- Guardar: en models/ solo el campeón
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     METRICS_DIR.mkdir(parents=True, exist_ok=True)
@@ -118,17 +139,35 @@ def main() -> None:
     c.figura_umbrales(campeon).write_html(figura, include_plotlyjs="cdn")
     tabla_escenarios = FIGURES_DIR / "campeon_escenarios.html"
     tabla_escenarios.write_text(escenarios.round(3).to_html(), encoding="utf-8", newline="\n")
+    figura_roc = FIGURES_DIR / "campeon_roc.html"
+    c.figura_roc(campeon).write_html(figura_roc, include_plotlyjs="cdn")
+    figura_confusion = FIGURES_DIR / "campeon_confusion.html"
+    c.figura_confusion(campeon).write_html(figura_confusion, include_plotlyjs="cdn")
+    figuras = [figura, tabla_escenarios, figura_roc, figura_confusion]
+    if explicaciones:
+        explicador, importancia_shap, mayor_riesgo = explicaciones
+        titulo = f"SHAP del campeón ({a.TITULOS[campeon.nombre]}) en asociados nuevos"
+        global_ = e.figura_importancia(importancia_shap, campeon.metodo, titulo)
+        local = e.figura_explicacion(explicador.explicar(mayor_riesgo), explicador.base, campeon.metodo)
+        local.update_layout(title="El asociado nuevo de mayor riesgo: de dónde sale su puntaje")
+        figura_shap = FIGURES_DIR / "campeon_shap.html"
+        partes = [global_.to_html(full_html=False, include_plotlyjs="cdn"), local.to_html(full_html=False)]
+        pagina = '<!doctype html><meta charset="utf-8"><title>SHAP del campeón</title>' + "".join(partes)
+        figura_shap.write_text(pagina + "\n", encoding="utf-8", newline="\n")
+        figuras.append(figura_shap)
     extra = {
         "nuevos": {"asociados": len(nuevos), **en_nuevos[campeon.nombre]},
         "zonas_nuevos": por_zona.reset_index().to_dict(orient="records"),
         "escenarios": resultados.to_dict(orient="records"),
     }
+    if explicaciones:
+        extra["shap_nuevos"] = {k: float(val) for k, val in explicaciones[1].items()}
     rutas = c.guardar(campeon, MODELS_DIR, extra)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     metricas = METRICS_DIR / f"campeon_{stamp}.json"
     metricas.write_text(rutas["info"].read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
     print(f"\nCampeón -> {rutas['modelo']} · {rutas['info']} · KMeans -> {rutas['grupos']}")
-    print(f"Métricas -> {metricas} · umbrales -> {figura} · escenarios -> {tabla_escenarios}")
+    print(f"Métricas -> {metricas} · figuras en {FIGURES_DIR}: {', '.join(f.name for f in figuras)}")
 
     if args.sin_mlflow:
         return
@@ -149,7 +188,7 @@ def main() -> None:
         {n: r.con_prefijo("nuevos", m) for n, m in en_nuevos.items()},
         por_escenario,
     )
-    artefactos = [rutas["info"], figura, tabla_escenarios]
+    artefactos = [rutas["info"], *figuras]
     with r.corrida("campeon", params, artefactos=artefactos, tags={"campeon": campeon.nombre}):
         r.registrar_modelos(entrenados, params, metricas_mlflow, titulos=a.TITULOS, guardar_modelo=False)
         propios = {**params, "modelo": campeon.nombre, "umbral": campeon.umbral, "umbral_alto": campeon.umbral_alto}

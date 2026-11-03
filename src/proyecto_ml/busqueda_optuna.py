@@ -48,13 +48,20 @@ def _preprocesamiento(trial: optuna.Trial) -> dict:
 
 
 def espacio_random_forest(trial: optuna.Trial) -> dict:
-    """Bagging: más árboles estabilizan; hojas más grandes y menos variables por corte lo simplifican."""
+    """Bagging: más árboles estabilizan; hojas más grandes y menos variables por corte lo simplifican.
+
+    Los hiperparámetros comunes del bosque: ``n_estimators`` (número de árboles), ``max_depth`` (profundidad
+    máxima; None = sin límite), ``min_samples_split`` (mínimo de filas para dividir un nodo),
+    ``min_samples_leaf`` (mínimo de filas en cada hoja) y ``max_features`` (variables a considerar en cada
+    corte: 'sqrt' y 'log2' de las columnas, o None = todas, que deja solo el bagging de filas).
+    """
     return {
         **_preprocesamiento(trial),
-        "model__n_estimators": trial.suggest_int("n_estimators", 100, 600, step=50),
-        "model__max_depth": trial.suggest_int("max_depth", 2, 20),
+        "model__n_estimators": trial.suggest_int("n_estimators", 50, 500, step=50),
+        "model__max_depth": trial.suggest_categorical("max_depth", [3, 5, 10, 20, None]),
+        "model__min_samples_split": trial.suggest_int("min_samples_split", 2, 10),
         "model__min_samples_leaf": trial.suggest_int("min_samples_leaf", 1, 10),
-        "model__max_features": trial.suggest_float("max_features", 0.1, 1.0),  # fracción de variables por corte
+        "model__max_features": trial.suggest_categorical("max_features", ["sqrt", "log2", None]),
         "model__class_weight": trial.suggest_categorical("class_weight", [None, "balanced", "balanced_subsample"]),
     }
 

@@ -20,6 +20,7 @@ dependencies = [
     "pandera>=0.24",
     "polars>=1.0",
     "optuna>=4.0",
+    "shap>=0.46",  # explicar cada predicción (simulador y make campeon)
 ]
 
 [project.optional-dependencies]
@@ -29,8 +30,6 @@ hf = [
     "transformers>=4.44",
     "sentence-transformers>=3.0",
 ]
-# Explicabilidad para la demo. uv sync --extra explain
-explain = ["shap>=0.46"]
 pycaret = [
     "lightgbm>=4.5",
     "pycaret==4.0.0a8",

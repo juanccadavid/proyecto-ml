@@ -18,7 +18,7 @@ MLflow y demo en Streamlit.
 │   ├── data.py           Carga, X/y y particiones (estratificada, temporal, por grupos)
 │   ├── features.py       Imputación, escalado, codificación, binning, PCA, RFE (ColumnTransformer)
 │   ├── models.py         Logística, Random Forest, HistGB, TabPFN (opcional)
-│   ├── evaluate.py       PR-AUC, ROC-AUC, recall@10 %, F1
+│   ├── evaluate.py       PR-AUC, ROC-AUC, MCC, Kappa, recall@10 %, F1, importancia de variables
 │   ├── train.py          Entrenamiento + MLflow + exportación del mejor modelo
 │   ├── abandono.py       Modelos de abandono: supervisados (Ridge, logística, bagging, boosting) y KMeans
 │   ├── busqueda_optuna.py  Optuna para afinar Random Forest y HistGB (make optuna)
@@ -29,8 +29,10 @@ MLflow y demo en Streamlit.
 │   ├── anonymize.py      Hash con sal, eliminación de PII, agrupación en rangos
 │   ├── synthetic.py      Generador sintético genérico (make demo)
 │   ├── app.py            Demo Streamlit
-│   ├── campeon.py        Modelo campeón: PR-AUC en CV repetida, umbrales y zonas (make campeon)
-│   ├── validacion.py     Escenarios (tasa y fuerza de la señal) y partición temporal
+│   ├── campeon.py        Modelo campeón: PR-AUC en CV repetida, umbrales, zonas, ROC y confusión (make campeon)
+│   ├── explicar.py       SHAP: por qué el modelo le dio a cada asociado su puntaje
+│   ├── validacion.py     Escenarios, partición temporal y KFold / Stratified / TimeSeriesSplit
+│   ├── regresion.py      Regresión de ejemplo: el salario con MAE, MSE, RMSE y R² (make regresion)
 │   ├── registro.py       Registro en MLflow (experimento abandono, alias campeon)
 │   └── app_abandono.py   Simulador Streamlit del abandono con el campeón (make simulador)
 ├── scripts/              Ingesta, anonimización, generadores, contrato, modelo de abandono
@@ -241,8 +243,8 @@ Guarda solo el campeón en `models/`:
 - `campeon.json`, con el modelo, los umbrales, las métricas de todos los candidatos, los grupos, los datos y la
   fecha.
 
-También guarda los gráficos `reports/figures/campeon_umbrales.html` y `campeon_escenarios.html`, y registra el
-campeón en MLflow con el alias `campeon`.
+También guarda los gráficos de `reports/figures/` (umbrales, escenarios, ROC, matriz de confusión y SHAP: ver
+abajo) y registra el campeón en MLflow con el alias `campeon`.
 
 El modelo guardado recibe la fila cruda y **devuelve la zona**. Lo mismo hace el registrado en MLflow:
 
@@ -261,6 +263,77 @@ make campeon                                     # foto a 3 meses, datos de desa
 make campeon ARGS="--horizonte 12 --precision-min 0.9"
 make campeon DATA=data/raw/supabase_asociados.parquet   # con el extracto, cuando llegue
 make simulador                                   # usa el campeón
+```
+
+#### Evaluación del campeón: ROC, matriz de confusión, MCC/Kappa y SHAP
+
+`make campeon` también guarda, todo con las predicciones **fuera de partición**:
+
+- `reports/figures/campeon_umbrales.html`: precisión y recall según el umbral (el *trade-off*), con las
+  tres zonas.
+- `campeon_roc.html`: la curva ROC de los cuatro candidatos, con los dos umbrales del campeón marcados.
+- `campeon_confusion.html`: la matriz de confusión con cada umbral. Usa el umbral elegido, no el 0,5 de
+  `predict`, así que cuadra con la precisión y el recall de la tabla. Los conteos también van en
+  `campeon.json` (`confusion_cv`).
+- `campeon_shap.html`: SHAP en 100 asociados nuevos y la explicación del de mayor riesgo.
+
+| Umbral del campeón | real se queda: sin alerta / alerta | real se retira: sin alerta / alerta |
+|---|---|---|
+| alerta (0,29) | 1.776 / 29 | 3 / **37** (recall 92 %) |
+| se retira (0,88) | 1.798 / 7 | 9 / **31** (precisión 82 %) |
+
+**MCC y Kappa** (al umbral de alerta) van en la tabla de candidatos y en MLflow (`cv_mcc`, `cv_kappa`):
+
+| | Logística (campeón) | Ridge | Random Forest | HistGB |
+|---|---|---|---|---|
+| MCC | 0,71 | **0,79** | 0,76 | 0,66 |
+| Kappa | 0,69 | **0,79** | 0,75 | 0,64 |
+
+Ridge gana en MCC porque su umbral F2 alerta a menos personas: más precisión (0,78 frente a 0,56) y menos
+recall (0,80 frente a 0,93). El MCC pesa por igual las dos clases de error; nosotros no, como explica la
+siguiente sección.
+
+#### Qué métrica usamos y por qué
+
+```
+¿Clases balanceadas (50/50)?  NO: se retira el 2,2 % en la foto a 3 meses
+   └─> Accuracy engaña: decir "nadie se va" acierta el 97,8 %
+       └─> MCC / Kappa (corrigen el desbalance) para comparar sin fijarse en el costo
+           └─> ¿Qué es más costoso?  Los FALSOS NEGATIVOS: un asociado que se va sin que nadie lo llame
+               └─> RECALL: umbral de alerta con F2 (el recall pesa el doble que la precisión)
+```
+
+- **Para elegir el modelo**, la PR-AUC: resume la precisión y el recall en todos los umbrales y no se infla
+  con el desbalance, como sí pasa con el AUC-ROC (todos pasan de 0,98).
+- **Para el umbral de alerta**, F2. Una llamada de más cuesta poco; perder un asociado cuesta mucho.
+- **Para la zona "se retira"**, una precisión mínima de 0,8: cuando el modelo está seguro, debe acertar.
+- **MCC y Kappa** se reportan para comparar con PyCaret y con la literatura, pero no deciden.
+
+#### SHAP: por qué el modelo le dio a este asociado su puntaje
+
+[`explicar.py`](src/proyecto_ml/explicar.py) reparte el puntaje de **cada asociado** entre sus variables:
+
+```
+puntaje = promedio de 100 asociados de referencia + contribución de cada variable
+```
+
+Una contribución en rojo sube el riesgo frente al promedio; una en azul lo baja. La suma da exactamente el
+puntaje del modelo. Las contribuciones se miden en puntos de probabilidad, o en distancia a la frontera si el
+campeón es Ridge. Se explican las variables originales (EDAD, SEXO...), no las columnas del OneHot, con
+`shap.PermutationExplainer`. Ese método solo necesita el puntaje, así que sirve para los cuatro candidatos.
+
+- **En el simulador**, debajo del riesgo, aparece "¿Por qué este puntaje?": una cascada con las 8 variables
+  que más pesan para ese asociado. Se recalcula al mover cualquier control.
+- **En `make campeon`**, la importancia global, que es la |contribución| promedio en 100 asociados nuevos.
+  Arriba quedan las señales de salida: cancelación de ahorros (2,2 pts), intención de retiro (1,7) y
+  disminución de cuotas (1,2). Es la misma lectura de la importancia por permutación, pero también se puede
+  explicar asociado por asociado.
+
+```python
+from proyecto_ml import explicar as e
+
+explicador = e.Explicador(campeon, datos_de_referencia)  # crudos o preparados
+explicador.explicar(fila)  # variable | valor | contribucion, de la que más pesa a la que menos
 ```
 
 ### Validación: qué miden las cifras (para la sustentación)
@@ -285,6 +358,66 @@ Si la señal real es la mitad de clara, el campeón aún encuentra a 8 de cada 1
 0,75. **Pendiente con el fondo** (datos agregados, sin anonimizar): tasa de retiro anual, % de asociados con al
 menos una solicitud de cancelación o disminución de cuotas, y mediana de antigüedad y salario, para calibrar
 el generador y elegir el umbral con la tasa real.
+
+### KFold, StratifiedKFold y TimeSeriesSplit: `make validacion`
+
+[`scripts/comparar_validacion.py`](scripts/comparar_validacion.py) parte los mismos datos del campeón de las
+tres formas y entrena la logística en cada partición (`validacion.comparar_validaciones`):
+
+| Estrategia | PR-AUC | ± entre particiones | retirados por prueba | filas de entrenamiento |
+|---|---|---|---|---|
+| KFold (al azar) | 0,869 | 0,095 | 5 a 12 | 1.476 |
+| **StratifiedKFold** (la del campeón) | **0,885** | **0,067** | 8 en todas | 1.476 |
+| TimeSeriesSplit (por fecha de ingreso) | 0,838 | 0,207 | 3 a 7 | 310 → 1.538 |
+
+- **KFold**: con 40 retirados, una prueba tiene 5 y otra 12, y la cifra salta más.
+- **StratifiedKFold**: deja la misma tasa de retiro en cada prueba. Por eso la usan el campeón, Optuna y la
+  grilla.
+- **TimeSeriesSplit**: solo prueba con filas posteriores a las de su entrenamiento. La foto no tiene una
+  fecha por fila, así que se ordena por fecha de ingreso: entrena con los más antiguos y prueba con los más
+  nuevos. Las primeras particiones entrenan con pocos datos y por eso varía tanto. La validación temporal de
+  verdad, con el extracto, es `particion_temporal` (foto vieja → foto reciente).
+
+```bash
+make validacion                                  # logística, 5 particiones
+make validacion ARGS="--modelo random_forest --folds 10"
+```
+
+### Regresión de ejemplo: el salario (`make regresion`)
+
+El abandono es una clasificación. [`regresion.py`](src/proyecto_ml/regresion.py) es la contraparte de
+regresión, con un uso real: **estimar el salario** de quien no lo reporta (el 5 % en el generador). Se entrena
+con quienes sí lo reportan y se valida con **KFold**, porque en regresión no hay clases que estratificar.
+TIPOPACTO no entra: el pacto integral se define por el salario y sería fuga.
+
+| Métrica | Qué dice | Referencia (promedio) | Ridge | Random Forest | HistGB |
+|---|---|---|---|---|---|
+| **MAE** | error promedio, en pesos | $1.254.761 | $1.261.859 | $1.276.987 | $1.327.236 |
+| **MSE** | castiga más los errores grandes (pesos²) | 2,84 × 10¹² | 2,88 × 10¹² | 2,92 × 10¹² | 3,15 × 10¹² |
+| **RMSE** | raíz del MSE, otra vez en pesos | $1.684.354 | $1.697.895 | $1.710.078 | $1.775.802 |
+| **R²** | fracción de la variación explicada (0 = el promedio) | 0,00 | −0,02 | −0,03 | −0,11 |
+
+**Ningún modelo le gana a predecir el promedio, y eso es lo correcto:** el generador saca el salario al azar
+(lognormal), sin relación con las demás variables. Un R² alto aquí sería fuga. Si el RMSE es mucho mayor que
+el MAE, hay pocos errores muy grandes, que son los salarios altos. Con el extracto real, donde el salario
+depende del cargo, la antigüedad y el estrato, el R² debería subir. Resultados en
+`reports/figures/regresion_salario.html` y en MLflow (experimento `salario`).
+
+### Mapa de evaluación (para la sustentación)
+
+| Concepto | Dónde está |
+|---|---|
+| Probabilidad vs. etiqueta | `abandono.puntaje` (probabilidad) vs. `ModeloZonas.predict` (zona) y `.alerta` (0/1) |
+| Umbral de decisión | `campeon.elegir_umbrales`: alerta (máximo F2) y alto (precisión ≥ 0,8) |
+| Matriz de confusión | `campeon.matrices_confusion` / `campeon_confusion.html` (con los umbrales del campeón) |
+| Métricas de evaluación | `evaluate.compute_metrics` y `SCORING`: accuracy, precisión, recall, F1, AUC, PR-AUC, MCC, Kappa |
+| Trade-off precisión vs. recall | `campeon.figura_umbrales` / `campeon_umbrales.html` |
+| AUC-ROC | `campeon.figura_roc` / `campeon_roc.html` (los cuatro candidatos) |
+| Qué métrica elegir | sección "Qué métrica usamos y por qué" |
+| MAE, MSE, RMSE, R² | `regresion.py` / `make regresion` |
+| Hiperparámetros comunes | `busqueda_optuna.espacio_random_forest`: n_estimators, max_depth, min_samples_split, min_samples_leaf, max_features |
+| KFold, StratifiedKFold, TimeSeriesSplit | `validacion.comparar_validaciones` / `make validacion` |
+| Importancia de variables | permutación (`evaluate.importancia_variables`), MDI del bosque (`importancia_arbol`), coeficientes (`abandono.coeficientes`) y SHAP (`explicar.py`) |
 
 ### Comparación automática con PyCaret (opcional)
 
@@ -359,7 +492,7 @@ peor que la mediana. No necesita PyCaret.
 
 | Modelo | Hiperparámetros (rangos) |
 |---|---|
-| Random Forest | `n_estimators` 100–600, `max_depth` 2–20, `min_samples_leaf` 1–10, `max_features` 0.1–1 (fracción), `class_weight` None/balanced/balanced_subsample |
+| Random Forest | `n_estimators` 50–500, `max_depth` 3/5/10/20/None, `min_samples_split` 2–10, `min_samples_leaf` 1–10, `max_features` sqrt/log2/None, `class_weight` None/balanced/balanced_subsample |
 | HistGB | `learning_rate` 0.01–0.3 (log), `max_iter` 50–500, `max_leaf_nodes` 4–64 (log), `max_depth` 2–10, `min_samples_leaf` 2–20, `l2_regularization` 0.0001–10 (log), `class_weight` None/balanced |
 | los dos | preprocesamiento: mediana/media × OneHot/ordinal × sin/IQR (como en `make afinar`) |
 

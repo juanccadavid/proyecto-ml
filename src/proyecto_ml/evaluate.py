@@ -63,6 +63,9 @@ def compute_metrics(y_true, y_score, threshold: float = 0.5) -> dict[str, float]
         "precision": float(precision_score(y_true, y_pred, zero_division=0)),
         "recall": float(recall_score(y_true, y_pred, zero_division=0)),
         "f1": float(f1_score(y_true, y_pred, zero_division=0)),
+        # MCC y Kappa corrigen el desbalance: 0 = no mejor que el azar, 1 = perfecto (ver README: qué métrica)
+        "mcc": float(matthews_corrcoef(y_true, y_pred)),
+        "kappa": float(cohen_kappa_score(y_true, y_pred)),
         "recall_at_10pct": recall_at_k(y_true, y_score, 0.10),
     }
 
