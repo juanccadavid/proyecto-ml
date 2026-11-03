@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Registro de asociados</title>
 <!-- Campos y reglas: contrato.js (generado desde contratos/asociados.yaml). Conexión: config.js (no va a Git). -->
-<!-- Solo el equipo envía: sesión con enlace o código por correo (Supabase Auth) e inserción en <tabla>_entrada, que
+<!-- Solo el equipo envía: sesión con correo y contraseña (Supabase Auth) e inserción en <tabla>_entrada, que
      make supabase-revisar pasa a la tabla. Ver supabase/migraciones/002_formulario_equipo.sql. -->
 <script src="contrato.js"></script>
 <script src="config.js" onerror="window.SUPABASE_CONFIG = null"></script>
@@ -81,7 +81,7 @@
   }
   .sesion p { margin: 0; flex-basis: 100%; font-size: 14px; color: var(--muted); }
   .sesion label { flex: 1 1 220px; }
-  .sesion .codigo { flex: 0 1 140px; }
+  .sesion .clave { flex: 1 1 180px; }
   .sesion .activa { flex: 1; font-size: 14px; }
 
   .resumen {
@@ -177,18 +177,16 @@
   </div>
 
   <section class="sesion" id="sesion" hidden>
-    <div id="sin-sesion" style="display: contents">
-      <p>Solo el equipo puede enviar. Entra con tu correo: te llega un enlace para iniciar sesión (o un código,
-        si la plantilla del correo lo trae).</p>
+    <form id="sin-sesion" style="display: contents" novalidate>
+      <p>Solo el equipo puede enviar. Entra una vez con tu correo y contraseña y envía todos los registros que quieras.</p>
       <label>Correo
-        <input type="email" id="correo" autocomplete="email" placeholder="tu@correo.com">
+        <input type="email" id="correo" autocomplete="username" placeholder="tu@correo.com" required>
       </label>
-      <button type="button" id="pedir-codigo">Enviarme el acceso</button>
-      <label class="codigo" id="campo-codigo" hidden>Código
-        <input type="text" id="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="123456">
+      <label class="clave">Contraseña
+        <input type="password" id="clave" autocomplete="current-password" required>
       </label>
-      <button type="button" class="primario" id="entrar" hidden>Entrar</button>
-    </div>
+      <button type="submit" class="primario" id="entrar">Entrar</button>
+    </form>
     <div id="con-sesion" style="display: contents" hidden>
       <span class="activa">Sesión iniciada como <strong id="sesion-correo"></strong>. Lo que envíes queda
         <strong>pendiente de revisión</strong> antes de pasar a la tabla.</span>
@@ -390,24 +388,25 @@ function explicarError(cuerpo) {
   return msg;
 }
 
-// ---------------------------------------------------------------- sesión (Supabase Auth, enlace o código por correo)
-// El correo por defecto de Supabase solo trae el enlace (editar la plantilla para agregar {{ .Token }} exige SMTP
-// propio). El enlace vuelve a esta página con la sesión en el #fragmento: access_token, expires_in, ...
+// ---------------------------------------------------------------- sesión (Supabase Auth: correo y contraseña)
+// Se entra una vez por navegador: la sesión se guarda y se renueva sola (refresh_token) hasta "Salir". Sin correos
+// de por medio: el correo de Supabase sin SMTP propio solo deja enviar unos pocos por hora.
 const SESION = "sesion_supabase";
 const base = () => CFG.url.replace(/\/$/, "");
 let sesion = null;
 
 function leerSesion() {
-  try {
-    const s = JSON.parse(sessionStorage.getItem(SESION));
-    return s && s.expira > Date.now() ? s : null;
-  } catch { return null; }
+  try { return JSON.parse(localStorage.getItem(SESION)); } catch { return null; }
 }
 
 function guardarSesion(s) {
   sesion = s;
-  try { s ? sessionStorage.setItem(SESION, JSON.stringify(s)) : sessionStorage.removeItem(SESION); } catch {}
+  try { s ? localStorage.setItem(SESION, JSON.stringify(s)) : localStorage.removeItem(SESION); } catch {}
   pintarSesion();
+}
+
+function deRespuesta(d) {
+  return { token: d.access_token, refresco: d.refresh_token, email: d.user.email, expira: Date.now() + (d.expires_in - 60) * 1000 };
 }
 
 function pintarSesion() {
@@ -417,30 +416,7 @@ function pintarSesion() {
   $("con-sesion").style.display = sesion ? "contents" : "none";
   if (sesion) $("sesion-correo").textContent = sesion.email;
   $("enviar").disabled = !CFG || !sesion;
-  $("enviar").title = sesion ? "" : "Entra con tu correo para enviar";
-}
-
-function correoDelToken(token) {
-  const carga = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-  return JSON.parse(atob(carga)).email;
-}
-
-function sesionDelEnlace() {
-  const p = new URLSearchParams(location.hash.slice(1));
-  if (!p.has("access_token") && !p.has("error")) return;
-  history.replaceState(null, "", location.pathname + location.search);  // el token no se queda en la barra
-  if (p.has("error")) {
-    const vencido = /expired|invalid/i.test(p.get("error_code") + " " + p.get("error_description"));
-    return aviso(vencido ? "El enlace ya venció o se usó: pide otro." : p.get("error_description") || p.get("error"), "error");
-  }
-  try {
-    const token = p.get("access_token");
-    const expira = p.has("expires_at") ? p.get("expires_at") * 1000 : Date.now() + p.get("expires_in") * 1000;
-    guardarSesion({ token, email: correoDelToken(token), expira: expira - 60 * 1000 });
-    aviso("Sesión iniciada ✓", "ok");
-  } catch {
-    aviso("El enlace de acceso no es válido: pide otro.", "error");
-  }
+  $("enviar").title = sesion ? "" : "Entra con tu correo y contraseña para enviar";
 }
 
 async function auth(ruta, cuerpo) {
@@ -452,41 +428,39 @@ async function auth(ruta, cuerpo) {
   const datos = await r.json().catch(() => ({}));
   if (!r.ok) {
     const msg = datos.msg || datos.error_description || datos.message || r.statusText;
-    if (/signups? not allowed/i.test(msg)) throw new Error("Ese correo no tiene cuenta: pide que te inviten (Authentication > Users).");
-    if (/expired|invalid/i.test(msg)) throw new Error("El código no es válido o ya venció: pide otro.");
+    if (/invalid login credentials/i.test(msg)) throw new Error("Correo o contraseña incorrectos.");
+    if (/email not confirmed/i.test(msg)) throw new Error("La cuenta no está confirmada: créala con «Auto Confirm User» (Authentication > Users).");
     throw new Error(msg);
   }
   return datos;
 }
 
-$("pedir-codigo").addEventListener("click", async () => {
-  const email = $("correo").value.trim().toLowerCase();
-  if (!$("correo").checkValidity() || !email) return $("correo").reportValidity();
-  $("pedir-codigo").disabled = true;
+async function tokenVigente() {
+  if (!sesion) throw new Error("Entra con tu correo y contraseña para enviar.");
+  if (sesion.expira > Date.now()) return sesion.token;
   try {
-    // El enlace vuelve a esta página (debe estar en Authentication > URL Configuration > Redirect URLs).
-    // Abierta como archivo (file://) no puede volver: queda solo el código.
-    const volver = location.protocol.startsWith("http") ? `?redirect_to=${encodeURIComponent(location.origin + location.pathname)}` : "";
-    await auth(`otp${volver}`, { email, create_user: false });  // sin registro abierto: solo cuentas invitadas
-    $("campo-codigo").hidden = $("entrar").hidden = false;
-    $("codigo").focus();
-    aviso(`Revisa ${email}: abre el enlace del correo (o escribe el código, si llegó uno)`, "ok");
-  } catch (err) {
-    aviso(err.message, "error");
-  } finally {
-    $("pedir-codigo").disabled = false;
+    guardarSesion(deRespuesta(await auth("token?grant_type=refresh_token", { refresh_token: sesion.refresco })));
+  } catch {
+    guardarSesion(null);
+    throw new Error("Tu sesión venció: vuelve a entrar con tu correo y contraseña.");
   }
-});
+  return sesion.token;
+}
 
-$("entrar").addEventListener("click", async () => {
+$("sin-sesion").addEventListener("submit", async (e) => {
+  e.preventDefault();
   const email = $("correo").value.trim().toLowerCase();
+  if (!$("correo").checkValidity()) return $("correo").reportValidity();
+  if (!$("clave").checkValidity()) return $("clave").reportValidity();
+  $("entrar").disabled = true;
   try {
-    const d = await auth("verify", { type: "email", email, token: $("codigo").value.trim() });
-    guardarSesion({ token: d.access_token, email: d.user.email, expira: Date.now() + (d.expires_in - 60) * 1000 });
-    $("codigo").value = "";
-    aviso("Sesión iniciada ✓", "ok");
+    guardarSesion(deRespuesta(await auth("token?grant_type=password", { email, password: $("clave").value })));
+    $("clave").value = "";
+    aviso("Sesión iniciada ✓: envía todos los registros que quieras", "ok");
   } catch (err) {
-    aviso(err.message, "error");
+    aviso(err.message === "Failed to fetch" ? "No se pudo conectar con Supabase: revisa tu conexión." : err.message, "error");
+  } finally {
+    $("entrar").disabled = false;
   }
 });
 
@@ -510,23 +484,24 @@ form.addEventListener("submit", async (e) => {
   btn.disabled = true;
   btn.textContent = "Enviando…";
   try {
-    if (!sesion || sesion.expira <= Date.now()) {
-      guardarSesion(null);
-      throw new Error("Tu sesión venció: vuelve a entrar con tu correo.");
-    }
-    const r = await fetch(`${base()}/rest/v1/${C.tabla_entrada}`, {
+    const insertar = async () => fetch(`${base()}/rest/v1/${C.tabla_entrada}`, {
       method: "POST",
       headers: {
         apikey: CFG.key,
-        Authorization: `Bearer ${sesion.token}`,
+        Authorization: `Bearer ${await tokenVigente()}`,
         "Content-Type": "application/json",
         Prefer: "return=minimal",
       },
       body: JSON.stringify(registroDb()),
     });
+    let r = await insertar();
+    if (r.status === 401) {  // token vencido antes de tiempo (otro dispositivo, reloj): se renueva una vez
+      sesion.expira = 0;
+      r = await insertar();
+    }
     if (r.status === 401) {
       guardarSesion(null);
-      throw new Error("Tu sesión venció: vuelve a entrar con tu correo.");
+      throw new Error("Tu sesión venció: vuelve a entrar con tu correo y contraseña.");
     }
     if (!r.ok) throw new Error(explicarError(await r.json().catch(() => ({ message: r.statusText }))));
     enviados++;
@@ -552,7 +527,6 @@ if (!CFG || !CFG.url || !CFG.key || CFG.url.includes("TU-PROYECTO")) {
   $("sesion").hidden = false;
   sesion = leerSesion();
   pintarSesion();
-  sesionDelEnlace();
 }
 llenar(asociadoAleatorio());
 </script>

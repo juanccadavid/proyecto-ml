@@ -318,7 +318,7 @@ def sql_formulario(contrato: Contrato | None = None) -> str:
 
     - La clave pública (anon) ya no puede insertar en ``<tabla>``: la basura del formulario no bloquea
       ``supabase-bajar`` ni ocupa cédulas reales.
-    - El formulario inicia sesión con un código por correo (Supabase Auth) e inserta en ``<tabla>_entrada``
+    - El formulario inicia sesión con correo y contraseña (Supabase Auth) e inserta en ``<tabla>_entrada``
       solo si el correo está en ``public.equipo``. ``make supabase-revisar`` pasa a ``<tabla>`` lo válido.
     """
     contrato = contrato or cargar()
