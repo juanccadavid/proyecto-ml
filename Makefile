@@ -26,8 +26,8 @@ ARGS ?=
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup setup-hf demo-data demo train train-hf abandono pycaret afinar optuna mlflow-ui app simulador \
-        ejemplo contrato contrato-sql contrato-web supabase-subir supabase-bajar formulario \
+.PHONY: help setup setup-hf demo-data demo train train-hf abandono campeon pycaret afinar optuna mlflow-ui app \
+        simulador ejemplo datos-desarrollo contrato contrato-sql contrato-web supabase-subir supabase-bajar formulario \
         test test-fast cov lint format check hooks secrets up down logs salt bundle clean clean-all
 
 # ==============================================================================
@@ -75,6 +75,9 @@ pycaret: ## Compara con PyCaret (AutoML) vs. los modelos de abandono (instala el
 afinar: ## Busca los mejores hiperparámetros de Ridge y pycaret_lr (GridSearchCV; extra pycaret)
 	$(UV) run --extra pycaret python scripts/afinar_modelos.py $(if $(DATA),--datos $(DATA)) $(ARGS)
 
+campeon: ## Elige el modelo campeón (PR-AUC en CV repetida), su umbral y zonas; lo registra en MLflow
+	$(PY) scripts/elegir_campeon.py $(if $(DATA),--datos $(DATA)) $(ARGS)
+
 optuna: ## Afina Random Forest y HistGB con Optuna (búsqueda en rangos con poda), validados con nuevos
 	$(PY) scripts/afinar_optuna.py $(if $(DATA),--datos $(DATA)) $(ARGS)
 
@@ -87,7 +90,7 @@ mlflow-ui: ## Abre la interfaz de MLflow en http://localhost:5000
 app: ## Lanza la demo de Streamlit en http://localhost:8501
 	$(RUN) streamlit run src/proyecto_ml/app.py --server.port $(APP_PORT)
 
-simulador: ## Simulador interactivo del abandono en http://localhost:8501 (requiere make abandono)
+simulador: ## Simulador del abandono con el campeón en http://localhost:8501 (make campeon antes)
 	$(RUN) streamlit run src/proyecto_ml/app_abandono.py --server.port $(APP_PORT)
 
 # ==============================================================================
@@ -95,6 +98,9 @@ simulador: ## Simulador interactivo del abandono en http://localhost:8501 (requi
 # ==============================================================================
 ejemplo: ## Regenera los 50 asociados ficticios de data/ejemplo/
 	$(PY) scripts/generar_asociados_ejemplo.py
+
+datos-desarrollo: ## Genera los 2.000 asociados de desarrollo (semilla 7, 10 % de retiro) en data/processed/
+	$(PY) scripts/generar_asociados_ejemplo.py --desarrollo
 
 contrato: ## Valida un dataset contra el contrato (DATA=..., por defecto el de ejemplo)
 	$(PY) scripts/contrato_datos.py validar $(or $(DATA),$(EJEMPLO))

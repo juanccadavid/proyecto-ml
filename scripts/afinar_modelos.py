@@ -20,6 +20,9 @@ Hiperparámetros:
 
 La tabla por partición (pipeline | fold | Accuracy) muestra, para cada preprocesamiento, su mejor
 combinación del resto de hiperparámetros en cada una de las particiones de la validación cruzada.
+
+En MLflow (experimento ``abandono``) queda una corrida "afinar" con una hija por modelo (cv_ y nuevos_).
+En models/ no se guarda nada: el modelo que se usa es el campeón (make campeon).
 """
 
 from __future__ import annotations
@@ -37,7 +40,8 @@ from sklearn.metrics import check_scoring
 from sklearn.pipeline import Pipeline
 
 from proyecto_ml import abandono as a
-from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, MODELS_DIR, PROCESSED_DIR, get_settings
+from proyecto_ml import registro as r
+from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, PROCESSED_DIR, get_settings
 from proyecto_ml.evaluate import (
     SCORING,
     afinar,
@@ -122,6 +126,7 @@ def main() -> None:
     parser.add_argument("--folds", type=int, default=5, help="Particiones de la validación cruzada")
     parser.add_argument("--metrica", default="AUC", choices=list(SCORING), help="Métrica que elige al mejor")
     parser.add_argument("--muestra", type=int, default=5, help="Filas de la tabla de predicciones en la terminal")
+    parser.add_argument("--sin-mlflow", action="store_true", help="No registrar en MLflow")
     args = parser.parse_args()
 
     try:
@@ -198,12 +203,9 @@ def main() -> None:
     print("\n=== Variables que más aportan a los afinados: caída de AUC al desordenarlas (asociados nuevos) ===")
     print(top_importancia(importancias).to_string())
 
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
     METRICS_DIR.mkdir(parents=True, exist_ok=True)
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
-    for nombre, modelo in afinados.items():
-        a.guardar_modelo(modelo, MODELS_DIR, f"abandono_{nombre}")
     tabla_csv = PROCESSED_DIR / "predicciones_afinados.csv"  # todas las filas y variables; ignorado por Git
     predicciones.to_csv(tabla_csv, index_label="fila", encoding="utf-8-sig")  # -sig: tildes bien en Excel
     grafico = FIGURES_DIR / "afinamiento_curvas.png"
@@ -234,12 +236,25 @@ def main() -> None:
         f"nuevos (n={args.nuevos})": en_nuevos.to_dict(orient="index"),
     }
     salida.write_text(json.dumps(resumen, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
-    print(f"\nModelos (pipeline, _preprocesamiento y _modelo) -> {MODELS_DIR / 'abandono_*_afinado*.joblib'}")
     print(f"Métricas -> {salida}")
     print(f"Curvas -> {grafico} | tabla comparativa -> {tabla_html}")
     print(f"Predicciones ({len(predicciones)} asociados nuevos) -> {tabla_csv}")
     print(f"Diagramas de los pipelines -> {diagramas}")
     print(f"Bigotes por partición -> {bigotes} | importancia -> {importancia_png}")
+
+    if args.sin_mlflow:
+        return
+    r.configurar()
+    params = {"datos": args.datos.name, "filas": len(train), "metrica": args.metrica, "folds": args.folds}
+    metricas = r.unir(r.metricas_tabla(comparativa.drop(columns="Model"), "cv"), r.metricas_tabla(en_nuevos, "nuevos"))
+    artefactos = [salida, grafico, tabla_html, bigotes, importancia_png, diagramas]
+    with r.corrida("afinar", params, artefactos=artefactos):
+        for nombre, b in busquedas.items():
+            afinado = f"{nombre}_afinado"
+            propios = {"modelo": afinado, **params, **{k.split("__")[-1]: v for k, v in b.best_params_.items()}}
+            with r.corrida(afinado, propios, metricas.get(afinado), anidada=True):
+                r.registrar_modelo(afinados[afinado])
+    print(f"MLflow: experimento '{r.EXPERIMENTO}', corrida 'afinar' (make mlflow-ui)")
 
 
 if __name__ == "__main__":

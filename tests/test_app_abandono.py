@@ -1,12 +1,12 @@
-"""Prueba del simulador de Streamlit: corre sin errores con modelos de abandono reales (AppTest, sin navegador)."""
+"""Prueba del simulador de Streamlit con el campeón y sus tres zonas (AppTest, sin navegador)."""
 
 from pathlib import Path
 
-import joblib
 import pytest
 from streamlit.testing.v1 import AppTest
 
 from proyecto_ml import abandono as a
+from proyecto_ml import campeon as c
 from proyecto_ml import config
 from proyecto_ml.generador import GeneradorAsociados
 
@@ -14,34 +14,37 @@ APP = Path(__file__).resolve().parents[1] / "src" / "proyecto_ml" / "app_abandon
 
 
 @pytest.fixture
-def carpeta_modelos(tmp_path, monkeypatch):
-    df = GeneradorAsociados(n=200, seed=1).generar()
-    X, y = a.preparar(df), df[a.TARGET]
-    modelos = a.modelos_supervisados()
-    for nombre in ("ridge", "random_forest"):
-        joblib.dump(modelos[nombre].fit(X, y), tmp_path / f"abandono_{nombre}.joblib")
+def carpeta_campeon(tmp_path, monkeypatch):
+    foto = a.foto(GeneradorAsociados(n=900, seed=1).generar(), 3)
+    elegido = c.elegir(foto, candidatos={"logreg": a.modelos_supervisados()["logreg"]}, repeticiones=1)
+    c.guardar(elegido, tmp_path)
     monkeypatch.setattr(config, "MODELS_DIR", tmp_path)
     return tmp_path
 
 
-def test_simulador_predice_y_cambia_de_modelo(carpeta_modelos):
-    app = AppTest.from_file(str(APP), default_timeout=60).run()
-    assert not app.exception
-    assert app.header[0].value.startswith("Riesgo de abandono")
-    assert app.metric[0].label == "Puntaje de Ridge"  # el primer modelo guardado, en el orden de TITULOS
-
-    app.radio(key="modelo").set_value("random_forest").run()
-    app.slider(key="#INTENCIONRETIROS_ULT3MESES").set_value(4).run()
-    assert not app.exception
-    assert app.metric[0].label == "Probabilidad de retiro"
-    assert app.metric[0].value.endswith("%")
+def _mensaje(app) -> str:
+    return (app.success or app.warning or app.error)[0].value
 
 
-def test_simulador_entrena_si_no_hay_modelos(tmp_path, monkeypatch):
-    """Como en Streamlit Community Cloud: sin .joblib, entrena los 4 supervisados al arrancar."""
-    monkeypatch.setattr(config, "MODELS_DIR", tmp_path)
+def test_simulador_usa_el_campeon_y_sus_zonas(carpeta_campeon):
     app = AppTest.from_file(str(APP), default_timeout=120).run()
     assert not app.exception
-    assert app.radio(key="modelo").options == [a.TITULOS[n] for n in a.TITULOS]
-    assert "se entrenaron al abrir la app" in app.info[0].value
+    assert app.metric[0].label == "Probabilidad de retiro"
+    assert app.header[0].value == "Riesgo de abandono: 😀" and _mensaje(app).startswith("Se queda")
+    assert any(s.value == "Grupo de comportamiento: estable" for s in app.subheader)
+
+    for columna in ("#INTENCIONRETIROS_ULT3MESES", "#SOLICITUD_CANCELACIONAHORROS", "#SOLICITUD_DISMINUCIONCUOTAS"):
+        app.slider(key=columna).set_value(3).run()
+    assert not app.exception
+    assert app.header[0].value == "Riesgo de abandono: 😟" and _mensaje(app).startswith("Se retira")
+    assert any(s.value == "Grupo de comportamiento: riesgo" for s in app.subheader)
+
+
+@pytest.mark.integration
+def test_simulador_elige_el_campeon_si_no_hay(tmp_path, monkeypatch):
+    """Como en Streamlit Community Cloud: sin campeón en models/, lo elige al arrancar, en memoria."""
+    monkeypatch.setattr(config, "MODELS_DIR", tmp_path)
+    app = AppTest.from_file(str(APP), default_timeout=180).run()
+    assert not app.exception
+    assert "se eligió al abrir la app" in app.info[0].value
     assert not list(tmp_path.iterdir())  # en memoria: no escribe en models/

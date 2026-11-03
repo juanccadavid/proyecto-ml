@@ -21,6 +21,9 @@ Diferencias con nuestro preprocesador (features.py) que conviene conocer:
 - Vacíos numéricos con la media (nosotros: mediana).
 - Sin class_weight: no compensa que los retiros sean minoría; con umbral 0.5 suele bajar el recall.
 - PyCaret 4.0 cambió la API de la 3.x: ya no hay setup(), se usa ClassificationExperiment().fit().
+
+En MLflow (experimento ``abandono``) queda una corrida "pycaret" con una hija por modelo (cv_ y nuevos_).
+En models/ no se guarda nada: el modelo que se usa es el campeón (make campeon).
 """
 
 from __future__ import annotations
@@ -31,12 +34,12 @@ import warnings
 from datetime import datetime
 from pathlib import Path
 
-import joblib
 import pandas as pd
 from sklearn.pipeline import Pipeline
 
 from proyecto_ml import abandono as a
-from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, MODELS_DIR, get_settings
+from proyecto_ml import registro as r
+from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, get_settings
 from proyecto_ml.evaluate import COLUMNAS_COMPARATIVA, compute_metrics, resaltar, tabla_comparativa
 from proyecto_ml.generador import GeneradorAsociados
 
@@ -75,6 +78,7 @@ def main() -> None:
     parser.add_argument(
         "--ordenar", default="AUC", choices=COLUMNAS_COMPARATIVA, help="Columna para ordenar la tabla comparativa"
     )
+    parser.add_argument("--sin-mlflow", action="store_true", help="No registrar en MLflow")
     args = parser.parse_args()
 
     try:
@@ -108,11 +112,9 @@ def main() -> None:
     print(f"\n=== Sobre asociados nuevos (n={args.nuevos}) ===")
     print(en_nuevos.round(3).to_string())
 
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
     METRICS_DIR.mkdir(parents=True, exist_ok=True)
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     mejor = next(n for n in comparativa.index if n.startswith("pycaret_"))
-    joblib.dump(modelos[mejor], MODELS_DIR / "abandono_pycaret.joblib")
     tabla_html = FIGURES_DIR / "pycaret_comparativa.html"  # con el mejor de cada columna en amarillo
     tabla_html.write_text(resaltar(comparativa).to_html(), encoding="utf-8", newline="\n")
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -125,8 +127,19 @@ def main() -> None:
         f"nuevos (n={args.nuevos})": en_nuevos.to_dict(orient="index"),
     }
     salida.write_text(json.dumps(resumen, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
-    print(f"\nMejor de PyCaret: {mejor} -> {MODELS_DIR / 'abandono_pycaret.joblib'}")
+    print(f"\nMejor de PyCaret: {mejor}")
     print(f"Métricas -> {salida} | tabla comparativa -> {tabla_html}")
+
+    if args.sin_mlflow:
+        return
+    r.configurar()
+    params = {"datos": args.datos.name, "filas": len(train), "nuevos": args.nuevos}
+    metricas = r.unir(r.metricas_tabla(comparativa.drop(columns="Model"), "cv"), r.metricas_tabla(en_nuevos, "nuevos"))
+    with r.corrida("pycaret", params, artefactos=[salida, tabla_html], tags={"mejor_pycaret": mejor}):
+        r.registrar_modelos({mejor: modelos[mejor]}, params, metricas)  # el modelo, solo el mejor de PyCaret
+        otros = {n: m for n, m in modelos.items() if n != mejor}
+        r.registrar_modelos(otros, params, metricas, titulos=a.TITULOS, guardar_modelo=False)
+    print(f"MLflow: experimento '{r.EXPERIMENTO}', corrida 'pycaret' (make mlflow-ui)")
 
 
 if __name__ == "__main__":

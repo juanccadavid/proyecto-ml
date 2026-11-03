@@ -11,10 +11,15 @@ Uso:
     uv run python scripts/modelo_abandono.py --faltantes      # valida también con nuevos con datos vacíos
     uv run python scripts/modelo_abandono.py --sin-limpieza   # sin la limpieza de cleaning.py, para comparar
     uv run python scripts/modelo_abandono.py --horizonte 3    # foto del asociado: ¿se retira en 3 meses?
+    uv run python scripts/modelo_abandono.py --sin-mlflow     # sin registrar en MLflow
 
 Los "nuevos" salen del mismo generador con OTRA semilla: son asociados distintos que siguen
 el mismo comportamiento. Las métricas sobre ellos son las que cuentan; las de entrenamiento
 son optimistas porque el modelo ya conoce esas filas.
+
+Cada modelo queda en MLflow (experimento ``abandono``, corrida "modelo_abandono" con una hija por modelo:
+métricas entrenamiento_, cv_, nuevos_ y los gráficos adjuntos). En models/ no se guarda nada: el modelo
+que se usa es el campeón (make campeon).
 """
 
 from __future__ import annotations
@@ -24,12 +29,12 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-import joblib
 import pandas as pd
 from sklearn.model_selection import StratifiedKFold, cross_val_predict
 
 from proyecto_ml import abandono as a
-from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, MODELS_DIR, get_settings
+from proyecto_ml import registro as r
+from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, get_settings
 from proyecto_ml.evaluate import (
     COLUMNAS_COMPARATIVA,
     compute_metrics,
@@ -76,6 +81,7 @@ def main() -> None:
         help="Foto del asociado en t0 = corte - MESES: activos en t0, objetivo = se retira entre t0 y el corte.\n"
         "Sin la opción, todos los asociados al corte (como antes). Con los 50 de ejemplo quedan muy pocos retiros",
     )
+    parser.add_argument("--sin-mlflow", action="store_true", help="No registrar los modelos en MLflow")
     parser.add_argument(
         "--sin-limpieza",
         action="store_true",
@@ -165,7 +171,6 @@ def main() -> None:
     print(agrupador.perfil_.T.round(2).to_string())
 
     # ---- Guardar
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
     METRICS_DIR.mkdir(parents=True, exist_ok=True)
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     grafico = FIGURES_DIR / "abandono_matriz_confusion.png"
@@ -182,9 +187,6 @@ def main() -> None:
     diagramas = FIGURES_DIR / "abandono_pipelines.html"  # diagrama interactivo de cada pipeline
     pipelines = {a.TITULOS[n]: m for n, m in supervisados.items()} | {"KMeans (sin objetivo)": agrupador.pipeline}
     diagramas.write_text(pagina_pipelines(pipelines, "Pipelines del modelo de abandono"), encoding="utf-8")
-    for nombre, modelo in supervisados.items():
-        joblib.dump(modelo, MODELS_DIR / f"abandono_{nombre}.joblib")
-    joblib.dump(agrupador, MODELS_DIR / "abandono_kmeans.joblib")
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     salida = METRICS_DIR / f"abandono_{stamp}.json"
     resumen = {
@@ -201,10 +203,28 @@ def main() -> None:
         "importancia_rf": importancia_rf.to_dict(orient="records"),
     }
     salida.write_text(json.dumps(resumen, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
-    print(f"\nModelos -> {MODELS_DIR / 'abandono_*.joblib'} | métricas -> {salida}")
+    print(f"\nMétricas -> {salida}")
     print(f"Gráfico -> {grafico} | tabla comparativa -> {tabla_html}")
     print(f"Diagramas de los pipelines -> {diagramas} | importancia -> {importancia_png}")
     print(f"Importancia del Random Forest (interactiva) -> {importancia_rf_html}")
+
+    if args.sin_mlflow:
+        return
+    # Prefijos de MLflow: entrenamiento_, cv_ (validación cruzada), nuevos_ (asociados que no vio)...
+    prefijos = {"entrenamiento": "entrenamiento", "validación cruzada (5)": "cv", nombre_nuevos: "nuevos"}
+    prefijos |= {"nuevos con vacíos": "nuevos_vacios", **({args.validar.name: "validar"} if args.validar else {})}
+
+    def con_prefijos(por_conjunto: dict) -> dict[str, float]:
+        return r.unir(*({"m": r.con_prefijo(prefijos[k], m)} for k, m in por_conjunto.items()))["m"]
+
+    metricas = {n: con_prefijos(m) for n, m in m_supervisados.items()} | {"kmeans": con_prefijos(m_kmeans)}
+    params = {"datos": args.datos.name, "filas": len(train), "limpieza": limpiar, "clip_outliers": clip}
+    params |= {"max_nulos": max_nulos, "horizonte_meses": args.horizonte, "alpha": args.alpha}
+    r.configurar()
+    artefactos = [salida, grafico, tabla_html, importancia_png, importancia_rf_html, diagramas]
+    with r.corrida("modelo_abandono", params, artefactos=artefactos):
+        r.registrar_modelos({**supervisados, "kmeans": agrupador}, params, metricas, titulos=a.TITULOS)
+    print(f"MLflow: experimento '{r.EXPERIMENTO}', corrida 'modelo_abandono' (make mlflow-ui)")
 
 
 if __name__ == "__main__":
