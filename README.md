@@ -129,6 +129,26 @@ Usa **PyCaret 4.0 alfa**: la estable (3.3) exige pandas < 2.2 y no es compatible
 extra opcional (no lo instala `make setup` ni el CI). A diferencia de nuestro preprocesador, PyCaret codifica
 las categóricas con OrdinalEncoder (no OneHot) y no compensa el desbalance (`class_weight`).
 
+### Afinar hiperparámetros: Ridge y `pycaret_lr`
+
+`make afinar` ([`scripts/afinar_modelos.py`](scripts/afinar_modelos.py)) busca en grilla (`GridSearchCV`) los
+mejores hiperparámetros de los dos mejores de la tabla comparativa, con las mismas particiones y métricas:
+
+| Modelo | Hiperparámetros | Valores |
+|---|---|---|
+| Ridge | `alpha` (más alto = más regularización), `class_weight` | 0.001 … 1000 (13, escala log) × None/balanced |
+| `pycaret_lr` | `C` (más alto = menos regularización), `l1_ratio` (0 = L2, 1 = L1), `class_weight` | 0.001 … 1000 × L2/L1 × None/balanced |
+
+Imprime las 5 mejores combinaciones de cada uno, la tabla "por defecto vs. afinado" y, lo que cuenta,
+la comparación con asociados **nuevos** (el puntaje de validación cruzada del mejor es optimista: se
+eligió mirando esos mismos datos). Guarda `models/abandono_*_afinado.joblib` y las curvas en
+`reports/figures/afinamiento_curvas.png`.
+
+```bash
+make afinar                         # elige por AUC
+make afinar ARGS="--metrica F1"     # o Recall, MCC... (las columnas de la tabla comparativa)
+```
+
 ## Contrato de datos y Supabase
 
 [`contratos/asociados.yaml`](contratos/asociados.yaml) se valida con **pandera** en tres niveles:
