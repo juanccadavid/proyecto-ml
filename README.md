@@ -141,8 +141,14 @@ mejores hiperparámetros de los dos mejores de la tabla comparativa, con las mis
 
 Imprime las 5 mejores combinaciones de cada uno, la tabla "por defecto vs. afinado" y, lo que cuenta,
 la comparación con asociados **nuevos** (el puntaje de validación cruzada del mejor es optimista: se
-eligió mirando esos mismos datos). Guarda `models/abandono_*_afinado.joblib` y las curvas en
-`reports/figures/afinamiento_curvas.png`.
+eligió mirando esos mismos datos). Guarda las curvas en `reports/figures/afinamiento_curvas.png` y cada
+modelo afinado en tres `.joblib` (`a.guardar_modelo`):
+
+| Archivo en `models/` | Contenido | Uso |
+|---|---|---|
+| `abandono_<m>_afinado.joblib` | pipeline completo | predecir: `joblib.load(...).predict(a.preparar(df))` |
+| `abandono_<m>_afinado_preprocesamiento.joblib` | solo el preprocesamiento ajustado | transformar datos / ver medianas y categorías |
+| `abandono_<m>_afinado_modelo.joblib` | solo el estimador | ver coeficientes; recibe datos ya transformados |
 
 También arma una **tabla de predicciones** de los dos afinados (como `predict_model` de PyCaret) sobre los
 asociados nuevos: variables, abandono real y, por modelo, `<modelo>_label` (1 = abandona) y `<modelo>_score`
