@@ -234,10 +234,27 @@ Zonas del campeón con 925 asociados nuevos (foto a 3 meses): **se retira** 19 (
 **zona gris** 13 (ninguno), **se queda** 893 (1 se retira). KMeans: en el grupo "riesgo" se retira el 12,9 %;
 en el "estable", el 1,0 %.
 
-Guarda solo el campeón en `models/` (`abandono_campeon.joblib`, `abandono_kmeans.joblib` y `campeon.json`
-con modelo, umbrales, métricas de todos los candidatos, grupos, datos y fecha), los gráficos
-`reports/figures/campeon_umbrales.html` y `campeon_escenarios.html`, y lo registra en MLflow con el alias
-`campeon`: `mlflow.sklearn.load_model("models:/abandono@campeon")`.
+Guarda solo el campeón en `models/`:
+
+- `abandono_campeon.joblib`, con el pipeline y sus dos umbrales juntos (`campeon.ModeloZonas`);
+- `abandono_kmeans.joblib`;
+- `campeon.json`, con el modelo, los umbrales, las métricas de todos los candidatos, los grupos, los datos y la
+  fecha.
+
+También guarda los gráficos `reports/figures/campeon_umbrales.html` y `campeon_escenarios.html`, y registra el
+campeón en MLflow con el alias `campeon`.
+
+El modelo guardado recibe la fila cruda y **devuelve la zona**. Lo mismo hace el registrado en MLflow:
+
+```python
+campeon = mlflow.sklearn.load_model("models:/abandono@campeon")  # o: c.cargar(MODELS_DIR)[0]
+campeon.predict(filas)  # ["se queda", "zona gris", "se retira", ...]
+campeon.predict_proba(filas)  # el puntaje (decision_function si es Ridge)
+campeon.alerta(filas)  # 1 desde el umbral de alerta
+```
+
+Un campeón guardado antes de este cambio (solo el pipeline) se carga igual: `c.cargar` lo envuelve con los
+umbrales de `campeon.json`. KMeans también recibe la fila cruda (`agrupador.predict(filas)`).
 
 ```bash
 make campeon                                     # foto a 3 meses, datos de desarrollo

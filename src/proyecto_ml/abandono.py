@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.cluster import KMeans
+from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import RidgeClassifier
 from sklearn.metrics import adjusted_rand_score, confusion_matrix, silhouette_score
@@ -405,6 +406,8 @@ class AgrupadorAbandono:
     def __init__(self, random_state: int = 42):
         self.pipeline = Pipeline(
             [
+                ("preparar", PrepararVariables()),  # fila cruda o ya preparada
+                ("comportamiento", ColumnTransformer([("c", "passthrough", COMPORTAMIENTO)])),
                 ("imputer", SimpleImputer(strategy="median")),  # KMeans no admite vacíos; mediana de train
                 ("scaler", StandardScaler()),
                 ("kmeans", KMeans(n_clusters=2, n_init=20, random_state=random_state)),
@@ -412,7 +415,7 @@ class AgrupadorAbandono:
         )
 
     def fit(self, df: pd.DataFrame) -> AgrupadorAbandono:
-        self.pipeline.fit(preparar(df)[COMPORTAMIENTO])
+        self.pipeline.fit(df)
         centros = pd.DataFrame(self.pipeline.named_steps["kmeans"].cluster_centers_, columns=COMPORTAMIENTO)
         senal = sum(centros[c] * peso for c, peso in SENAL_RIESGO.items())
         self.grupo_riesgo_ = int(senal.idxmax())
@@ -422,18 +425,20 @@ class AgrupadorAbandono:
         return self
 
     def predict(self, df: pd.DataFrame) -> np.ndarray:
-        """1 = grupo de riesgo de abandono, 0 = grupo estable."""
-        return self.grupos(preparar(df))
+        """1 = grupo de riesgo de abandono, 0 = grupo estable. ``df`` crudo o ya preparado."""
+        if "preparar" not in self.pipeline.named_steps:  # guardado antes de que el pipeline preparara solo
+            df = preparar(df)[COMPORTAMIENTO] if "FECHANACIMIENTO" in df else df[COMPORTAMIENTO]
+        return (self.pipeline.predict(df) == self.grupo_riesgo_).astype(int)
 
     def grupos(self, X: pd.DataFrame) -> np.ndarray:
-        """Como ``predict``, pero con las variables ya preparadas (``preparar``), p. ej. en el simulador."""
-        return (self.pipeline.predict(X[COMPORTAMIENTO]) == self.grupo_riesgo_).astype(int)
+        """Igual que ``predict`` (se conserva por compatibilidad)."""
+        return self.predict(X)
 
 
 def metricas_agrupacion(agrupador: AgrupadorAbandono, df: pd.DataFrame) -> dict[str, float]:
     """Compara los grupos con el abandono real (que el modelo nunca vio)."""
     y, grupo = df[TARGET].to_numpy(), agrupador.predict(df)
-    X = agrupador.pipeline[:-1].transform(preparar(df)[COMPORTAMIENTO])  # imputado y escalado, sin KMeans
+    X = agrupador.pipeline[:-1].transform(df)  # preparado, imputado y escalado, sin KMeans
     tn, fp, fn, tp = confusion_matrix(y, grupo, labels=[0, 1]).ravel()
     return {
         "base_rate": float(y.mean()),

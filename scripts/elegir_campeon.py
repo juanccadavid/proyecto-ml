@@ -154,7 +154,7 @@ def main() -> None:
         r.registrar_modelos(entrenados, params, metricas_mlflow, titulos=a.TITULOS, guardar_modelo=False)
         propios = {**params, "modelo": campeon.nombre, "umbral": campeon.umbral, "umbral_alto": campeon.umbral_alto}
         with r.corrida(f"campeon_{campeon.nombre}", propios, metricas_mlflow[campeon.nombre], anidada=True):
-            info = r.registrar_modelo(campeon.modelo, registrar_como=r.MODELO_REGISTRADO)
+            info = r.registrar_modelo(campeon.con_zonas(), registrar_como=r.MODELO_REGISTRADO)
     r.asignar_alias(info.registered_model_version)
     print(f"MLflow: experimento '{r.EXPERIMENTO}', modelo models:/{r.MODELO_REGISTRADO}@{r.ALIAS_CAMPEON}")
     print("        (versión " + str(info.registered_model_version) + "). Ver con: make mlflow-ui")
