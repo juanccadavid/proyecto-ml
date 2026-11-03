@@ -369,24 +369,59 @@ make contrato-sql contrato-web             # regenerar tras cambiar el contrato
 **Configurar Supabase (una vez):**
 
 1. Crear un proyecto gratuito en [supabase.com](https://supabase.com).
-2. *SQL Editor* → pegar [`supabase/asociados.sql`](supabase/asociados.sql) → *Run*. Crea la tabla con todas
-   las restricciones del contrato y RLS: la clave pública **solo puede insertar** (no leer, editar ni borrar).
-   Si la tabla ya existía con una versión anterior del contrato, correr en orden los archivos de
-   [`supabase/migraciones/`](supabase/migraciones/) que falten.
-3. *Project Settings → API Keys*: copiar la URL y la clave **pública** (anon / publishable).
-   La `service_role` / secret nunca va en el HTML, el `.env` compartido ni Git.
-4. Ponerlas en `.env` (`SUPABASE_URL`, `SUPABASE_KEY`) y en `web/config.js` (copiar `web/config.example.js`).
+2. *SQL Editor* → pegar [`supabase/asociados.sql`](supabase/asociados.sql) → *Run*. Crea `asociados` con todas
+   las restricciones del contrato, cerrada con RLS (la clave pública no lee, inserta, edita ni borra), y la
+   parte del formulario: `equipo`, `asociados_entrada` y sus políticas (ver abajo). Si la tabla ya existía,
+   correr en orden los archivos de [`supabase/migraciones/`](supabase/migraciones/) que falten (la **002**
+   cierra el formulario al equipo).
+3. *Project Settings → API Keys*: copiar la URL, la clave **pública** (anon / publishable) y crear una
+   **secreta** (*Secret keys*). La secreta va solo en tu `.env` (`SUPABASE_SECRET_KEY`): nunca en el HTML,
+   Git ni un chat, porque salta el RLS.
+4. `.env`: `SUPABASE_URL`, `SUPABASE_KEY` (pública) y `SUPABASE_SECRET_KEY`. `web/config.js` (copiar
+   `web/config.example.js`): URL y clave **pública**.
 
 ```bash
-make supabase-subir                        # sube los 50 asociados de ejemplo (omite cédulas repetidas)
-make supabase-bajar                        # baja la tabla a data/raw/ (requiere SUPABASE_SECRET_KEY)
-make formulario                            # abre web/formulario.html: datos aleatorios + botón Enviar
+make supabase-subir                        # sube los 50 de ejemplo con la clave secreta (omite repetidos)
+make supabase-bajar                        # baja la tabla a data/raw/ (clave secreta; valida el contrato)
+make supabase-revisar                      # qué entradas del formulario pasarían (no escribe nada)
+make supabase-revisar ARGS="--aplicar"     # pasa las válidas a asociados y marca cada entrada
+make formulario                            # abre web/formulario.html: sesión del equipo + Enviar
 ```
+
+**Formulario solo para el equipo** ([migración 002](supabase/migraciones/002_formulario_equipo.sql)):
+
+```
+formulario ──(código por correo: Supabase Auth)──► asociados_entrada ──► make supabase-revisar ──► asociados
+              solo correos de public.equipo          pendiente            valida fila a fila,      (la que baja
+                                                                          sin repetidos            supabase-bajar)
+```
+
+- **Sesión con código por correo.** El formulario pide el correo, Supabase envía un código de 6 dígitos y con
+  él inicia sesión. Sin registro abierto: solo cuentas creadas por el equipo.
+- **Lista de correos permitidos.** La tabla `public.equipo`; la política de `asociados_entrada` exige
+  `public.es_del_equipo()` (el correo del token está en `equipo`), `revision = 'pendiente'` y
+  `enviado_por` = el correo del token (nadie envía a nombre de otro).
+- **Tabla de entrada separada.** Lo que llega del formulario no toca `asociados`: la basura no bloquea
+  `supabase-bajar` ni ocupa cédulas reales. `make supabase-revisar` valida cada entrada con el contrato (por
+  fila y entre columnas; las reglas de lote no aplican a una fila) y contra las cédulas/IDASOCIADOS ya
+  guardados. Sin `--aplicar` solo muestra; con `--aplicar` inserta las válidas en `asociados` y marca cada
+  entrada `aprobada` o `rechazada` con su `motivo_revision`.
+
+Activarlo en Supabase (una vez, en el panel):
+
+1. *SQL Editor*: correr la migración **002** (o `asociados.sql` completo en una base nueva).
+2. *Authentication → Sign In / Providers → Email*: activo, y **desactivar "Allow new users to sign up"**.
+3. *Authentication → Users → Add user → Send invitation* (o *Create new user*) con el correo de cada integrante.
+4. *Table Editor → equipo → Insert row*: el mismo correo **en minúsculas** (y el nombre).
+5. *Authentication → Emails → Magic Link*: que el mensaje incluya `{{ .Token }}` (el código de 6 dígitos;
+   por defecto solo trae el enlace). Ej.: `<p>Tu código: <strong>{{ .Token }}</strong></p>`.
+
+Ojo: el correo de Supabase sin SMTP propio tiene un límite bajo de envíos por hora; para la demo basta.
 
 **Entrenar con lo que llega a Supabase:**
 
 ```
-formulario / supabase-subir ──► Supabase ──► make supabase-bajar ──► data/raw/supabase_asociados.parquet ──► make abandono
+supabase-revisar / supabase-subir ──► asociados ──► make supabase-bajar ──► data/raw/supabase_asociados.parquet ──► make abandono
                                               (clave secreta,          (+ copia fechada; valida el contrato)
                                                solo en tu .env)
 ```
@@ -408,8 +443,9 @@ El workflow [`.github/workflows/formulario.yml`](.github/workflows/formulario.ym
 2. *Settings → Pages → Source*: **GitHub Actions**.
 3. *Actions → Formulario (GitHub Pages) → Run workflow*.
 
-Cualquiera con el enlace puede **insertar** asociados (no leer, editar ni borrar): la tabla los valida con el
-contrato. Para cerrarlo: *Settings → Pages → Unpublish site*.
+Con la migración 002, quien abra el enlace sin ser del equipo no puede enviar nada: no recibe código (no hay
+registro abierto) y, aunque lo tuviera, su correo no está en `equipo`. Si la 002 aún no está aplicada en la
+base, lo mínimo es despublicar: *Settings → Pages → Unpublish site*, y publicarlo solo el día de la demo.
 
 ### Qué va en el contrato y qué va en el test
 

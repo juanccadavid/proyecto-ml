@@ -109,9 +109,11 @@
      make contrato         valida data/ejemplo contra el contrato (o: make contrato DATA=otro.parquet)
      make contrato-sql     regenera supabase/asociados.sql después de cambiar el contrato
      make contrato-web     regenera web/contrato.js (campos del formulario)
-     make supabase-subir   sube un dataset a Supabase (valida antes; omite cédulas repetidas)
+     make supabase-subir   sube un dataset a Supabase con la clave secreta (valida antes; omite repetidos)
      make supabase-bajar   baja la tabla de Supabase a data/raw/ (valida; ver sección 7.6)
-     make formulario       abre el formulario web (datos aleatorios + botón Enviar)
+     make supabase-revisar revisa lo que envió el equipo por el formulario (asociados_entrada): valida
+                           fila a fila y sin repetidos; ARGS="--aplicar" pasa las válidas a asociados
+     make formulario       abre el formulario web (sesión del equipo con código por correo + Enviar)
                            En internet: https://juanccadavid.github.io/proyecto-ml/ (GitHub Pages; se
                            publica solo al fusionar cambios de web/ en main. Ver README.)
 

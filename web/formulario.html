@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Registro de asociados</title>
 <!-- Campos y reglas: contrato.js (generado desde contratos/asociados.yaml). Conexión: config.js (no va a Git). -->
+<!-- Solo el equipo envía: sesión con código por correo (Supabase Auth) e inserción en <tabla>_entrada, que
+     make supabase-revisar pasa a la tabla. Ver supabase/migraciones/002_formulario_equipo.sql. -->
 <script src="contrato.js"></script>
 <script src="config.js" onerror="window.SUPABASE_CONFIG = null"></script>
 <style>
@@ -71,6 +73,16 @@
     background: var(--warn-bg); color: var(--warn); font-size: 14px;
   }
   .banner code { font-size: 13px; }
+
+  .sesion {
+    margin-top: 20px; padding: 16px 18px; border-radius: var(--radius);
+    background: var(--surface); box-shadow: var(--shadow);
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
+  }
+  .sesion p { margin: 0; flex-basis: 100%; font-size: 14px; color: var(--muted); }
+  .sesion label { flex: 1 1 220px; }
+  .sesion .codigo { flex: 0 1 140px; }
+  .sesion .activa { flex: 1; font-size: 14px; }
 
   .resumen {
     margin-top: 24px; padding: 22px; border-radius: var(--radius);
@@ -163,6 +175,25 @@
     Falta la conexión a Supabase: copia <code>web/config.example.js</code> como <code>web/config.js</code>
     y completa la URL y la clave pública. Puedes generar datos, pero no enviarlos.
   </div>
+
+  <section class="sesion" id="sesion" hidden>
+    <div id="sin-sesion" style="display: contents">
+      <p>Solo el equipo puede enviar. Entra con tu correo: te llega un código de 6 dígitos.</p>
+      <label>Correo
+        <input type="email" id="correo" autocomplete="email" placeholder="tu@correo.com">
+      </label>
+      <button type="button" id="pedir-codigo">Enviarme un código</button>
+      <label class="codigo" id="campo-codigo" hidden>Código
+        <input type="text" id="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="123456">
+      </label>
+      <button type="button" class="primario" id="entrar" hidden>Entrar</button>
+    </div>
+    <div id="con-sesion" style="display: contents" hidden>
+      <span class="activa">Sesión iniciada como <strong id="sesion-correo"></strong>. Lo que envíes queda
+        <strong>pendiente de revisión</strong> antes de pasar a la tabla.</span>
+      <button type="button" id="salir">Salir</button>
+    </div>
+  </section>
 
   <section class="resumen" aria-live="polite">
     <div class="avatar" id="r-avatar"></div>
@@ -335,7 +366,7 @@ function resumen() {
 }
 
 function registroDb() {
-  const reg = { origen: "formulario" };
+  const reg = {};  // enviado_por y revision los pone la base; origen, la revisión (make supabase-revisar)
   for (const c of campos) {
     const v = form.elements[c.nombre].value.trim();
     reg[c.db] = v === "" ? null : c.tipo === "entero" ? Number(v) : v;
@@ -353,11 +384,89 @@ function aviso(texto, tipo) {
 
 function explicarError(cuerpo) {
   const msg = cuerpo.message || JSON.stringify(cuerpo);
-  if (cuerpo.code === "23505") return "Ya existe un asociado con esa cédula o IDASOCIADOS. Genera otro.";
   if (cuerpo.code === "23514") return `La base rechazó el registro por una regla del contrato: ${msg}`;
-  if (cuerpo.code === "42501") return "Sin permiso para insertar: ¿corriste supabase/asociados.sql completo (RLS y grants)?";
+  if (cuerpo.code === "42501") return "Sin permiso: tu correo no está en la tabla equipo (o falta la migración 002).";
   return msg;
 }
+
+// ---------------------------------------------------------------- sesión (Supabase Auth, código por correo)
+const SESION = "sesion_supabase";
+const base = () => CFG.url.replace(/\/$/, "");
+let sesion = null;
+
+function leerSesion() {
+  try {
+    const s = JSON.parse(sessionStorage.getItem(SESION));
+    return s && s.expira > Date.now() ? s : null;
+  } catch { return null; }
+}
+
+function guardarSesion(s) {
+  sesion = s;
+  try { s ? sessionStorage.setItem(SESION, JSON.stringify(s)) : sessionStorage.removeItem(SESION); } catch {}
+  pintarSesion();
+}
+
+function pintarSesion() {
+  $("sin-sesion").hidden = !!sesion;
+  $("con-sesion").hidden = !sesion;
+  $("sin-sesion").style.display = sesion ? "none" : "contents";
+  $("con-sesion").style.display = sesion ? "contents" : "none";
+  if (sesion) $("sesion-correo").textContent = sesion.email;
+  $("enviar").disabled = !CFG || !sesion;
+  $("enviar").title = sesion ? "" : "Entra con tu correo para enviar";
+}
+
+async function auth(ruta, cuerpo) {
+  const r = await fetch(`${base()}/auth/v1/${ruta}`, {
+    method: "POST",
+    headers: { apikey: CFG.key, "Content-Type": "application/json" },
+    body: JSON.stringify(cuerpo),
+  });
+  const datos = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const msg = datos.msg || datos.error_description || datos.message || r.statusText;
+    if (/signups? not allowed/i.test(msg)) throw new Error("Ese correo no tiene cuenta: pide que te inviten (Authentication > Users).");
+    if (/expired|invalid/i.test(msg)) throw new Error("El código no es válido o ya venció: pide otro.");
+    throw new Error(msg);
+  }
+  return datos;
+}
+
+$("pedir-codigo").addEventListener("click", async () => {
+  const email = $("correo").value.trim().toLowerCase();
+  if (!$("correo").checkValidity() || !email) return $("correo").reportValidity();
+  $("pedir-codigo").disabled = true;
+  try {
+    await auth("otp", { email, create_user: false });  // sin registro abierto: solo cuentas invitadas
+    $("campo-codigo").hidden = $("entrar").hidden = false;
+    $("codigo").focus();
+    aviso(`Te enviamos un código a ${email}`, "ok");
+  } catch (err) {
+    aviso(err.message, "error");
+  } finally {
+    $("pedir-codigo").disabled = false;
+  }
+});
+
+$("entrar").addEventListener("click", async () => {
+  const email = $("correo").value.trim().toLowerCase();
+  try {
+    const d = await auth("verify", { type: "email", email, token: $("codigo").value.trim() });
+    guardarSesion({ token: d.access_token, email: d.user.email, expira: Date.now() + (d.expires_in - 60) * 1000 });
+    $("codigo").value = "";
+    aviso("Sesión iniciada ✓", "ok");
+  } catch (err) {
+    aviso(err.message, "error");
+  }
+});
+
+$("salir").addEventListener("click", () => {
+  fetch(`${base()}/auth/v1/logout`, {
+    method: "POST", headers: { apikey: CFG.key, Authorization: `Bearer ${sesion.token}` },
+  }).catch(() => {});
+  guardarSesion(null);
+});
 
 let enviados = 0;
 form.addEventListener("submit", async (e) => {
@@ -372,20 +481,33 @@ form.addEventListener("submit", async (e) => {
   btn.disabled = true;
   btn.textContent = "Enviando…";
   try {
-    const r = await fetch(`${CFG.url.replace(/\/$/, "")}/rest/v1/${C.tabla_db}`, {
+    if (!sesion || sesion.expira <= Date.now()) {
+      guardarSesion(null);
+      throw new Error("Tu sesión venció: vuelve a entrar con tu correo.");
+    }
+    const r = await fetch(`${base()}/rest/v1/${C.tabla_entrada}`, {
       method: "POST",
-      headers: { apikey: CFG.key, "Content-Type": "application/json", Prefer: "return=minimal" },
+      headers: {
+        apikey: CFG.key,
+        Authorization: `Bearer ${sesion.token}`,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
       body: JSON.stringify(registroDb()),
     });
+    if (r.status === 401) {
+      guardarSesion(null);
+      throw new Error("Tu sesión venció: vuelve a entrar con tu correo.");
+    }
     if (!r.ok) throw new Error(explicarError(await r.json().catch(() => ({ message: r.statusText }))));
     enviados++;
     $("contador").textContent = `${enviados} registro${enviados === 1 ? "" : "s"} enviado${enviados === 1 ? "" : "s"} en esta sesión`;
-    aviso(`Asociado ${form.elements.CEDULA.value} guardado en Supabase ✓`, "ok");
+    aviso(`Asociado ${form.elements.CEDULA.value} enviado: queda pendiente de revisión ✓`, "ok");
     llenar(asociadoAleatorio());
   } catch (err) {
     aviso(err.message === "Failed to fetch" ? "No se pudo conectar con Supabase: revisa la URL en config.js y tu conexión." : err.message, "error");
   } finally {
-    btn.disabled = !CFG;
+    btn.disabled = !CFG || !sesion;
     btn.textContent = "Enviar";
   }
 });
@@ -397,6 +519,10 @@ if (!CFG || !CFG.url || !CFG.key || CFG.url.includes("TU-PROYECTO")) {
   CFG = null;
   $("sin-config").hidden = false;
   $("enviar").disabled = true;
+} else {
+  $("sesion").hidden = false;
+  sesion = leerSesion();
+  pintarSesion();
 }
 llenar(asociadoAleatorio());
 </script>

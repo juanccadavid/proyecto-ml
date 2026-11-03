@@ -27,7 +27,7 @@ ARGS ?=
 .DEFAULT_GOAL := help
 
 .PHONY: help setup setup-hf demo-data demo train train-hf abandono campeon pycaret afinar optuna mlflow-ui app \
-        simulador ejemplo datos-desarrollo contrato contrato-sql contrato-web supabase-subir supabase-bajar formulario \
+        simulador ejemplo datos-desarrollo contrato contrato-sql contrato-web supabase-subir supabase-bajar supabase-revisar formulario \
         test test-fast cov lint format check hooks secrets up down logs salt bundle clean clean-all
 
 # ==============================================================================
@@ -111,11 +111,14 @@ contrato-sql: ## Regenera supabase/asociados.sql desde contratos/asociados.yaml
 contrato-web: ## Regenera web/contrato.js (campos del formulario) desde el contrato
 	$(PY) scripts/contrato_datos.py web
 
-supabase-subir: ## Sube un dataset a Supabase (DATA=..., por defecto el de ejemplo)
+supabase-subir: ## Sube un dataset a Supabase con la clave secreta (DATA=..., por defecto el de ejemplo)
 	$(PY) scripts/contrato_datos.py subir $(or $(DATA),$(EJEMPLO))
 
 supabase-bajar: ## Descarga la tabla de Supabase a data/raw/ (valida con el contrato)
 	$(PY) scripts/contrato_datos.py bajar $(ARGS)
+
+supabase-revisar: ## Revisa las entradas del formulario (ARGS="--aplicar" las pasa a la tabla)
+	$(PY) scripts/contrato_datos.py revisar $(ARGS)
 
 formulario: ## Abre el formulario web en el navegador
 	@test -f web/config.js || echo "!! Falta web/config.js (copia web/config.example.js): podrás generar pero no enviar"
