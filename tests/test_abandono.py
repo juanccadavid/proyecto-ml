@@ -107,3 +107,24 @@ def test_figura_matrices_confusion(entrenamiento, nuevos, supervisados):
     for ax in ejes:
         conteos = [int(t.get_text().split("\n")[0]) for t in ax.texts]
         assert sum(conteos) == len(nuevos)  # las 4 celdas suman todos los asociados
+
+
+def test_tabla_predicciones_como_predict_model(supervisados, nuevos):
+    modelos = {n: supervisados[n] for n in ("ridge", "logreg")}
+    tabla = a.tabla_predicciones(modelos, nuevos)
+
+    assert list(tabla.columns) == [
+        *a.NUMERICAS,
+        *a.CATEGORICAS,
+        a.TARGET,
+        "ridge_label",
+        "ridge_score",
+        "logreg_label",
+        "logreg_score",
+    ]
+    assert len(tabla) == len(nuevos)
+    assert tabla["logreg_score"].between(0, 1).all()  # probabilidad de abandono
+    # Ridge no da probabilidad: su score es la distancia a la frontera, y > 0 es exactamente "abandona".
+    assert ((tabla["ridge_score"] > 0).astype(int) == tabla["ridge_label"]).all()
+    # Sin la columna objetivo (asociados actuales, sin desenlace) también funciona.
+    assert a.TARGET not in a.tabla_predicciones(modelos, nuevos.drop(columns=a.TARGET))
