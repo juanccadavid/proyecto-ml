@@ -35,7 +35,19 @@ def test_pipeline_de_abandono_solo_aprende_de_train():
 
     modelo = a.modelo_ridge().fit(X_train, y_train)
 
-    escalador = modelo.named_steps["preprocess"].named_transformers_["num"].named_steps["scaler"]
-    assert np.allclose(escalador.mean_, X_train[a.NUMERICAS].mean())  # medias de train...
-    assert not np.allclose(escalador.mean_, X[a.NUMERICAS].mean())  # ...no de todo el dataset
+    # preprocess = ColumnDropper -> ColumnTransformer; la rama "num" no incluye las columnas que se recortan.
+    columnas = modelo.named_steps["preprocess"].named_steps["columns"]
+    escalador = columnas.named_transformers_["num"].named_steps["scaler"]
+    numericas = list(columnas.named_transformers_["num"].feature_names_in_)
+    assert np.allclose(escalador.mean_, X_train[numericas].mean())  # medias de train...
+    assert not np.allclose(escalador.mean_, X[numericas].mean())  # ...no de todo el dataset
+    recorte = columnas.named_transformers_["clip"].named_steps["outliers"]
+    assert np.allclose(
+        recorte.upper_,
+        X_train[a.COLUMNAS_RECORTE].quantile(0.75)
+        + 1.5
+        * (  # límites de train
+            X_train[a.COLUMNAS_RECORTE].quantile(0.75) - X_train[a.COLUMNAS_RECORTE].quantile(0.25)
+        ),
+    )
     assert len(modelo.predict(X_test)) == len(X_test)

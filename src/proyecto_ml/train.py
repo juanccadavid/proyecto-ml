@@ -4,7 +4,12 @@ Uso:
     uv run python -m proyecto_ml.train                       # usa variables del .env
     uv run python -m proyecto_ml.train --data data/processed/sintetico.parquet --pca 0.95
     uv run python -m proyecto_ml.train --tabpfn --smote
-    uv run python -m proyecto_ml.train --clip-outliers iqr --clip-columns salario,edad --drop-columns 0.5
+    uv run python -m proyecto_ml.train --clip-outliers iqr --clip-columns salario,edad --drop-columns 0.3
+    uv run python -m proyecto_ml.train --sin-limpieza            # sin la limpieza de cleaning.py, para comparar
+
+Limpieza (cleaning.py), activa por defecto: clean_dataset antes de partir en train/test (sin renombrar
+columnas) y ColumnDropper dentro del pipeline. El recorte de atípicos es opcional (--clip-outliers):
+depende de qué columnas sean continuas en cada dataset.
 """
 
 from __future__ import annotations
@@ -19,7 +24,7 @@ import mlflow
 import mlflow.sklearn
 import pandas as pd
 
-from proyecto_ml.cleaning import ColumnDropper
+from proyecto_ml.cleaning import ColumnDropper, clean_dataset
 from proyecto_ml.config import METRICS_DIR, MODELS_DIR, get_settings
 from proyecto_ml.data import infer_column_types, load_dataset, split_data, split_features_target
 from proyecto_ml.evaluate import compute_metrics
@@ -47,13 +52,22 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--drop-columns",
         type=float,
+        default=0.5,
         metavar="MAX_NULOS",
-        help="Descartar columnas con más de esta fracción de nulos o constantes (ej. 0.5), decidido en train",
+        help="Descartar columnas con más de esta fracción de nulos o constantes, decidido en train (defecto 0.5)",
+    )
+    parser.add_argument(
+        "--sin-limpieza",
+        action="store_true",
+        help="Apagar la limpieza (clean_dataset, ColumnDropper y recorte) para comparar",
     )
     parser.add_argument("--tabpfn", action="store_true", help="Incluir TabPFN (requiere extra hf)")
     parser.add_argument("--no-log-model", action="store_true", help="No guardar el modelo en MLflow")
     parser.add_argument("--output-dir", type=Path, default=None, help="Carpeta para métricas/modelo")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.sin_limpieza:
+        args.clip_outliers = args.clip_columns = args.drop_columns = None
+    return args
 
 
 SKOPS_TRUSTED_TYPES = ["numpy.dtype"]
@@ -79,6 +93,9 @@ def run(argv: list[str] | None = None) -> dict[str, dict[str, float]]:
     models_dir = args.output_dir or MODELS_DIR
 
     df = load_dataset(data_path)
+    if not args.sin_limpieza:  # sin estado: segura antes del split. Sin renombrar: las columnas del .env no cambian
+        fechas = [settings.time_column] if settings.time_column else []
+        df = clean_dataset(df, normalize_names=False, date_columns=fechas, verbose=False)
     time = pd.to_datetime(df[settings.time_column]) if settings.time_column else None
     groups = df[settings.group_column] if settings.group_column else None
     X, y = split_features_target(df, target, drop=[settings.id_column, settings.time_column, settings.group_column])
@@ -132,6 +149,7 @@ def run(argv: list[str] | None = None) -> dict[str, dict[str, float]]:
                     "clip_outliers": args.clip_outliers,
                     "clip_columns": ",".join(args.clip_columns) if args.clip_columns else None,
                     "drop_columns": args.drop_columns,
+                    "limpieza": not args.sin_limpieza,
                     "split": "temporal" if time is not None else "grupos" if groups is not None else "estratificado",
                 }
             )

@@ -144,14 +144,39 @@ def test_guardar_modelo_en_joblib_por_partes(supervisados, nuevos, tmp_path):
     assert type(modelo).__name__ == "RidgeClassifier"
 
 
-def test_recorte_opcional_solo_en_columnas_continuas(entrenamiento, nuevos):
+def test_limpieza_activa_por_defecto_y_se_puede_apagar(entrenamiento, nuevos):
     X, y = a.preparar(entrenamiento), entrenamiento[a.TARGET]
-    for nombre, modelo in a.modelos_supervisados(clip_outliers="iqr").items():
+    for nombre, modelo in a.modelos_supervisados().items():  # por defecto: ColumnDropper + recorte IQR
         modelo.fit(X, y)
-        ramas = modelo.named_steps["preprocess"].named_transformers_
+        pasos = modelo.named_steps["preprocess"].named_steps
+        assert pasos["drop_columns"].max_missing == a.MAX_NULOS, nombre
+        ramas = pasos["columns"].named_transformers_
+        assert ramas["clip"].named_steps["outliers"].method == "iqr", nombre
         assert list(ramas["clip"].feature_names_in_) == a.COLUMNAS_RECORTE, nombre
         assert "outliers" not in ramas["num"].named_steps  # los conteos de comportamiento no se tocan
         assert a.metricas_supervisado(modelo, nuevos)["roc_auc"] > 0.8, nombre
-    # Por defecto, sin recorte (no cambia nada de lo que ya había).
-    sin = a.modelos_supervisados()["ridge"].fit(X, y).named_steps["preprocess"].named_transformers_
-    assert "clip" not in sin
+
+    # Apagada: el ColumnTransformer de siempre, sin rama de recorte.
+    sin = a.modelos_supervisados(clip_outliers=None, max_nulos=None)["ridge"].fit(X, y).named_steps["preprocess"]
+    assert type(sin).__name__ == "ColumnTransformer" and "clip" not in sin.named_transformers_
+
+
+def test_columndropper_descarta_variables_casi_vacias(entrenamiento, nuevos):
+    X, y = a.preparar(entrenamiento), entrenamiento[a.TARGET]
+    X = X.assign(SALARIO=X["SALARIO"].where(X.index % 4 == 0))  # 75 % vacío
+    modelo = a.modelo_ridge().fit(X, y)
+    assert modelo.named_steps["preprocess"].named_steps["drop_columns"].columns_to_drop_ == ["SALARIO"]
+    assert "SALARIO" not in modelo.named_steps["preprocess"].get_feature_names_out()
+    assert a.metricas_supervisado(modelo, nuevos)["roc_auc"] > 0.8  # predice aunque los nuevos sí traigan SALARIO
+
+
+def test_cargar_limpia_sin_romper_el_contrato(tmp_path):
+    from proyecto_ml import contrato as k
+
+    crudo = GeneradorAsociados(n=100, seed=6).generar()
+    crudo = pd.concat([crudo, crudo.head(2)], ignore_index=True)  # 2 filas repetidas
+    ruta = tmp_path / "asociados.parquet"
+    crudo.to_parquet(ruta, index=False)
+    limpio = a.cargar(ruta)
+    assert len(limpio) == 100 and k.validar(limpio) == []
+    assert len(a.cargar(ruta, limpiar=False)) == 102

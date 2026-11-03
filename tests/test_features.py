@@ -126,3 +126,19 @@ def test_preprocesador_para_gridsearch_y_aplanar():
     plano = aplanar(modelo)
     assert type(plano.named_steps["preprocess"]).__name__ == "ColumnTransformer"  # ramas visibles en el diagrama
     assert np.array_equal(plano.predict(X), modelo.predict(X))
+
+
+def test_clean_dataset_y_luego_el_preprocesador():
+    """El uso típico de cleaning.py: clean_dataset deja el texto con pd.NA y el preprocesador debe aceptarlo."""
+    from proyecto_ml.cleaning import clean_dataset
+
+    crudo = pd.DataFrame(
+        {"salario": ["1,200", "N/A", "3,400", "2,100"], "sede": ["Norte", "  Sur ", "-", "Norte"], "y": [0, 1, 0, 1]}
+    )
+    df = clean_dataset(crudo, normalize_names=False, verbose=False)
+    assert pd.api.types.is_string_dtype(df["sede"]) and df["sede"].isna().sum() == 1  # pd.NA
+
+    pre = build_preprocessor(["salario"], ["sede"]).fit(df)
+    out = pre.transform(df)
+    assert not np.isnan(out).any()
+    assert list(pre.get_feature_names_out()) == ["salario", "sede_Norte", "sede_Sur"]

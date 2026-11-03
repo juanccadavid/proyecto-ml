@@ -52,7 +52,8 @@ make setup                   # uv sync + .env desde .env.example + hooks de pre-
 
 make demo                    # genera el dataset sintético y entrena con él (MLflow)
 make train                   # entrena con DATA_PATH del .env (o: make train DATA=... ARGS="--pca 0.95")
-make train ARGS="--clip-outliers iqr --clip-columns salario --drop-columns 0.5"  # con limpieza (MLflow)
+make train ARGS="--clip-outliers iqr --clip-columns salario"  # además recorta atípicos de salario
+make train ARGS="--sin-limpieza"  # sin la limpieza de cleaning.py, para comparar en MLflow
 make mlflow-ui               # http://localhost:5000
 make app                     # http://localhost:8501
 make check                   # lint + pruebas, antes de abrir un PR
@@ -102,7 +103,21 @@ Para validar, se generan asociados **que los modelos nunca vieron** (mismo gener
 make abandono                                        # entrena con data/ejemplo, valida con 1000 nuevos
 make abandono ARGS="--nuevos 5000 --semilla-nuevos 7 --alpha 10"
 make abandono ARGS="--validar mi_archivo.parquet"    # validar además con otro archivo
+make abandono ARGS="--sin-limpieza"                  # sin la limpieza de cleaning.py, para comparar
 ```
+
+**Limpieza activa por defecto** ([`cleaning.py`](src/proyecto_ml/cleaning.py), de Juan Sebastián):
+
+| Paso | Dónde | Qué hace |
+|---|---|---|
+| `contrato.limpiar_extracto` | al cargar (`a.cargar`), antes de partir | espacios, textos tipo 'N/A' → vacío, números como texto, filas repetidas |
+| `ColumnDropper(max_missing=0.5)` | dentro del pipeline (aprende en train) | descarta variables con más de 50 % vacías o con un solo valor |
+| `OutlierClipper("iqr")` | rama `clip` del pipeline | recorta atípicos de `SALARIO`, `EDAD` y `ANTIGUEDAD` (no los conteos) |
+
+**Qué variables aportan a cada modelo.** `make abandono` calcula la *permutation importance* sobre los
+asociados nuevos: desordena una variable a la vez y mide cuánto cae el AUC. Sirve igual para los cuatro
+modelos (HistGB no trae `feature_importances_`) y mide la variable completa, no cada columna del OneHot.
+Imprime las 5 principales de cada modelo y guarda `reports/figures/abandono_importancia.png`.
 
 Al final imprime una **tabla comparativa** al estilo de `compare_models` de PyCaret: Accuracy, AUC, Recall,
 Prec., F1, Kappa, MCC y **TT (Sec)** (tiempo promedio de entrenamiento por partición), con validación cruzada
@@ -160,7 +175,10 @@ comportamiento el IQR vale [0, 0] y recortarlos borraría la señal.
 una de las 5 particiones. Debajo, el resumen por preprocesamiento: promedio y desviación entre particiones
 y, la prueba honesta, el resultado sobre asociados **nuevos**. Con `data/ejemplo` (50 filas) el orden se
 invierte: en validación cruzada gana ordinal, con nuevos gana OneHot. Con tan pocas filas, buscar entre
-más combinaciones sobreajusta la validación cruzada.
+más combinaciones sobreajusta la validación cruzada. El **gráfico de bigotes**
+(`reports/figures/afinamiento_bigotes.png`) muestra lo mismo: una caja por pipeline con sus 5 particiones
+y un rombo con el resultado sobre nuevos. `afinamiento_importancia.png` muestra las variables que más
+aportan a los dos afinados.
 
 Imprime las 5 mejores combinaciones de cada uno, la tabla "por defecto vs. afinado" y, lo que cuenta,
 la comparación con asociados **nuevos** (el puntaje de validación cruzada del mejor es optimista: se
@@ -266,15 +284,17 @@ regla a conciencia, actualiza su caso en el mismo PR.
 - `data/`, `models/`, `mlflow.db`, `.env` y `*.bundle` están en `.gitignore`.
 - Pre-commit bloquea archivos de datos, borra salidas de notebooks (nbstripout) y escanea secretos (Gitleaks).
 - Los datos reales se anonimizan con `scripts/anonimizar.py` **por quien los custodia, antes de compartirlos**.
-  Con `--limpiar`, antes aplica `contrato.limpiar_extracto` (espacios, textos tipo 'N/A', números como texto,
-  filas repetidas) con una configuración que no rompe el contrato: `clean_dataset` con sus valores por
-  defecto renombra `#RETIROS`, borra columnas opcionales vacías y vuelve números los teléfonos.
+  Antes aplica `contrato.limpiar_extracto` (espacios, textos tipo 'N/A', números como texto, filas
+  repetidas; `--sin-limpiar` lo apaga) con una configuración que no rompe el contrato: `clean_dataset` con
+  sus valores por defecto renombra `#RETIROS`, borra columnas opcionales vacías y vuelve números los teléfonos.
 - Cualquier demo pública se hace con datos sintéticos.
 
 ## Experimentos (MLflow)
 
 Cada `make train` registra parámetros, métricas y modelo en `mlflow.db` (local, no versionado), incluidas
-las opciones de limpieza (`clip_outliers`, `clip_columns`, `drop_columns`) para comparar con y sin ellas.
+las opciones de limpieza (`limpieza`, `clip_outliers`, `clip_columns`, `drop_columns`) para comparar con y
+sin ellas. Por defecto corre `clean_dataset` (sin renombrar columnas) y un `ColumnDropper` (`--drop-columns`
+0.5); `--sin-limpieza` apaga todo.
 El JSON de métricas en `reports/metrics/` sí se versiona para que el equipo compare resultados.
 
 ## Respaldo offline

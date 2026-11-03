@@ -64,3 +64,22 @@ def test_train_con_limpieza_registra_las_opciones(tmp_path, monkeypatch, synthet
     assert params["params.clip_outliers"] == "iqr"
     assert params["params.clip_columns"] == "salario,saldo_ahorro"
     assert params["params.drop_columns"] == "0.5"
+    assert params["params.limpieza"] == "True"  # clean_dataset activo por defecto
+
+
+@pytest.mark.integration
+def test_train_sin_limpieza(tmp_path, monkeypatch, synthetic_df):
+    import joblib
+
+    data_path = tmp_path / "sintetico.parquet"
+    synthetic_df.to_parquet(data_path, index=False)
+    monkeypatch.setenv("MLFLOW_TRACKING_URI", f"sqlite:///{(tmp_path / 'mlflow.db').as_posix()}")
+    monkeypatch.setenv("ID_COLUMN", "id_entidad")
+    monkeypatch.setenv("TIME_COLUMN", "periodo")
+    monkeypatch.delenv("GROUP_COLUMN", raising=False)
+
+    args = ["--data", str(data_path), "--target", "target", "--models", "logreg", "--no-log-model"]
+    train.run([*args, "--output-dir", str(tmp_path), "--sin-limpieza", "--clip-outliers", "iqr"])
+    modelo = joblib.load(tmp_path / "best_model.joblib")
+    assert "drop_columns" not in modelo.named_steps and "columns" not in modelo.named_steps  # sin ColumnDropper
+    assert "clip" not in modelo.named_steps["preprocess"].named_transformers_  # --sin-limpieza manda

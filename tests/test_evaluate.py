@@ -1,6 +1,7 @@
 import math
 
 import numpy as np
+import pandas as pd
 
 from proyecto_ml import abandono as a
 from proyecto_ml.evaluate import (
@@ -107,3 +108,51 @@ def test_tabla_por_fold_un_pipeline_por_preprocesamiento():
         assert r["mean_test_AUC"][i] == max(r["mean_test_AUC"][j] for j in mismo_grupo)
         filas = por_fold[por_fold["pipeline"] == pipeline]
         assert np.allclose(filas["Accuracy"], [r[f"split{k}_test_Accuracy"][i] for k in range(3)])
+
+
+def test_importancia_de_variables_por_modelo():
+    from proyecto_ml.evaluate import figura_importancia, importancia_variables, top_importancia
+
+    train, nuevos = GeneradorAsociados(n=300, seed=1).generar(), GeneradorAsociados(n=300, seed=2).generar()
+    X, y = a.preparar(train), train[a.TARGET]
+    modelos = {n: m.fit(X, y) for n, m in a.modelos_supervisados().items() if n in ("ridge", "hist_gb")}
+    imp = importancia_variables(modelos, a.preparar(nuevos), nuevos[a.TARGET], n_repeats=3)
+
+    assert list(imp.columns) == ["modelo", "variable", "importancia", "std"]
+    assert len(imp) == 2 * len(X.columns)  # una fila por variable ORIGINAL (no por columna del OneHot)
+    # La intención de retiro es de lo que más pesa en el generador: tiene que salir arriba.
+    for nombre in modelos:
+        top = imp[imp["modelo"] == nombre].nlargest(5, "importancia")["variable"]
+        assert "#INTENCIONRETIROS_ULT3MESES" in set(top) or "#SOLICITUD_DISMINUCIONCUOTAS" in set(top)
+    tabla = top_importancia(imp, top=3)
+    assert list(tabla.columns) == ["ridge", "hist_gb"] and list(tabla.index) == [1, 2, 3]
+    ejes = figura_importancia(imp, top=4, titulos=a.TITULOS).get_axes()
+    assert [ax.get_title() for ax in ejes] == ["Ridge", "HistGradientBoosting (boosting)"]
+    assert all(len(ax.patches) == 4 for ax in ejes)
+
+
+def test_grafico_de_bigotes_por_pipeline():
+    from proyecto_ml.evaluate import figura_por_fold
+
+    por_fold = pd.DataFrame(
+        {
+            "pipeline": ["Ridge_onehot"] * 3 + ["Ridge_ordinal"] * 3 + ["LogisticRegression_onehot"] * 3,
+            "fold": [1, 2, 3] * 3,
+            "Accuracy": [0.8, 0.9, 0.85, 0.7, 0.75, 0.8, 0.9, 0.95, 0.92],
+        }
+    )
+    nuevos = pd.DataFrame(
+        {"Accuracy": [0.88, 0.7, 0.91]}, index=["Ridge_onehot", "Ridge_ordinal", "LogisticRegression_onehot"]
+    )
+    fig = figura_por_fold(por_fold, ["Accuracy"], nuevos=nuevos)
+    ax = fig.get_axes()[0]
+    etiquetas = [t.get_text() for t in ax.get_yticklabels()]
+    assert etiquetas == ["Ridge_ordinal", "Ridge_onehot", "LogisticRegression_onehot"]  # el mejor arriba
+    rombos = [ln for ln in ax.get_lines() if ln.get_marker() == "D"]
+    assert len(rombos) == 3
+    assert [t.get_text() for t in fig.legends[0].get_texts()] == [
+        "LogisticRegression",
+        "Ridge",
+        "cada partición (CV)",
+        "asociados nuevos",
+    ]

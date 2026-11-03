@@ -38,17 +38,20 @@ from sklearn.pipeline import Pipeline
 
 from proyecto_ml import abandono as a
 from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, MODELS_DIR, PROCESSED_DIR, get_settings
-from proyecto_ml.data import load_dataset
 from proyecto_ml.evaluate import (
     SCORING,
     afinar,
     figura_busqueda,
+    figura_importancia,
+    figura_por_fold,
     formato_params,
+    importancia_variables,
     mejores_por_grupo,
     resaltar,
     resultados_busqueda,
     resultados_por_fold,
     tabla_comparativa,
+    top_importancia,
 )
 from proyecto_ml.features import Preprocesador, aplanar, pagina_pipelines
 from proyecto_ml.generador import GeneradorAsociados
@@ -79,7 +82,8 @@ COLUMNAS_MUESTRA = ["EDAD", "SEXO", "TIPOCONTRATO", "#INTENCIONRETIROS_ULT3MESES
 def modelos_base(train: pd.DataFrame, folds: int = 5) -> dict[str, Pipeline]:
     """Los dos modelos con sus valores por defecto, sin entrenar, con el preprocesamiento como ``Preprocesador``.
 
-    - ridge: el de ``a.modelo_ridge()`` (mediana + OneHot).
+    - ridge: el de ``a.modelo_ridge()``: mediana + OneHot, con la limpieza de cleaning.py activa
+      (ColumnDropper y recorte IQR de COLUMNAS_RECORTE).
     - pycaret_lr: la LogisticRegression que arma PyCaret (``make pycaret``) con el preprocesamiento de
       PyCaret reproducido con ``build_preprocessor``: media + ordinal. Predice igual que el Pipeline de
       PyCaret, pero así el preprocesamiento entra en la búsqueda como un hiperparámetro más.
@@ -93,7 +97,12 @@ def modelos_base(train: pd.DataFrame, folds: int = 5) -> dict[str, Pipeline]:
         return Preprocesador(a.NUMERICAS, a.CATEGORICAS, clip_columns=a.COLUMNAS_RECORTE, **kwargs)
 
     return {
-        "ridge": Pipeline([("preprocess", preprocesador()), ("model", clone(a.modelo_ridge()[-1]))]),
+        "ridge": Pipeline(
+            [
+                ("preprocess", preprocesador(clip_outliers=a.CLIP_OUTLIERS, max_nulos=a.MAX_NULOS)),
+                ("model", clone(a.modelo_ridge()[-1])),
+            ]
+        ),
         "pycaret_lr": Pipeline(
             [
                 ("preprocess", preprocesador(numeric_strategy="mean", encoding="ordinal")),
@@ -121,7 +130,7 @@ def main() -> None:
         raise SystemExit("PyCaret no está instalado. Ejecuta: uv sync --extra pycaret") from exc
     warnings.filterwarnings("ignore", category=UserWarning)  # avisos internos de la versión alfa
 
-    train = load_dataset(args.datos)
+    train = a.cargar(args.datos)  # con limpiar_extracto
     nuevos = GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos).generar()
     X, y = a.preparar(train), train[a.TARGET]
     print(f"Entrenamiento: {args.datos} ({len(train)} filas, {train[a.TARGET].mean():.0%} abandono)")
@@ -161,6 +170,7 @@ def main() -> None:
     por_preprocesamiento = por_preprocesamiento.sort_values((args.metrica, "mean"), ascending=False)
     print(f"\n=== Preprocesamientos: promedio y desviación entre particiones, y sobre nuevos, por {args.metrica} ===")
     print(por_preprocesamiento.round(4).to_string() + "\n")
+    en_nuevos_por_pipeline = por_preprocesamiento.xs("nuevos", axis=1, level=1)  # pipeline x métrica
 
     comparativa = tabla_comparativa(modelos, X, y, folds=args.folds, ordenar=args.metrica)
     print("=== Por defecto vs. afinado: validación cruzada (los afinados salen optimistas) ===")
@@ -184,6 +194,10 @@ def main() -> None:
     discrepan = etiquetas.ne(etiquetas.iloc[:, 0], axis=0).any(axis=1).sum()
     print(f"Los afinados discrepan en {discrepan} de {len(predicciones)} asociados.")
 
+    importancias = importancia_variables(afinados, Xn, yn)  # sobre los nuevos: datos que no vieron
+    print("\n=== Variables que más aportan a los afinados: caída de AUC al desordenarlas (asociados nuevos) ===")
+    print(top_importancia(importancias).to_string())
+
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     METRICS_DIR.mkdir(parents=True, exist_ok=True)
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
@@ -196,6 +210,12 @@ def main() -> None:
     figura_busqueda(busquedas, EJE_X, fijar=PARAMS_PREPROCESAMIENTO).savefig(grafico, dpi=150)
     tabla_html = FIGURES_DIR / "afinamiento_comparativa.html"  # con el mejor de cada columna en amarillo
     tabla_html.write_text(resaltar(comparativa).to_html(), encoding="utf-8", newline="\n")
+    bigotes = FIGURES_DIR / "afinamiento_bigotes.png"
+    figura_por_fold(por_fold, list(metricas_fold), nuevos=en_nuevos_por_pipeline, ordenar=args.metrica).savefig(
+        bigotes, dpi=150
+    )
+    importancia_png = FIGURES_DIR / "afinamiento_importancia.png"
+    figura_importancia(importancias).savefig(importancia_png, dpi=150)
     diagramas = FIGURES_DIR / "afinamiento_pipelines.html"  # los afinados, con los hiperparámetros elegidos
     diagramas.write_text(pagina_pipelines(afinados, "Pipelines afinados"), encoding="utf-8")
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -206,6 +226,7 @@ def main() -> None:
         "mejores": {n: formato_params(b.best_params_) for n, b in busquedas.items()},
         "top5": {n: resultados_busqueda(b).to_dict(orient="records") for n, b in busquedas.items()},
         "comparativa": comparativa.to_dict(orient="index"),
+        "importancia": importancias.to_dict(orient="records"),
         "por_fold": por_fold.to_dict(orient="records"),
         "preprocesamientos": {
             p: {f"{m}_{e}": v for (m, e), v in fila.items()} for p, fila in por_preprocesamiento.iterrows()
@@ -218,6 +239,7 @@ def main() -> None:
     print(f"Curvas -> {grafico} | tabla comparativa -> {tabla_html}")
     print(f"Predicciones ({len(predicciones)} asociados nuevos) -> {tabla_csv}")
     print(f"Diagramas de los pipelines -> {diagramas}")
+    print(f"Bigotes por partición -> {bigotes} | importancia -> {importancia_png}")
 
 
 if __name__ == "__main__":

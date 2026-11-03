@@ -37,7 +37,6 @@ from sklearn.pipeline import Pipeline
 
 from proyecto_ml import abandono as a
 from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, MODELS_DIR, get_settings
-from proyecto_ml.data import load_dataset
 from proyecto_ml.evaluate import COLUMNAS_COMPARATIVA, compute_metrics, resaltar, tabla_comparativa
 from proyecto_ml.generador import GeneradorAsociados
 
@@ -84,7 +83,7 @@ def main() -> None:
         raise SystemExit("PyCaret no está instalado. Ejecuta: uv sync --extra pycaret") from exc
     warnings.filterwarnings("ignore", category=UserWarning)  # avisos internos de la versión alfa
 
-    train = load_dataset(args.datos)
+    train = a.cargar(args.datos)  # con limpiar_extracto
     nuevos = GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos).generar()
     print(f"Entrenamiento: {args.datos} ({len(train)} filas, {train[a.TARGET].mean():.0%} abandono)\n")
 

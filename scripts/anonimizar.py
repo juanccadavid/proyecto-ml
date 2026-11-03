@@ -7,8 +7,8 @@ Ejemplo:
         --id-cols cedula --drop-cols nombre,correo,telefono,direccion \
         --bin "edad:18,25,35,45,55,65,100" --bin "salario:0,2000000,4000000,8000000,1000000000"
 
-Con --limpiar, antes de anonimizar aplica contrato.limpiar_extracto (espacios, textos tipo 'N/A' -> vacío,
-números escritos como texto, filas repetidas) sin romper el contrato de asociados.
+Antes de anonimizar aplica contrato.limpiar_extracto (espacios, textos tipo 'N/A' -> vacío,
+números escritos como texto, filas repetidas) sin romper el contrato de asociados. --sin-limpiar lo apaga.
 
 La sal se toma de ANON_SALT (.env). Guárdala solo quien anonimiza: sin ella no se revierte.
 """
@@ -39,11 +39,11 @@ def main() -> None:
     parser.add_argument("--id-cols", type=_csv, default=[])
     parser.add_argument("--drop-cols", type=_csv, default=[])
     parser.add_argument("--bin", type=_bin, action="append", default=[])
-    parser.add_argument("--limpiar", action="store_true", help="Limpiar el extracto antes de anonimizar")
+    parser.add_argument("--sin-limpiar", action="store_true", help="No limpiar el extracto antes de anonimizar")
     args = parser.parse_args()
 
     df = load_dataset(args.input)
-    if args.limpiar:
+    if not args.sin_limpiar:
         df = limpiar_extracto(df, verbose=True)
     out = anonymize(df, id_columns=args.id_cols, drop_columns=args.drop_cols, bins=dict(args.bin))
     args.output.parent.mkdir(parents=True, exist_ok=True)

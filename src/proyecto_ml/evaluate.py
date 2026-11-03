@@ -238,3 +238,119 @@ def figura_busqueda(busquedas: dict, eje_x: dict[str, str], fijar: tuple[str, ..
         ax.spines[["top", "right"]].set_visible(False)
         ax.legend(fontsize=8, frameon=False, loc="best")
     return fig
+
+
+_COLORES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]  # paleta de referencia, en orden fijo
+_TINTA, _GRIS = "#1f2937", "#9ca3af"
+
+
+def figura_por_fold(
+    por_fold: pd.DataFrame, metricas: list[str], nuevos: pd.DataFrame | None = None, ordenar: str | None = None
+) -> Figure:
+    """Gráfico de bigotes: la distribución de cada métrica entre las particiones, un pipeline por fila.
+
+    ``por_fold`` es la tabla larga de ``resultados_por_fold``. La caja va del cuartil 1 al 3 con la mediana,
+    los bigotes hasta el mínimo y el máximo, y encima cada partición como un punto. Si se pasa ``nuevos``
+    (pipeline x métrica), un rombo marca el resultado sobre datos que el modelo no vio. El color es el
+    modelo (lo que va antes del primer ``_`` en el nombre del pipeline).
+    """
+    from matplotlib.figure import Figure
+    from matplotlib.lines import Line2D
+
+    ordenar = ordenar or metricas[0]
+    orden = por_fold.groupby("pipeline", sort=False)[ordenar].mean().sort_values().index.tolist()  # mejor arriba
+    familias = list(dict.fromkeys(p.split("_")[0] for p in orden[::-1]))
+    color = {f: _COLORES[i % len(_COLORES)] for i, f in enumerate(familias)}
+    rng = np.random.default_rng(0)
+
+    fig = Figure(figsize=(5.2 * len(metricas) + 1.6, 0.36 * len(orden) + 1.6), layout="constrained")
+    ejes = fig.subplots(1, len(metricas), sharey=True, squeeze=False).ravel()
+    for ax, m in zip(ejes, metricas, strict=True):
+        datos = [por_fold.loc[por_fold["pipeline"] == p, m].to_numpy() for p in orden]
+        cajas = ax.boxplot(datos, orientation="horizontal", whis=(0, 100), widths=0.55, patch_artist=True)
+        for i, p in enumerate(orden):
+            c = color[p.split("_")[0]]
+            cajas["boxes"][i].set(facecolor=c + "33", edgecolor=c, linewidth=1.5)
+            cajas["medians"][i].set(color=c, linewidth=2)
+            for linea in (*cajas["whiskers"][2 * i : 2 * i + 2], *cajas["caps"][2 * i : 2 * i + 2]):
+                linea.set(color=c, linewidth=1.2)
+            jitter = rng.uniform(-0.15, 0.15, len(datos[i]))
+            ax.plot(datos[i], i + 1 + jitter, "o", ms=4, color=c, alpha=0.8, mec="white", mew=0.5)
+            if nuevos is not None and p in nuevos.index:
+                ax.plot(nuevos.loc[p, m], i + 1, "D", ms=7, mfc="white", mec=_TINTA, mew=1.5)
+        ax.set_yticks(range(1, len(orden) + 1), orden, fontsize=8)
+        ax.set_xlabel(f"{m} por partición")
+        ax.set_title(m)
+        ax.grid(axis="x", alpha=0.3, lw=0.5)
+        ax.spines[["top", "right"]].set_visible(False)
+    leyenda = [Line2D([], [], color=c, lw=6, alpha=0.5, label=f) for f, c in color.items()]
+    leyenda.append(Line2D([], [], ls="", marker="o", ms=4, color=_GRIS, label="cada partición (CV)"))
+    if nuevos is not None:
+        leyenda.append(Line2D([], [], ls="", marker="D", ms=7, mfc="white", mec=_TINTA, label="asociados nuevos"))
+    fig.legend(handles=leyenda, loc="outside lower center", ncols=len(leyenda), frameon=False, fontsize=9)
+    fig.suptitle(f"Distribución por pipeline ({por_fold['fold'].nunique()} particiones)", fontsize=13)
+    return fig
+
+
+def importancia_variables(
+    modelos: dict, X: pd.DataFrame, y, scoring: str = "roc_auc", n_repeats: int = 10, random_state: int = 0
+) -> pd.DataFrame:
+    """Qué variables aportan más a cada modelo: permutation importance sobre las variables originales.
+
+    Desordena una columna de ``X`` a la vez y mide cuánto cae ``scoring``: si el modelo depende de esa
+    variable, el puntaje cae mucho. Sirve igual para lineales, bosques y boosting (HistGB no trae
+    ``feature_importances_``), y mide la variable completa (no cada columna del OneHot). Conviene usar
+    datos que el modelo no vio. Formato largo: modelo, variable, importancia (caída promedio), std.
+    """
+    from sklearn.inspection import permutation_importance
+
+    filas = []
+    for nombre, modelo in modelos.items():
+        r = permutation_importance(modelo, X, y, scoring=scoring, n_repeats=n_repeats, random_state=random_state)
+        filas += [
+            {"modelo": nombre, "variable": v, "importancia": float(mu), "std": float(sd)}
+            for v, mu, sd in zip(X.columns, r.importances_mean, r.importances_std, strict=True)
+        ]
+    return pd.DataFrame(filas)
+
+
+def top_importancia(importancias: pd.DataFrame, top: int = 5) -> pd.DataFrame:
+    """Las ``top`` variables de cada modelo, una columna por modelo: "variable (caída)"."""
+    columnas = {}
+    for nombre, grupo in importancias.groupby("modelo", sort=False):
+        mejores = grupo.nlargest(top, "importancia")
+        columnas[nombre] = [f"{v} ({i:.3f})" for v, i in zip(mejores["variable"], mejores["importancia"], strict=True)]
+    return pd.DataFrame(columnas, index=pd.RangeIndex(1, top + 1, name="puesto"))
+
+
+def figura_importancia(
+    importancias: pd.DataFrame, top: int = 10, titulos: dict | None = None, metrica: str = "AUC"
+) -> Figure:
+    """Un panel por modelo con sus ``top`` variables: barra = caída de la métrica al desordenarla (± std)."""
+    from matplotlib.figure import Figure
+
+    modelos = list(dict.fromkeys(importancias["modelo"]))
+    columnas = min(2, len(modelos))
+    filas = -(-len(modelos) // columnas)
+    fig = Figure(figsize=(6.2 * columnas, 0.32 * top * filas + 1.2 * filas), layout="constrained")
+    ejes = fig.subplots(filas, columnas, squeeze=False).ravel()
+    for ax in ejes[len(modelos) :]:
+        ax.remove()
+    for ax, nombre in zip(ejes, modelos, strict=False):
+        datos = importancias[importancias["modelo"] == nombre].nlargest(top, "importancia")[::-1]  # mayor arriba
+        ax.barh(
+            datos["variable"],
+            datos["importancia"],
+            xerr=datos["std"],
+            color=_COLORES[0],
+            height=0.6,
+            error_kw={"ecolor": _GRIS, "lw": 1, "capsize": 2},
+        )
+        ax.axvline(0, color=_GRIS, lw=1)
+        ax.set_title((titulos or {}).get(nombre, nombre))
+        ax.set_xlabel(f"caída de {metrica} al desordenar la variable")
+        ax.tick_params(axis="y", labelsize=8)
+        ax.grid(axis="x", alpha=0.3, lw=0.5)
+        ax.spines[["top", "right"]].set_visible(False)
+    fig.suptitle("Variables que más aportan a cada modelo (permutation importance)", fontsize=13)
+    return fig
