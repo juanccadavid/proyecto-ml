@@ -29,7 +29,7 @@ from sklearn.model_selection import StratifiedKFold, cross_val_predict
 from proyecto_ml import abandono as a
 from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, MODELS_DIR, get_settings
 from proyecto_ml.data import load_dataset
-from proyecto_ml.evaluate import compute_metrics
+from proyecto_ml.evaluate import COLUMNAS_COMPARATIVA, compute_metrics, resaltar, tabla_comparativa
 from proyecto_ml.generador import FALTANTES, GeneradorAsociados
 
 
@@ -48,6 +48,9 @@ def main() -> None:
     parser.add_argument("--validar", type=Path, help="Archivo adicional para validar (mismo esquema)")
     parser.add_argument("--exportar-nuevos", type=Path, help="Guardar los asociados nuevos generados")
     parser.add_argument("--faltantes", action="store_true", help="Validar además con nuevos con vacíos")
+    parser.add_argument(
+        "--ordenar", default="AUC", choices=COLUMNAS_COMPARATIVA, help="Columna para ordenar la tabla comparativa"
+    )
     args = parser.parse_args()
 
     train = load_dataset(args.datos)
@@ -86,6 +89,10 @@ def main() -> None:
     print(f"\n=== Comparación sobre {nombre_nuevos} ===")
     print(_tabla({n: m[nombre_nuevos] for n, m in m_supervisados.items()}))
 
+    comparativa = tabla_comparativa(a.modelos_supervisados(args.alpha), X, y, ordenar=args.ordenar)
+    print(f"\n=== Tabla comparativa: validación cruzada (5), mismas particiones, por {args.ordenar} ===")
+    print(comparativa.round(4).to_string())
+
     # ---- KMeans (sin objetivo)
     agrupador = a.AgrupadorAbandono().fit(train)
     m_kmeans = {
@@ -105,14 +112,23 @@ def main() -> None:
     fig = a.figura_matrices_confusion(supervisados, agrupador, validaciones[nombre_nuevos])
     fig.suptitle(f"Matriz de confusión - {nombre_nuevos}", fontsize=14)
     fig.savefig(grafico, dpi=150)
+    tabla_html = FIGURES_DIR / "abandono_comparativa.html"  # con el mejor de cada columna en amarillo
+    tabla_html.write_text(resaltar(comparativa).to_html(), encoding="utf-8", newline="\n")
     for nombre, modelo in supervisados.items():
         joblib.dump(modelo, MODELS_DIR / f"abandono_{nombre}.joblib")
     joblib.dump(agrupador, MODELS_DIR / "abandono_kmeans.joblib")
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     salida = METRICS_DIR / f"abandono_{stamp}.json"
-    resumen = {"datos": str(args.datos.name), "alpha": args.alpha, **m_supervisados, "kmeans": m_kmeans}
+    resumen = {
+        "datos": str(args.datos.name),
+        "alpha": args.alpha,
+        **m_supervisados,
+        "kmeans": m_kmeans,
+        "comparativa": comparativa.to_dict(orient="index"),
+    }
     salida.write_text(json.dumps(resumen, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
-    print(f"\nModelos -> {MODELS_DIR / 'abandono_*.joblib'} | métricas -> {salida} | gráfico -> {grafico}")
+    print(f"\nModelos -> {MODELS_DIR / 'abandono_*.joblib'} | métricas -> {salida}")
+    print(f"Gráfico -> {grafico} | tabla comparativa -> {tabla_html}")
 
 
 if __name__ == "__main__":
