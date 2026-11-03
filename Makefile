@@ -121,7 +121,7 @@ simulador: ## Simulador del abandono con el campeón en http://localhost:8501 (m
 ejemplo: ## Regenera los 50 asociados ficticios de data/ejemplo/
 	$(PY) scripts/generar_asociados_ejemplo.py
 
-datos-desarrollo: ## Genera los 2.000 asociados de desarrollo (semilla 7, 10 % de retiro) en data/processed/
+datos-desarrollo: ## Genera los 5.000 asociados de desarrollo (semilla 7, 10 % de retiro) en data/processed/
 	$(PY) scripts/generar_asociados_ejemplo.py --desarrollo
 
 contrato: ## Valida un dataset contra el contrato (DATA=..., por defecto el de ejemplo)
