@@ -87,3 +87,22 @@ class _present:
 
     def __call__(self, X):
         return [c for c in self.columns if c in X.columns]
+
+
+def pagina_pipelines(modelos: dict, titulo: str = "Pipelines") -> str:
+    """Página HTML con el diagrama interactivo de cada pipeline: el mismo que muestra Jupyter.
+
+    Cada caja (ColumnTransformer, cada rama numérica/categórica, cada paso) se despliega con un clic
+    para ver sus parámetros y columnas; ``?`` abre la documentación de scikit-learn. En un notebook
+    no hace falta: basta con dejar el pipeline al final de una celda.
+    """
+    from html import escape
+
+    from sklearn.utils import estimator_html_repr
+
+    secciones = "\n".join(f"<h2>{escape(nombre)}</h2>\n{estimator_html_repr(m)}" for nombre, m in modelos.items())
+    estilo = "body{font-family:system-ui,sans-serif;margin:24px;max-width:1100px}h2{margin-top:32px}"
+    return (
+        f'<!doctype html>\n<html lang="es">\n<head><meta charset="utf-8"><title>{escape(titulo)}</title>'
+        f"<style>{estilo}</style></head>\n<body>\n<h1>{escape(titulo)}</h1>\n{secciones}\n</body>\n</html>\n"
+    )

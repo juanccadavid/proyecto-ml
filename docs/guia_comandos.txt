@@ -119,6 +119,7 @@
      make abandono         Ridge, logística, Random Forest (bagging), HistGB (boosting) y KMeans,
                            validados con 1000 asociados NUEVOS. Tabla comparativa con tiempo (TT):
                            reports/figures/abandono_comparativa.html. ej.: ARGS="--ordenar Recall"
+                           Diagrama interactivo de cada pipeline: reports/figures/abandono_pipelines.html
                            ej.: make abandono ARGS="--nuevos 5000 --semilla-nuevos 7 --alpha 10"
      make pycaret          PyCaret (AutoML) compara lr/rf/et/ada/gbc/lightgbm contra los de abandono
                            (tabla con tiempo: reports/figures/pycaret_comparativa.html)
