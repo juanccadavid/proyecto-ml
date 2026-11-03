@@ -32,7 +32,7 @@ from sklearn.base import clone
 from sklearn.pipeline import Pipeline
 
 from proyecto_ml import abandono as a
-from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, MODELS_DIR, get_settings
+from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, MODELS_DIR, PROCESSED_DIR, get_settings
 from proyecto_ml.data import load_dataset
 from proyecto_ml.evaluate import (
     SCORING,
@@ -56,6 +56,8 @@ GRILLAS = {
     },
 }
 EJE_X = {"ridge": "alpha", "pycaret_lr": "C"}  # el hiperparámetro de regularización de cada uno
+# Variables que se muestran en la terminal (el CSV lleva todas).
+COLUMNAS_MUESTRA = ["EDAD", "SEXO", "TIPOCONTRATO", "#INTENCIONRETIROS_ULT3MESES", "#SOLICITUD_CANCELACIONAHORROS"]
 
 
 def modelos_base(train: pd.DataFrame, folds: int = 5) -> dict[str, Pipeline]:
@@ -80,6 +82,7 @@ def main() -> None:
     parser.add_argument("--semilla-nuevos", type=int, default=2026, help="La misma que usa make abandono")
     parser.add_argument("--folds", type=int, default=5, help="Particiones de la validación cruzada")
     parser.add_argument("--metrica", default="AUC", choices=list(SCORING), help="Métrica que elige al mejor")
+    parser.add_argument("--muestra", type=int, default=5, help="Filas de la tabla de predicciones en la terminal")
     args = parser.parse_args()
 
     try:
@@ -114,11 +117,26 @@ def main() -> None:
     print(f"\n=== Por defecto vs. afinado sobre asociados nuevos (n={args.nuevos}) ===")
     print(en_nuevos.round(3).to_string())
 
+    # Tabla de predicciones de los afinados (como predict_model de PyCaret), sobre los nuevos.
+    afinados = {f"{n}_afinado": b.best_estimator_ for n, b in busquedas.items()}
+    predicciones = a.tabla_predicciones(afinados, nuevos)
+    columnas = [*COLUMNAS_MUESTRA, a.TARGET, *[c for c in predicciones if c.endswith(("_label", "_score"))]]
+    print(f"\n=== Predicciones de los afinados: muestra de {args.muestra} asociados nuevos ===")
+    print("score = riesgo de abandono: probabilidad en la logística; en Ridge, distancia a la frontera (>0 = abandona)")
+    with pd.option_context("display.width", 120, "display.max_columns", None):
+        print(predicciones.sample(args.muestra, random_state=0)[columnas].round(4))
+    etiquetas = predicciones[[f"{n}_label" for n in afinados]]
+    discrepan = etiquetas.ne(etiquetas.iloc[:, 0], axis=0).any(axis=1).sum()
+    print(f"Los afinados discrepan en {discrepan} de {len(predicciones)} asociados.")
+
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     METRICS_DIR.mkdir(parents=True, exist_ok=True)
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     for nombre, busqueda in busquedas.items():
         joblib.dump(busqueda.best_estimator_, MODELS_DIR / f"abandono_{nombre}_afinado.joblib")
+    tabla_csv = PROCESSED_DIR / "predicciones_afinados.csv"  # todas las filas y variables; ignorado por Git
+    predicciones.to_csv(tabla_csv, index_label="fila", encoding="utf-8-sig")  # -sig: tildes bien en Excel
     grafico = FIGURES_DIR / "afinamiento_curvas.png"
     figura_busqueda(busquedas, EJE_X).savefig(grafico, dpi=150)
     tabla_html = FIGURES_DIR / "afinamiento_comparativa.html"  # con el mejor de cada columna en amarillo
@@ -136,6 +154,7 @@ def main() -> None:
     salida.write_text(json.dumps(resumen, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
     print(f"\nModelos -> {MODELS_DIR / 'abandono_*_afinado.joblib'} | métricas -> {salida}")
     print(f"Curvas -> {grafico} | tabla comparativa -> {tabla_html}")
+    print(f"Predicciones ({len(predicciones)} asociados nuevos) -> {tabla_csv}")
 
 
 if __name__ == "__main__":

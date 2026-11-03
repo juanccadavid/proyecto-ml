@@ -144,6 +144,13 @@ la comparación con asociados **nuevos** (el puntaje de validación cruzada del 
 eligió mirando esos mismos datos). Guarda `models/abandono_*_afinado.joblib` y las curvas en
 `reports/figures/afinamiento_curvas.png`.
 
+También arma una **tabla de predicciones** de los dos afinados (como `predict_model` de PyCaret) sobre los
+asociados nuevos: variables, abandono real y, por modelo, `<modelo>_label` (1 = abandona) y `<modelo>_score`
+(riesgo de abandono: probabilidad en la logística; en Ridge, distancia a la frontera, > 0 = abandona). Muestra
+unas filas en la terminal (`ARGS="--muestra 10"`) y guarda todas en `data/processed/predicciones_afinados.csv`
+(no va a Git). Con regularización fuerte las probabilidades se acercan a 0.5: sirven para **ordenar** el riesgo,
+no como probabilidad literal. En código: `a.tabla_predicciones({"ridge": modelo}, df)`.
+
 ```bash
 make afinar                         # elige por AUC
 make afinar ARGS="--metrica F1"     # o Recall, MCC... (las columnas de la tabla comparativa)

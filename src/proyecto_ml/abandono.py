@@ -139,6 +139,22 @@ def metricas_supervisado(modelo: Pipeline, df: pd.DataFrame) -> dict[str, float]
     return compute_metrics(df[TARGET], puntaje(modelo, preparar(df)), threshold=UMBRAL[metodo_puntaje(modelo)])
 
 
+def tabla_predicciones(modelos: dict[str, Pipeline], df: pd.DataFrame) -> pd.DataFrame:
+    """Como ``predict_model`` de PyCaret: las variables, el abandono real (si está) y lo que predice cada modelo.
+
+    Por modelo, ``<nombre>_label`` (1 = abandona) y ``<nombre>_score``: la probabilidad de abandono si el
+    modelo la da (0 a 1) o, si no (Ridge), la distancia a la frontera (> 0 = abandona). A diferencia de
+    PyCaret, que da la confianza en la etiqueta predicha, aquí el score siempre mide riesgo de abandono:
+    más alto = más riesgo, así sirve para ordenar a quién contactar primero.
+    """
+    X = preparar(df)
+    tabla = X.assign(**{TARGET: df[TARGET].to_numpy()}) if TARGET in df else X.copy()
+    for nombre, modelo in modelos.items():
+        tabla[f"{nombre}_label"] = modelo.predict(X)
+        tabla[f"{nombre}_score"] = puntaje(modelo, X)
+    return tabla
+
+
 def coeficientes(modelo: Pipeline, top: int = 10) -> pd.Series:
     """Variables con más peso (positivo = empuja hacia abandono)."""
     nombres = modelo.named_steps["preprocess"].get_feature_names_out()
