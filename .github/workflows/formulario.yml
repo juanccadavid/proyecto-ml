@@ -2,7 +2,7 @@
 # La conexión a Supabase NO está en Git: config.js se arma aquí con las variables del repositorio
 # SUPABASE_URL y SUPABASE_KEY (Settings > Secrets and variables > Actions > Variables).
 # Solo la clave PÚBLICA (sb_publishable_... / anon). Con la migración 002, ni con ella se puede insertar sin
-# sesión: solo el equipo (código por correo + tabla equipo), y en asociados_entrada (make supabase-revisar).
+# sesión: solo el equipo (enlace por correo + tabla equipo), y en asociados_entrada (make supabase-revisar).
 name: Formulario (GitHub Pages)
 
 on:

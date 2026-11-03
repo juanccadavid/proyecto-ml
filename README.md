@@ -391,13 +391,14 @@ make formulario                            # abre web/formulario.html: sesión d
 **Formulario solo para el equipo** ([migración 002](supabase/migraciones/002_formulario_equipo.sql)):
 
 ```
-formulario ──(código por correo: Supabase Auth)──► asociados_entrada ──► make supabase-revisar ──► asociados
+formulario ──(enlace por correo: Supabase Auth)──► asociados_entrada ──► make supabase-revisar ──► asociados
               solo correos de public.equipo          pendiente            valida fila a fila,      (la que baja
                                                                           sin repetidos            supabase-bajar)
 ```
 
-- **Sesión con código por correo.** El formulario pide el correo, Supabase envía un código de 6 dígitos y con
-  él inicia sesión. Sin registro abierto: solo cuentas creadas por el equipo.
+- **Sesión con enlace por correo.** El formulario pide el correo y Supabase envía un enlace: al abrirlo vuelve
+  al formulario con la sesión iniciada. Si la plantilla del correo trae `{{ .Token }}` (exige SMTP propio para
+  editarla), también sirve el código de 6 dígitos. Sin registro abierto: solo cuentas creadas por el equipo.
 - **Lista de correos permitidos.** La tabla `public.equipo`; la política de `asociados_entrada` exige
   `public.es_del_equipo()` (el correo del token está en `equipo`), `revision = 'pendiente'` y
   `enviado_por` = el correo del token (nadie envía a nombre de otro).
@@ -413,8 +414,13 @@ Activarlo en Supabase (una vez, en el panel):
 2. *Authentication → Sign In / Providers → Email*: activo, y **desactivar "Allow new users to sign up"**.
 3. *Authentication → Users → Add user → Send invitation* (o *Create new user*) con el correo de cada integrante.
 4. *Table Editor → equipo → Insert row*: el mismo correo **en minúsculas** (y el nombre).
-5. *Authentication → Emails → Magic Link*: que el mensaje incluya `{{ .Token }}` (el código de 6 dígitos;
-   por defecto solo trae el enlace). Ej.: `<p>Tu código: <strong>{{ .Token }}</strong></p>`.
+5. *Authentication → URL Configuration*: **Site URL** = la dirección del formulario en Pages
+   (`https://<usuario>.github.io/<repo>/formulario.html`) y la misma en **Redirect URLs**. Si no está ahí, el
+   enlace del correo lleva a `localhost:3000` y no inicia sesión. Para probar en tu PC, agrega también
+   `http://localhost:8000/**` y sirve la carpeta: `uv run python -m http.server 8000 -d web`
+   (abierto como archivo, con `make formulario`, el enlace no puede volver y solo sirve el código).
+6. *Opcional, código de 6 dígitos*: *Authentication → Emails → Magic link or OTP* solo se edita con SMTP propio
+   (*Set up SMTP*); ahí se agrega `<p>Tu código: <strong>{{ .Token }}</strong></p>`. Sin eso basta el enlace.
 
 Ojo: el correo de Supabase sin SMTP propio tiene un límite bajo de envíos por hora; para la demo basta.
 
