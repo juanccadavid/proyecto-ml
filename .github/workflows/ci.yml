@@ -1,11 +1,16 @@
-# Lint y pruebas en cada Pull Request y en cada push a main.
+# En cada push (cualquier rama): lint + pruebas y, si pasan, se ejecuta el flujo completo (make pipeline).
 # Aquí corren los tests del contrato (tests/data/): si alguien relaja una regla, el PR queda en rojo.
+# Los resultados (figuras, métricas y el campeón) quedan como artefacto "resultados" de la corrida y el resumen
+# del campeón se ve en la pestaña Summary. Todo con datos generados: el extracto real nunca llega a GitHub.
 name: CI
 
 on:
-  pull_request:
   push:
-    branches: [main]
+  workflow_dispatch: # botón "Run workflow" en la pestaña Actions
+
+concurrency: # un push nuevo a la misma rama cancela la corrida anterior
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   calidad:
@@ -23,3 +28,45 @@ jobs:
           uv run ruff format --check .
       - name: Pruebas
         run: uv run pytest
+
+  ejecutar:
+    needs: calidad
+    runs-on: ubuntu-latest
+    env:
+      MLFLOW_TRACKING_URI: sqlite:///mlflow.db # MLflow local del runner: prueba también el registro
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Instalar dependencias (versiones exactas de uv.lock)
+        run: uv sync --locked
+      - name: Ejecutar el flujo completo (make pipeline)
+        run: make pipeline
+      - name: Resumen del campeón
+        run: |
+          uv run python - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          info = json.loads(Path("models/campeon.json").read_text(encoding="utf-8"))
+          cv = info["metricas_cv"]
+          print(f"## Campeón: {info['titulo']}")
+          print(f"PR-AUC {cv['pr_auc']:.3f} ± {cv['pr_auc_std']:.3f} · recall {cv['recall']:.0%} · "
+                f"precisión {cv['precision']:.0%} · MCC {cv['mcc']:.2f} ({info['filas']} asociados, foto a "
+                f"{info.get('horizonte_meses') or 0} meses)\n")
+          print("| Candidato | PR-AUC | ROC-AUC | MCC |\n|---|---|---|---|")
+          for nombre, m in info["candidatos"].items():
+              print(f"| {nombre} | {m['pr_auc']:.3f} | {m['roc_auc']:.3f} | {m['mcc']:.2f} |")
+          print("\nZonas en asociados nuevos: " + ", ".join(f"{z['zona']} {z['asociados']}" for z in info["zonas_nuevos"]))
+          EOF
+      - name: Guardar resultados
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultados
+          path: |
+            reports/figures/
+            reports/metrics/
+            models/
+          retention-days: 14

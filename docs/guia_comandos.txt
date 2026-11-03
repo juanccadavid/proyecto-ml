@@ -148,6 +148,13 @@
                            Gráfico: reports/figures/validacion_cruzada.html
      make regresion        regresión de ejemplo: estima el SALARIO con MAE, MSE, RMSE y R² (KFold),
                            contra la referencia de predecir el promedio. Experimento MLflow "salario".
+     make segmentos        no supervisado: KMeans (k por silueta) y DBSCAN (atípicos) sobre el
+                           comportamiento; perfil y tasa de retiro real de cada segmento.
+                           Mapa interactivo: reports/figures/segmentos.html. ej.: ARGS="--k 4"
+     make predecir         predice con el campeón guardado (zona, alerta, grupo) y escribe
+                           data/processed/predicciones.csv. ej.: make predecir DATA=data/raw/extracto.parquet
+     make pipeline         todo el flujo en orden: campeon, predecir, segmentos, validacion, regresion
+                           (es lo que corre el CI en cada push; los resultados quedan como artefacto)
      make datos-desarrollo los 2.000 asociados de desarrollo (semilla 7, 10 % de retiro) en data/processed/
      make optuna           Optuna afina Random Forest y HistGB (60 intentos por modelo, con poda), con
                            el preprocesamiento como hiperparámetro; compara por defecto vs. afinado con
