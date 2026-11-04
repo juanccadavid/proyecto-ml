@@ -511,7 +511,7 @@ def a_registros_db(df: pd.DataFrame, contrato: Contrato | None = None, origen: s
     contrato = contrato or cargar()
     registros = []
     for _, fila in df[contrato.nombres].iterrows():
-        reg = {"origen": origen}
+        reg: dict[str, str | int | None] = {"origen": origen}
         for c in contrato.columnas:
             v = fila[c.nombre]
             if pd.isna(v) or (isinstance(v, str) and not v.strip()):
@@ -552,7 +552,7 @@ def js(contrato: Contrato | None = None) -> str:
     for c in contrato.columnas:
         campo = {k: v for k, v in vars(c).items() if v not in (None, False) and k not in ("grupo", "pii")}
         grupos.setdefault(c.grupo, []).append({**campo, "db": c.db})
-    data = {"nombre": contrato.nombre, "version": contrato.version, "tabla_db": contrato.tabla_db}
+    data: dict[str, object] = {"nombre": contrato.nombre, "version": contrato.version, "tabla_db": contrato.tabla_db}
     data |= {"grupos": grupos}
     return (
         f"// Generado desde contratos/{contrato.nombre}.yaml. No editar a mano: make contrato-web\n"

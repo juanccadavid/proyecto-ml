@@ -33,7 +33,6 @@ Los afinados, Optuna y PyCaret son evidencia de experimentos (van a MLflow); el 
 from __future__ import annotations
 
 import json
-import warnings
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -45,19 +44,20 @@ from scipy import stats
 from sklearn.base import BaseEstimator, clone
 from sklearn.metrics import (
     average_precision_score,
-    brier_score_loss,
     cohen_kappa_score,
     confusion_matrix,
     matthews_corrcoef,
     precision_recall_curve,
     roc_auc_score,
-    roc_curve,
 )
 from sklearn.model_selection import StratifiedKFold, cross_val_predict
 from sklearn.utils.metaestimators import available_if
 from sklearn.utils.validation import check_is_fitted
 
 from proyecto_ml import abandono as a
+from proyecto_ml.datos_campeon import DatosInvalidos as DatosInvalidos
+from proyecto_ml.datos_campeon import datos_eleccion as datos_eleccion
+from proyecto_ml.datos_campeon import datos_exploracion as datos_exploracion
 from proyecto_ml.evaluate import compute_metrics
 from proyecto_ml.models import get_models
 
@@ -65,6 +65,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from sklearn.pipeline import Pipeline
+
+    from proyecto_ml.extractos import Extracto
 
 CRITERIO = "pr_auc"
 FOLDS = 5
@@ -85,88 +87,6 @@ TITULOS = {  # los 4 supervisados + los candidatos extra (lista_candidatos y --o
     "random_forest_optuna": "Random Forest (Optuna)",
     "hist_gb_optuna": "HistGB (Optuna)",
 }
-
-
-class DatosInvalidos(ValueError):
-    """El lote no cumple el contrato de datos: no se entrena con él."""
-
-
-def datos_eleccion(ruta: Path | None = None, origen: str | None = None) -> tuple[pd.DataFrame, str]:
-    """Los asociados con que se elige el campeón y de dónde salieron, según el origen (``config.origen_datos``).
-
-    - **sintetico** (por defecto): ``ruta``, o el archivo de ``make datos-desarrollo``, o los mismos 5.000
-      generados en memoria (Streamlit Community Cloud, CI).
-    - **real_anonimizado**: solo ``ruta`` (el extracto anonimizado). Nunca cae en los sintéticos: sin ``ruta``
-      falla, para no etiquetar como reales unos datos generados.
-
-    Todo archivo debe cumplir el contrato (``contrato.validar``); si no, ``DatosInvalidos``. Con datos reales el
-    mensaje no lleva valores ni filas de ejemplo (``contrato.sin_valores``). Los generados en memoria no se
-    validan aquí: el generador cumple el contrato por construcción (lo prueba tests/data).
-    """
-    from proyecto_ml import contrato
-    from proyecto_ml.config import ORIGEN_REAL, PROCESSED_DIR, origen_datos
-    from proyecto_ml.generador import NOMBRE_DESARROLLO, datos_desarrollo
-
-    origen = origen_datos(origen)
-    if origen == ORIGEN_REAL and ruta is None:
-        raise DatosInvalidos(
-            "ORIGEN_DATOS=real_anonimizado: indica el extracto anonimizado con --datos (make ... DATA=...). "
-            "En este modo no se usan datos sintéticos."
-        )
-    desarrollo = PROCESSED_DIR / f"{NOMBRE_DESARROLLO}.parquet"
-    if ruta is None and not desarrollo.exists():
-        # La misma limpieza que a.cargar aplica al leer el archivo: así los dos caminos dan los mismos datos.
-        return contrato.limpiar_extracto(datos_desarrollo()), "datos_desarrollo() en memoria"
-    archivo = ruta or desarrollo
-    df = a.cargar(archivo)
-    # Datos reales: el contrato del dataset ANONIMIZADO (sin PII, con seudónimos); sintéticos: el de origen.
-    exigido = contrato.para_ml() if origen == ORIGEN_REAL else contrato.cargar()
-    errores = contrato.validar(df, exigido)
-    for aviso in contrato.advertencias(df, exigido):  # heurísticas sin regla de negocio: se avisa, no se rechaza
-        warnings.warn(aviso, contrato.AdvertenciaContrato, stacklevel=2)
-    if origen == ORIGEN_REAL:  # fechas después del corte: FECHA_CORTE no es la del extracto y la foto queda corrida
-        for columna in ("FECHARETIRO", "FECHAULTACTUALIZACION", "FECHAINGRESOLABORA"):
-            if columna in df and (pd.to_datetime(df[columna], errors="coerce") > a.FECHA_CORTE).any():
-                errores.append(
-                    f"{columna} tiene fechas después de FECHA_CORTE ({a.FECHA_CORTE.date()}): pon en el .env "
-                    "FECHA_CORTE = la fecha de extracción del archivo"
-                )
-    if errores:
-        mostrar = contrato.sin_valores(errores) if origen == ORIGEN_REAL else errores
-        detalle = "\n".join(f"  - {e}" for e in mostrar[:10])
-        raise DatosInvalidos(
-            f"{archivo.name} no cumple el contrato de datos ({len(errores)} incumplimientos):\n{detalle}\n"
-            f"Revísalo con: make {'contrato-ml' if origen == ORIGEN_REAL else 'contrato'} DATA={archivo}"
-        )
-    return df, archivo.name
-
-
-def datos_exploracion(ruta: Path, script: str, limpiar: bool = True) -> pd.DataFrame:
-    """Los datos de los scripts EXPLORATORIOS (make abandono, afinar, optuna, pycaret), o ``DatosInvalidos``.
-
-    Esos scripts validan contra asociados "nuevos" del generador: solo tienen sentido con datos sintéticos. Con
-    ``ORIGEN_DATOS=real_anonimizado`` mezclarían orígenes (y registrarían en el experimento real de MLflow), así
-    que se niegan; la evaluación con datos reales es ``make campeon``. Con sintéticos, el archivo debe cumplir el
-    contrato de origen, igual que en ``datos_eleccion``.
-    """
-    from pathlib import Path
-
-    from proyecto_ml import contrato
-    from proyecto_ml.config import ORIGEN_REAL, origen_datos
-
-    if origen_datos() == ORIGEN_REAL:
-        raise DatosInvalidos(
-            f"{script} es exploratorio: compara contra asociados generados y solo tiene sentido con "
-            "ORIGEN_DATOS=sintetico. Con datos reales usa make campeon DATA=<extracto anonimizado>."
-        )
-    df = a.cargar(ruta, limpiar)
-    if errores := contrato.validar(df):
-        detalle = "\n".join(f"  - {e}" for e in errores[:10])
-        raise DatosInvalidos(
-            f"{Path(ruta).name} no cumple el contrato de datos ({len(errores)} incumplimientos):\n{detalle}\n"
-            f"Revísalo con: make contrato DATA={ruta}"
-        )
-    return df
 
 
 def lista_candidatos(X: pd.DataFrame | None = None, random_state: int = 42) -> dict[str, Pipeline]:
@@ -290,51 +210,130 @@ def umbrales_honestos(
 
 
 def validacion_temporal(
-    modelo: Pipeline,
+    candidatos: dict[str, Pipeline] | Pipeline,
     df: pd.DataFrame,
     horizonte_meses: int = a.HORIZONTE_MESES,
     meses_prueba: int | None = None,
     folds: int = FOLDS,
     beta: float = BETA,
     precision_min: float = PRECISION_MIN,
+    referencia: str | None = None,
 ) -> dict:
-    """Validación de afuera en el tiempo: entrena con la foto vieja y mide en la foto reciente, sin tocarla.
+    """Validación de afuera en el tiempo: elige y entrena con la foto vieja, y mide en la reciente sin tocarla.
 
     ``df`` es el extracto completo (antes de ``a.foto``). Con ``validacion.particion_temporal``:
 
-    1. foto vieja (``meses_prueba`` antes, por defecto ``horizonte_meses``): predicciones fuera de partición ->
-       ``elegir_umbrales``. El umbral sale SOLO de la foto vieja;
-    2. el modelo se entrena con toda la foto vieja;
-    3. se mide en la foto reciente con ese umbral fijo: ni el modelo ni el umbral vieron esas etiquetas.
+    1. foto vieja (``meses_prueba`` antes, por defecto ``horizonte_meses``): predicciones fuera de partición de
+       cada candidato -> gana la mayor PR-AUC (el mismo criterio de ``elegir``) -> ``elegir_umbrales``. La
+       elección y el umbral salen SOLO de la foto vieja (con un solo ``Pipeline``, no hay elección);
+    2. el ganador se entrena con toda la foto vieja;
+    3. se mide en la foto reciente con ese umbral fijo: ni la elección, ni el modelo, ni el umbral vieron esas
+       etiquetas.
 
-    Es la evaluación que vale con datos reales (no hay "asociados nuevos" del generador). Límite: con un solo
-    extracto, los conteos sin fecha (``a.CONTEOS_SIN_FECHA``) son los mismos números en las dos fotos; si se
-    midieron a la fecha de extracción, las dos tienen fuga. Ver ``config.temporalidad_confirmada``.
+    Con UN solo extracto es una **prueba de estrés, no una estimación fuera de tiempo**: las dos fotos son las
+    mismas personas con los mismos datos (solo EDAD y ANTIGUEDAD se corren ``meses_prueba``), y los retiros de la
+    foto reciente son asociados que en la vieja cuentan como activos. Mide qué pasa si la etiqueta y los conteos
+    sin fecha (``a.CONTEOS_SIN_FECHA``) no están alineados en el tiempo (ver ``config.temporalidad_confirmada``).
+    Una validación fuera de tiempo de verdad necesita extractos de fechas distintas. Además:
+
+    - la LISTA de candidatos y, con ``make campeon --optuna``, sus hiperparámetros se armaron mirando datos que
+      incluyen la foto reciente: eso no se repite aquí.
+
+    Con ``referencia`` (el nombre del campeón de ``make campeon``), ``"referencia"`` trae además las métricas de ESE
+    candidato con el mismo procedimiento (umbral de la foto vieja), para comparar: su elección no es ciega.
     """
     from proyecto_ml.validacion import particion_temporal
 
-    meses_prueba = meses_prueba or horizonte_meses
-    vieja, reciente = particion_temporal(df, horizonte_meses, meses_prueba)
-    Xv, yv = a.separar(vieja)
-    Xr, yr = a.separar(reciente)
-    for nombre, y in (("vieja", yv), ("reciente", yr)):
-        if int(y.sum()) < folds or int((y == 0).sum()) < folds:
-            raise ValueError(f"La foto {nombre} tiene menos de {folds} asociados en alguna clase: usa más datos.")
-    puntajes, _ = puntajes_fuera_de_particion(modelo, Xv, yv, folds, repeticiones=1)
-    umbrales = elegir_umbrales(yv, puntajes.mean(axis=0), beta, precision_min)
-    entrenado = clone(modelo).fit(Xv, yv)
-    metricas = compute_metrics(
-        yr, a.puntaje(entrenado, Xr), threshold=umbrales["umbral"], metodo=a.metodo_puntaje(entrenado)
-    )
+    vieja, reciente = particion_temporal(df, horizonte_meses, meses_prueba or horizonte_meses)
     return {
         "t0_entrenamiento": str(vieja[a.FECHA_OBSERVACION].iloc[0].date()),
         "t0_prueba": str(reciente[a.FECHA_OBSERVACION].iloc[0].date()),
-        "asociados_entrenamiento": len(vieja),
-        "retiros_entrenamiento": int(yv.sum()),
-        "asociados_prueba": len(reciente),
-        "retiros_prueba": int(yr.sum()),
-        "umbral": umbrales["umbral"],
-        **metricas,
+        **elegir_y_medir(candidatos, vieja, reciente, folds, beta, precision_min, referencia),
+    }
+
+
+def elegir_y_medir(
+    candidatos: dict[str, Pipeline] | Pipeline,
+    entrenamiento: pd.DataFrame,
+    prueba: pd.DataFrame,
+    folds: int = FOLDS,
+    beta: float = BETA,
+    precision_min: float = PRECISION_MIN,
+    referencia: str | None = None,
+) -> dict:
+    """El procedimiento ciego de ``validacion_temporal`` y ``validacion_fuera_de_tiempo``.
+
+    Con ``entrenamiento`` (una foto) y nada más: predicciones fuera de partición de cada candidato -> gana la mayor
+    PR-AUC -> ``elegir_umbrales`` -> se entrena con todo. Después se mide en ``prueba`` con ese umbral fijo.
+    """
+    if not isinstance(candidatos, dict):
+        candidatos = {"modelo": candidatos}
+    Xe, ye = a.separar(entrenamiento)
+    Xp, yp = a.separar(prueba)
+    for nombre, y in (("de entrenamiento", ye), ("de prueba", yp)):
+        if int(y.sum()) < folds or int((y == 0).sum()) < folds:
+            raise ValueError(f"La foto {nombre} tiene menos de {folds} asociados en alguna clase: usa más datos.")
+    oof = {n: puntajes_fuera_de_particion(m, Xe, ye, folds, repeticiones=1)[0][0] for n, m in candidatos.items()}
+    pr_auc_vieja = {n: float(average_precision_score(ye, p)) for n, p in oof.items()}
+    elegido = max(pr_auc_vieja, key=lambda n: pr_auc_vieja[n])
+
+    def medir(nombre: str) -> dict:
+        umbrales = elegir_umbrales(ye, oof[nombre], beta, precision_min)
+        entrenado = clone(candidatos[nombre]).fit(Xe, ye)
+        metodo = a.metodo_puntaje(entrenado)
+        return {
+            "umbral": umbrales["umbral"],
+            **compute_metrics(yp, a.puntaje(entrenado, Xp), umbrales["umbral"], metodo),
+        }
+
+    resultado = {
+        "elegido": elegido,
+        "pr_auc_vieja": pr_auc_vieja,
+        "asociados_entrenamiento": len(entrenamiento),
+        "retiros_entrenamiento": int(ye.sum()),
+        "asociados_prueba": len(prueba),
+        "retiros_prueba": int(yp.sum()),
+        **medir(elegido),
+    }
+    if referencia is not None and referencia in candidatos:
+        resultado["referencia"] = {"modelo": referencia, **medir(referencia)}
+    return resultado
+
+
+def validacion_fuera_de_tiempo(
+    candidatos: dict[str, Pipeline] | Pipeline,
+    extractos: list[Extracto],
+    horizonte_meses: int = a.HORIZONTE_MESES,
+    folds: int = FOLDS,
+    beta: float = BETA,
+    precision_min: float = PRECISION_MIN,
+    referencia: str | None = None,
+) -> dict:
+    """Validación fuera de tiempo con 3 o más extractos de fechas distintas (``extractos.Extracto``).
+
+    Pares consecutivos (E1 -> E2, E2 -> E3, ...): cada uno es una foto con las variables del extracto viejo,
+    medidas a SU fecha, y el objetivo del siguiente (``extractos.foto_entre_extractos``). Se entrena y se elige con
+    todos los pares menos el último y se mide en el último con ``elegir_y_medir``: la prueba usa variables y
+    etiquetas posteriores a todo lo que se usó para elegir. Es la validación que la prueba de estrés de un solo
+    extracto no puede dar; necesita extractos reales (docs/datos_reales.md).
+    """
+    from proyecto_ml import extractos as ex
+
+    ordenados = sorted(extractos, key=lambda e: e.fecha)
+    if len(ordenados) < 3:
+        raise ValueError(
+            f"Hacen falta al menos 3 extractos de fechas distintas (hay {len(ordenados)}): dos para entrenar con un "
+            "par y uno más para medir con el par siguiente."
+        )
+    pares = list(zip(ordenados, ordenados[1:], strict=False))
+    fotos = [ex.foto_entre_extractos(v, n, horizonte_meses) for v, n in pares]
+    entrenamiento, prueba = pd.concat(fotos[:-1], ignore_index=True), fotos[-1]
+    return {
+        "extractos": [f"{e.nombre} ({e.fecha.date()})" for e in ordenados],
+        "t0_entrenamiento": [str(v.fecha.date()) for v, _ in pares[:-1]],
+        "t0_prueba": str(pares[-1][0].fecha.date()),
+        "sin_seguimiento": [int(f.attrs.get("sin_seguimiento", 0)) for f in fotos],
+        **elegir_y_medir(candidatos, entrenamiento, prueba, folds, beta, precision_min, referencia),
     }
 
 
@@ -501,6 +500,8 @@ class Campeon:
     def comparacion(self) -> pd.DataFrame:
         """El campeón contra cada candidato: diferencia de PR-AUC, su intervalo, p y si es concluyente."""
         propio = self.candidatos[self.nombre].pr_auc_particion
+        if propio is None:  # campeón cargado de disco: no trae las particiones
+            return pd.DataFrame()
         folds = self.info.get("folds", FOLDS)
         filas = {
             n: comparar_particiones(propio, cand.pr_auc_particion, folds)
@@ -625,6 +626,25 @@ def guardar(campeon: Campeon, carpeta: Path, extra: dict | None = None) -> dict[
     return rutas
 
 
+def firma(carpeta: Path) -> str | None:
+    """Huella de los artefactos del campeón en ``carpeta`` (None si falta alguno): cambia cada vez que se guarda.
+
+    Contenido de ``campeon.json`` (trae la fecha de la elección y las métricas) + tamaño y fecha de modificación de
+    los dos .joblib. Sirve de llave de caché: el simulador vuelve a cargar el campeón justo cuando cambia, sin leer
+    ni deserializar los modelos en cada interacción.
+    """
+    import hashlib
+
+    rutas = [carpeta / ARCHIVO_MODELO, carpeta / ARCHIVO_GRUPOS, carpeta / ARCHIVO_INFO]
+    if not all(r.exists() for r in rutas):
+        return None
+    h = hashlib.sha256(rutas[2].read_bytes())
+    for ruta in rutas[:2]:
+        estado = ruta.stat()
+        h.update(f"{ruta.name}:{estado.st_size}:{estado.st_mtime_ns}".encode())
+    return h.hexdigest()[:16]
+
+
 def cargar(carpeta: Path):
     """(modelo, agrupador, info) desde ``carpeta``; None si falta alguno de los tres archivos.
 
@@ -638,59 +658,6 @@ def cargar(carpeta: Path):
     if not isinstance(modelo, ModeloZonas):
         modelo = ModeloZonas(modelo, info["umbral"], info["umbral_alto"])
     return modelo, joblib.load(rutas[1]), info
-
-
-def figura_umbrales(campeon: Campeon):
-    """Plotly: precisión y recall del campeón según el umbral (fuera de partición), con las tres zonas."""
-    import plotly.graph_objects as go
-
-    candidato = campeon.candidatos[campeon.nombre]
-    y = campeon.y
-    precision, recall, cortes = precision_recall_curve(y, candidato.promedio)
-    fig = go.Figure()
-    for valores, nombre, color in ((precision[:-1], "Precisión", "#2a78d6"), (recall[:-1], "Recall", "#eb6834")):
-        fig.add_scatter(
-            x=cortes,
-            y=valores,
-            name=nombre,
-            mode="lines",
-            line={"width": 2, "color": color},
-            hovertemplate=f"{nombre}=%{{y:.2f}}<br>umbral=%{{x:.3f}}<extra></extra>",
-        )
-    bajo, alto = float(cortes.min()), float(cortes.max())
-    tope = campeon.umbral_alto if campeon.umbral_alto is not None else alto
-    bandas = [("se queda", bajo, campeon.umbral), ("zona gris", campeon.umbral, tope)]
-    if campeon.umbral_alto is not None:
-        bandas.append(("se retira", campeon.umbral_alto, alto))
-    for (texto, x0, x1), opacidad in zip(bandas, (0.0, 0.08, 0.16), strict=False):
-        fig.add_vrect(
-            x0=x0,
-            x1=x1,
-            fillcolor="#6b7280",
-            opacity=opacidad,
-            line_width=0,
-            annotation_text=texto,
-            annotation_position="top left",
-        )
-    escala = "probabilidad" if campeon.metodo == "predict_proba" else "puntaje (distancia a la frontera)"
-    fig.update_layout(
-        title=f"Campeón: {TITULOS.get(campeon.nombre, campeon.nombre)} — precisión y recall según el umbral",
-        xaxis_title=f"Umbral ({escala})",
-        yaxis_title="",
-        yaxis_tickformat=".0%",
-        yaxis_range=[0, 1.05],
-        template="plotly_white",
-        hovermode="x unified",
-        legend={"orientation": "h", "y": -0.2},
-    )
-    return fig
-
-
-# ---------------------------------------------------------------- curva ROC y matriz de confusión del campeón
-
-# Paleta de referencia en orden fijo, un color por candidato (hasta 8: los de lista_candidatos y --optuna)
-_COLORES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"]
-_GRIS, _TINTA = "#898781", "#0b0b0b"
 
 
 def matrices_confusion(campeon: Campeon) -> dict[str, np.ndarray]:
@@ -707,180 +674,3 @@ def matrices_confusion(campeon: Campeon) -> dict[str, np.ndarray]:
         nombre: confusion_matrix(campeon.y, (puntaje >= corte).astype(int), labels=[0, 1])
         for nombre, corte in cortes.items()
     }
-
-
-def figura_confusion(campeon: Campeon):
-    """Plotly: un panel por umbral del campeón con el conteo y el % de su fila (en la fila 'se retira', el recall)."""
-    from plotly.subplots import make_subplots
-
-    matrices = matrices_confusion(campeon)
-    corte = {"alerta": campeon.umbral, "se retira": campeon.umbral_alto}
-    formato = ".1%" if campeon.metodo == "predict_proba" else "+.2f"
-    titulos = [f"Umbral {n} ({corte[n]:{formato}})" for n in matrices]
-    fig = make_subplots(rows=1, cols=len(matrices), subplot_titles=titulos, horizontal_spacing=0.12)
-    reales = ["se queda (0)", "se retira (1)"]
-    for k, (nombre, cm) in enumerate(matrices.items(), start=1):
-        por_fila = cm / np.maximum(cm.sum(axis=1, keepdims=True), 1)
-        predichas = ["sin alerta", "alerta"] if nombre == "alerta" else ["no 'se retira'", "se retira"]
-        celdas = [
-            [f"<b>{n}</b><br>{p:.1%} de la fila" for n, p in zip(fila, pf, strict=True)]
-            for fila, pf in zip(cm, por_fila, strict=True)
-        ]
-        fig.add_heatmap(
-            z=por_fila,
-            x=predichas,
-            y=reales,
-            text=celdas,
-            texttemplate="%{text}",
-            customdata=cm,
-            colorscale=[[0, "#cde2fb"], [1, "#104281"]],  # azul secuencial de la paleta, claro -> oscuro
-            zmin=0,
-            zmax=1,
-            showscale=False,
-            xgap=2,
-            ygap=2,
-            hovertemplate="real: %{y}<br>predicción: %{x}<br>%{customdata} asociados (%{z:.1%} de la fila)"
-            "<extra></extra>",
-            row=1,
-            col=k,
-        )
-        fig.update_xaxes(title_text="Predicción", side="bottom", row=1, col=k)
-    fig.update_yaxes(title_text="Real", autorange="reversed", row=1, col=1)
-    fig.update_yaxes(autorange="reversed")
-    fig.update_layout(
-        title=f"Campeón: {TITULOS.get(campeon.nombre, campeon.nombre)} — matriz de confusión "
-        f"(fuera de partición, n={len(campeon.y)})<br><sup>El umbral se eligió con estas mismas predicciones: "
-        "las cifras son optimistas (la validación anidada está en campeon.json, umbrales_honestos)</sup>",
-        template="plotly_white",
-        height=420,
-        width=440 * len(matrices) + 80,
-        font={"color": _TINTA},
-    )
-    return fig
-
-
-def figura_roc(campeon: Campeon):
-    """Plotly: curva ROC fuera de partición de cada candidato, con los umbrales del campeón marcados.
-
-    Eje x: falsos positivos entre los que se quedan (1 − especificidad); eje y: recall. La diagonal es el azar
-    (AUC 0,5). Con pocos retiros el AUC se ve alto aunque muchas alertas sean falsas: por eso el criterio es
-    la PR-AUC y esta curva se lee junto con la de precisión y recall (``figura_umbrales``).
-    """
-    import plotly.graph_objects as go
-
-    y = campeon.y
-    fig = go.Figure()
-    fig.add_scatter(
-        x=[0, 1], y=[0, 1], mode="lines", name="azar (AUC 0,50)", line={"color": _GRIS, "width": 1, "dash": "dot"}
-    )
-    for i, (nombre, candidato) in enumerate(campeon.candidatos.items()):
-        color = _COLORES[i % len(_COLORES)]
-        fpr, tpr, cortes = roc_curve(y, candidato.promedio)
-        es_campeon = nombre == campeon.nombre
-        titulo = TITULOS.get(nombre, nombre)
-        fig.add_scatter(
-            x=fpr,
-            y=tpr,
-            customdata=cortes,
-            mode="lines",
-            name=f"{titulo}{' (campeón)' if es_campeon else ''} · AUC {roc_auc_score(y, candidato.promedio):.3f}",
-            line={"color": color, "width": 3 if es_campeon else 2},
-            opacity=1 if es_campeon else 0.6,
-            hovertemplate=f"{titulo}<br>falsos positivos=%{{x:.1%}}<br>recall=%{{y:.1%}}<br>umbral=%{{customdata:.3f}}"
-            "<extra></extra>",
-        )
-    puntaje = campeon.candidatos[campeon.nombre].promedio
-    negativos, positivos = max(int((y == 0).sum()), 1), max(int((y == 1).sum()), 1)
-    umbrales = {"alerta (zona gris)": (campeon.umbral, "circle")}
-    if campeon.umbral_alto is not None:
-        umbrales["se retira"] = (campeon.umbral_alto, "diamond")
-    for texto, (corte, simbolo) in umbrales.items():
-        alerta = puntaje >= corte
-        fpr, tpr = (alerta & (y == 0)).sum() / negativos, (alerta & (y == 1)).sum() / positivos
-        fig.add_scatter(
-            x=[fpr],
-            y=[tpr],
-            mode="markers",
-            name=f"umbral {texto}",
-            marker={"size": 12, "symbol": simbolo, "color": _COLORES[0], "line": {"color": "#fcfcfb", "width": 2}},
-            hovertemplate=f"umbral {texto} = {corte:.3f}<br>falsos positivos=%{{x:.1%}}<br>recall=%{{y:.1%}}"
-            "<extra></extra>",
-        )
-    fig.update_layout(
-        title="Curva ROC fuera de partición (cada asociado puntuado por un modelo que no lo vio)",
-        xaxis={
-            "title": "Falsos positivos (de los que se quedan, % con alerta)",
-            "tickformat": ".0%",
-            "range": [0, 1],
-            "gridcolor": "#e1e0d9",
-        },
-        yaxis={
-            "title": "Recall (de los que se retiran, % con alerta)",
-            "tickformat": ".0%",
-            "range": [0, 1.02],
-            "gridcolor": "#e1e0d9",
-        },
-        template="plotly_white",
-        height=620,
-        width=720,
-        legend={"x": 0.98, "y": 0.02, "xanchor": "right", "yanchor": "bottom"},
-        font={"color": _TINTA},
-    )
-    return fig
-
-
-CORTES_CALIBRACION = (0, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 0.9, 1)  # finos cerca de 0: casi todos están ahí
-
-
-def tabla_calibracion(y, puntaje, cortes=CORTES_CALIBRACION) -> pd.DataFrame:
-    """Por grupo de probabilidad: asociados, probabilidad media del modelo y retiro real (sin grupos vacíos).
-
-    Con un 2 % de retiro casi todas las probabilidades están cerca de 0: los deciles quedarían todos ahí y la
-    curva tendría dos puntos. Por eso los cortes son fijos y más finos abajo.
-    """
-    datos = pd.DataFrame({"y": np.asarray(y), "p": np.asarray(puntaje)})
-    grupo = pd.cut(datos["p"], bins=list(cortes), include_lowest=True)
-    tabla = datos.groupby(grupo, observed=True).agg(asociados=("y", "size"), predicho=("p", "mean"), real=("y", "mean"))
-    return tabla[tabla["asociados"] > 0]
-
-
-def figura_calibracion(campeon: Campeon):
-    """Plotly: curva de calibración del campeón (fuera de partición). None si el puntaje no es una probabilidad.
-
-    Compara la probabilidad media que da el modelo en cada grupo (``tabla_calibracion``) con la tasa de retiro
-    real del grupo: sobre la diagonal, el "30 %" del modelo es un 30 % de verdad. Un modelo puede ordenar bien
-    (PR-AUC alta) y aun así exagerar o subestimar la probabilidad; el Brier lo resume.
-    """
-    import plotly.graph_objects as go
-
-    if campeon.metodo != "predict_proba":
-        return None
-    puntaje, y = campeon.candidatos[campeon.nombre].promedio, campeon.y
-    tabla = tabla_calibracion(y, puntaje)
-    fig = go.Figure()
-    fig.add_scatter(
-        x=[0, 1], y=[0, 1], mode="lines", name="calibración perfecta", line={"color": _GRIS, "width": 1, "dash": "dot"}
-    )
-    fig.add_scatter(
-        x=tabla["predicho"],
-        y=tabla["real"],
-        customdata=np.column_stack([tabla["asociados"], tabla.index.astype(str)]),
-        mode="lines+markers",
-        name=f"{TITULOS.get(campeon.nombre, campeon.nombre)} (Brier {brier_score_loss(y, puntaje):.4f})",
-        line={"color": _COLORES[0], "width": 2},
-        # punto más grande = más asociados en el grupo: los grupos chicos (los del medio) son los más ruidosos
-        marker={"size": 8 + 16 * np.sqrt(tabla["asociados"] / tabla["asociados"].max()), "line": {"color": "#fcfcfb"}},
-        hovertemplate="grupo %{customdata[1]} · %{customdata[0]} asociados<br>probabilidad media del modelo=%{x:.1%}"
-        "<br>retiro real del grupo=%{y:.1%}<extra></extra>",
-    )
-    fig.update_layout(
-        title="Calibración del campeón (fuera de partición)",
-        xaxis={"title": "Probabilidad que da el modelo", "tickformat": ".0%", "gridcolor": "#e1e0d9"},
-        yaxis={"title": "Retiro real en ese grupo", "tickformat": ".0%", "gridcolor": "#e1e0d9"},
-        template="plotly_white",
-        height=560,
-        width=700,
-        legend={"x": 0.02, "y": 0.98},
-        font={"color": _TINTA},
-    )
-    return fig

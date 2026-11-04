@@ -113,7 +113,7 @@
      make supabase-bajar   baja la tabla de Supabase a data/raw/ (valida; ver sección 7.6)
      make formulario       abre el formulario web (sesión del equipo con correo y contraseña + Enviar)
                            En internet: https://juanccadavid.github.io/proyecto-ml/formulario.html (Pages; se
-                           publica solo al fusionar cambios de web/ en main. Ver README.)
+                           publica solo al fusionar cambios de web/ en main. Ver docs/contrato_y_supabase.md.)
 
  3.3 Modelos
      make abandono         Ridge, logística, Random Forest (bagging), HistGB (boosting) y KMeans,
@@ -142,6 +142,9 @@
                            Con el extracto real: ORIGEN_DATOS=real_anonimizado en el .env y
                            make campeon DATA=data/raw/extracto_anon.parquet (exige el contrato, sin nuevos ni
                            escenarios del generador; MLflow aparte: experimento y modelo abandono_real)
+     make fuera-de-tiempo EXTRACTOS="a.parquet:2026-04-30 b.parquet:2026-07-31 c.parquet:2026-10-31"
+                           validación fuera de tiempo de verdad: 3+ extractos reales de fechas distintas
+                           (variables del viejo, etiqueta del siguiente). Requisitos: docs/datos_reales.md
      make tecnicas         compara técnicas de preprocesamiento: SMOTE/ADASYN, imputadores (KNN, iterativo,
                            indicador), encoders (ordinal, target), escaladores, variables nuevas, binning,
                            PCA y RFE (PR-AUC en CV) + correlación de variables. ej.: ARGS="--clasificador hist_gb"
@@ -173,14 +176,16 @@
      make simulador        simulador del abandono con el campeón en http://localhost:8501 (make campeon antes)
 
  3.4 Calidad (antes de abrir un PR: make check)
-     make check            lint + todas las pruebas
+     make check            lint + tipos (mypy) + todas las pruebas
+     make tipos            revisa los tipos del paquete con mypy
      make test             todas las pruebas          make test-fast   sin las lentas
      make lint             revisa estilo              make format      lo corrige solo
      make cov              pruebas con cobertura      make hooks       todos los hooks de pre-commit
      make secrets          busca claves filtradas con gitleaks
 
  3.5 Otros
-     make up / down / logs     Docker (app + MLflow)
+     make up / down / logs     Docker (simulador + MLflow)
+     make docker-campeon       elige el campeón dentro de Docker (escribe models/ y reports/)
      make salt                 genera ANON_SALT para anonimizar (va al .env, no se comparte)
      make anonimizar DATA=extracto.xlsx SALIDA=data/raw/extracto_anon.parquet
                                anonimiza según el contrato (pii: eliminar / seudonimizar). Lo corre el
@@ -404,7 +409,7 @@
      ...editar código en src/ + su prueba en tests/  # 3. trabajar
      make contrato                                  #    (si tocaste datos o el contrato)
      make abandono                                  #    (si tocaste modelos)
-     make check                                     # 4. lint + pruebas en verde
+     make check                                     # 4. lint + tipos + pruebas en verde
      git add <archivos> && git commit -m "feat: ..."
      git push -u origin feature/juan-<tema>         # 5. subir
      gh pr create --base main --fill                # 6. PR -> CI en verde -> revisión -> merge

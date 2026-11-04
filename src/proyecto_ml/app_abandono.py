@@ -66,8 +66,10 @@ st.set_page_config(page_title="Simulador de abandono", page_icon="🏦", layout=
 
 
 @st.cache_resource
-def cargar_campeon(carpeta: Path):
-    return c.cargar(carpeta)
+def cargar_campeon(carpeta: Path, firma: str | None):
+    """El campeón guardado. ``firma`` (``campeon.firma``) es parte de la llave: después de ``make campeon`` cambia
+    y se carga el nuevo, sin reiniciar la app. Sin campeón (``firma`` None), None."""
+    return c.cargar(carpeta) if firma is not None else None
 
 
 @st.cache_resource(show_spinner="Eligiendo el modelo campeón (una sola vez)...")
@@ -102,8 +104,11 @@ def cargar_referencia(horizonte: int | None, origen: str = ORIGEN_SINTETICO, rut
 
 
 @st.cache_resource(show_spinner="Preparando la explicación (SHAP)...")
-def explicador(_modelo, horizonte: int | None, origen: str = ORIGEN_SINTETICO, ruta: str | None = None) -> e.Explicador:
-    """SHAP del campeón frente a los asociados de referencia (``_modelo``: Streamlit no lo usa como llave)."""
+def explicador(
+    _modelo, firma: str | None, horizonte: int | None, origen: str = ORIGEN_SINTETICO, ruta: str | None = None
+) -> e.Explicador:
+    """SHAP del campeón frente a los asociados de referencia. ``_modelo`` no es llave (Streamlit no lo puede
+    hashear); ``firma`` sí: otro campeón, otra explicación."""
     return e.Explicador(_modelo, cargar_referencia(horizonte, origen, ruta))
 
 
@@ -120,15 +125,15 @@ def rango(serie: pd.Series, paso: float) -> tuple[float, float]:
     return max(float(bajo), 0.0), float(np.ceil(serie.max() / paso) * paso + paso)
 
 
-def control(columna: str, referencia: pd.DataFrame):
+def control(columna: str, referencia: pd.DataFrame) -> float | int | str:
     """Widget de una variable: número (continuas), slider (conteos), radio o lista (categorías)."""
     serie, etiqueta = referencia[columna], ETIQUETAS.get(columna, columna)
     if columna in a.CATEGORICAS:
         opciones = sorted(serie.dropna().unique())
-        inicial = opciones.index(serie.mode().iloc[0])
+        moda = opciones.index(serie.mode().iloc[0])
         if len(opciones) <= 3:
-            return st.radio(etiqueta, opciones, index=inicial, horizontal=True, key=columna)
-        return st.selectbox(etiqueta, opciones, index=inicial, key=columna)
+            return st.radio(etiqueta, opciones, index=moda, horizontal=True, key=columna)
+        return st.selectbox(etiqueta, opciones, index=moda, key=columna)
     if columna in CONTINUAS:
         paso = CONTINUAS[columna]
         bajo, alto = rango(serie, paso)
@@ -144,7 +149,8 @@ def formato_puntaje(puntaje: float, metodo: str) -> str:
 
 
 try:
-    guardado = cargar_campeon(MODELS_DIR)
+    firma_campeon = c.firma(MODELS_DIR)
+    guardado = cargar_campeon(MODELS_DIR, firma_campeon)
 except Exception as error:  # archivo a medias o de otra versión: mensaje claro, sin traceback ni rutas
     st.error(
         f"No se pudo leer el campeón de `models/` ({type(error).__name__}). Vuelve a correr `make campeon`, o borra "
@@ -242,7 +248,7 @@ with st.sidebar:
             st.session_state.pop(columna, None)
         st.rerun()
 
-valores: dict[str, object] = {}
+valores: dict[str, float | int | str] = {}
 izquierda, derecha = st.columns(2)
 with izquierda:
     valores["EDAD"] = control("EDAD", referencia)
@@ -265,7 +271,10 @@ for col, columna in zip(columnas, UBICACION, strict=True):
     with col:
         valores[columna] = control(columna, referencia)
 
-if valores["EDAD"] - valores["ANTIGUEDAD"] < 18:  # regla mayor_de_edad_al_ingreso del contrato
+# Regla mayor_de_edad_al_ingreso del contrato, con la tolerancia de los pasos de los controles (la edad va en años
+# enteros y la antigüedad en medios años: 26,9 años con 9 de antigüedad se ingresa como 26 y 9).
+edad, antiguedad = float(valores["EDAD"]), float(valores["ANTIGUEDAD"])  # number_input: siempre números
+if edad - antiguedad < 18 - CONTINUAS["EDAD"] - CONTINUAS["ANTIGUEDAD"]:
     st.error(
         f"Combinación imposible: con {valores['EDAD']} años y {valores['ANTIGUEDAD']} de antigüedad habría ingresado "
         "antes de los 18 (el contrato lo exige). Baja la antigüedad o sube la edad."
@@ -286,7 +295,7 @@ getattr(st, tipo)(texto)
 
 # ---- SHAP: de dónde sale el puntaje de este asociado
 st.subheader("¿Por qué este puntaje?")
-explicacion = explicador(modelo, info.get("horizonte_meses"), origen, ruta_ref)
+explicacion = explicador(modelo, firma_campeon or "en_memoria", info.get("horizonte_meses"), origen, ruta_ref)
 tabla = explicacion.explicar(asociado)
 st.plotly_chart(e.figura_explicacion(tabla, explicacion.base, metodo, etiquetas=ETIQUETAS), width="stretch", key="shap")
 st.caption(
@@ -340,8 +349,12 @@ st.caption(
 
 st.subheader("¿Y si cambia una sola variable?")
 variable = st.selectbox(
-    "Variable", a.NUMERICAS, index=a.NUMERICAS.index("#INTENCIONRETIROS_ULT3MESES"), format_func=ETIQUETAS.get
+    "Variable",
+    a.NUMERICAS,
+    index=a.NUMERICAS.index("#INTENCIONRETIROS_ULT3MESES"),
+    format_func=lambda v: ETIQUETAS.get(v, v),  # sin etiqueta, el nombre de la columna (nunca "None")
 )
+assert variable is not None  # con index fijo, selectbox siempre devuelve una opción
 if variable in CONTINUAS:
     bajo, alto = rango(referencia[variable], CONTINUAS[variable])
     malla = np.linspace(bajo, alto, 60)
@@ -355,14 +368,17 @@ fig = px.line(
     y="puntaje",
     markers=variable not in CONTINUAS,
     labels={
-        variable: ETIQUETAS[variable],
+        variable: ETIQUETAS.get(variable, variable),
         "puntaje": etiqueta,
     },
     color_discrete_sequence=["#2a78d6"],
 )
-fig.add_hline(y=umbral, line_dash="dash", line_color="#6b7280", annotation_text="zona gris")
-if umbral_alto is not None:
-    fig.add_hline(y=umbral_alto, line_dash="dash", line_color="#6b7280", annotation_text="se retira")
+if umbral_alto is not None and umbral_alto <= umbral:  # sin zona gris: una sola línea (como el texto de arriba)
+    fig.add_hline(y=umbral, line_dash="dash", line_color="#6b7280", annotation_text="se retira")
+else:
+    fig.add_hline(y=umbral, line_dash="dash", line_color="#6b7280", annotation_text="zona gris")
+    if umbral_alto is not None:
+        fig.add_hline(y=umbral_alto, line_dash="dash", line_color="#6b7280", annotation_text="se retira")
 fig.add_scatter(
     x=[valores[variable]],
     y=[puntaje],

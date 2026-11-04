@@ -7,7 +7,7 @@
    Prefijos: `feature/`, `fix/`, `eda/`, `docs/`, `chore/` (configuración, mantenimiento), `test/`.
 3. Commits pequeños con mensajes en formato *Conventional Commits*:
    `feat: agrega PCA al preprocesador`, `fix: corrige fuga en split temporal`, `docs: ...`, `test: ...`.
-4. Antes de subir: `make lint test` (o `uv run ruff check . && uv run pytest`). El CI de GitHub corre lo mismo
+4. Antes de subir: `make check` (lint + tipos + pruebas; o `uv run ruff check . && uv run mypy && uv run pytest`). El CI de GitHub corre lo mismo
    (y además `make pipeline`) en cada push a cualquier rama, así que el PR muestra el resultado del último
    push; si queda en rojo, no se hace merge.
 5. `git push -u origin <rama>` y abre un Pull Request hacia `main`.

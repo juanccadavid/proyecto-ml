@@ -10,6 +10,11 @@ ifeq ($(OS),Windows_NT)
   endif
 endif
 
+# Modo UTF-8 de Python en todas las recetas. En Windows, con la salida redirigida (make campeon > log.txt, o a
+# una tubería) Python escribe con la página de códigos del sistema (cp1252) y falla con caracteres como − o ≥.
+# En Linux/macOS (CI, Docker) ya es UTF-8: no cambia nada.
+export PYTHONUTF8 := 1
+
 UV  := uv
 PY  := $(UV) run python
 RUN := $(UV) run
@@ -26,9 +31,9 @@ ARGS ?=
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup setup-hf demo-data demo train train-hf abandono campeon tecnicas validacion regresion segmentos predecir pipeline pycaret afinar optuna mlflow-ui app \
+.PHONY: help setup setup-hf demo-data demo train train-hf abandono campeon fuera-de-tiempo tecnicas validacion regresion segmentos predecir pipeline pycaret afinar optuna mlflow-ui app \
         simulador ejemplo datos-desarrollo contrato contrato-ml anonimizar contrato-sql contrato-web supabase-subir supabase-bajar supabase-crear formulario \
-        test test-fast cov lint format check hooks secrets up down logs salt bundle clean clean-all
+        test test-fast cov lint tipos format check hooks secrets up docker-campeon down logs salt bundle clean clean-all
 
 # ==============================================================================
 help: ## Muestra los objetivos disponibles
@@ -77,6 +82,9 @@ afinar: ## Busca los mejores hiperparámetros de Ridge y pycaret_lr (GridSearchC
 
 campeon: ## Elige el modelo campeón (PR-AUC en CV repetida), su umbral y zonas; lo registra en MLflow
 	$(PY) scripts/elegir_campeon.py $(if $(DATA),--datos $(DATA)) $(ARGS)
+
+fuera-de-tiempo: ## Validación fuera de tiempo con 3+ extractos de fechas distintas: EXTRACTOS="a.parquet:2026-04-30 ..."
+	$(PY) scripts/validacion_fuera_de_tiempo.py $(foreach e,$(EXTRACTOS),--extracto $(e)) $(ARGS)
 
 tecnicas: ## Compara técnicas de preprocesamiento (SMOTE/ADASYN, imputadores, encoders, escaladores, PCA, RFE...)
 	$(PY) scripts/tecnicas_preprocesamiento.py $(ARGS)
@@ -172,7 +180,10 @@ format: ## Formatea y corrige automáticamente con ruff
 	$(RUN) ruff check --fix .
 	$(RUN) ruff format .
 
-check: lint test ## Lint + pruebas (lo mínimo antes de abrir un PR)
+tipos: ## Revisa los tipos del paquete con mypy (src/proyecto_ml)
+	$(RUN) mypy
+
+check: lint tipos test ## Lint + tipos + pruebas (lo mínimo antes de abrir un PR)
 
 hooks: ## Corre todos los hooks de pre-commit sobre el repo completo
 	$(RUN) pre-commit run --all-files
@@ -183,11 +194,14 @@ secrets: ## Escanea secretos con gitleaks en todo el repo
 # ==============================================================================
 # Docker
 # ==============================================================================
-up: ## Levanta app (:8501) y MLflow (:5000) con Docker
+up: ## Levanta el simulador (:8501) y MLflow (:5000) con Docker
 	docker compose up --build -d
 
-down: ## Apaga los contenedores
-	docker compose down --remove-orphans
+docker-campeon: ## Elige el campeón dentro de Docker (escribe models/ y reports/; ARGS=... como make campeon)
+	GIT_COMMIT="$$(git rev-parse HEAD 2>/dev/null)" CAMPEON_ARGS="$(ARGS)" docker compose --profile pipeline run --rm --build campeon
+
+down: ## Apaga los contenedores (los datos de MLflow siguen en su volumen)
+	docker compose --profile pipeline down --remove-orphans
 
 logs: ## Muestra los logs de los contenedores
 	docker compose logs -f

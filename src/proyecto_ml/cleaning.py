@@ -20,7 +20,8 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -101,7 +102,7 @@ def coerce_numeric(
     """
     df = df.copy()
     explicit = columns is not None
-    for col in columns if explicit else _text_columns(df):
+    for col in columns if columns is not None else _text_columns(df):
         raw = df[col].astype("string")
         s = raw.str.replace(r"[\s$%€]", "", regex=True)
         if thousands:
@@ -175,7 +176,7 @@ def clean_dataset(
     Ojo: si ``normalize_names=True``, los nombres de ``numeric_columns``, ``date_columns`` y
     ``duplicate_subset`` deben escribirse ya normalizados (ej. ``"fecha_afiliacion"``).
     """
-    steps = []
+    steps: list[tuple[str, Callable[..., pd.DataFrame], dict[str, Any]]] = []
     if normalize_names:
         steps.append(("nombres de columnas", normalize_column_names, {}))
     steps += [

@@ -9,6 +9,7 @@ from sklearn.model_selection import StratifiedKFold, cross_validate
 
 from proyecto_ml import abandono as a
 from proyecto_ml import campeon as c
+from proyecto_ml import campeon_figuras as cf
 from proyecto_ml import config
 from proyecto_ml import contrato as k
 from proyecto_ml import registro as r
@@ -146,11 +147,11 @@ def test_calibracion_y_metricas_del_campeon(foto):
     elegido = c.elegir(foto, folds=3, repeticiones=1, honestos=False)
     m = elegido.candidatos[elegido.nombre].metricas
     assert {"f2", "specificity", "balanced_accuracy", "precision_at_10pct", "brier"} <= m.keys()
-    figura = c.figura_calibracion(elegido)
+    figura = cf.figura_calibracion(elegido)
     if elegido.metodo == "predict_proba":
         assert figura is not None and "Brier" in figura.data[1].name
     ridge = c.elegir(foto, candidatos={"ridge": a.modelo_ridge()}, folds=3, repeticiones=1, honestos=False)
-    assert c.figura_calibracion(ridge) is None and np.isnan(ridge.candidatos["ridge"].metricas["brier"])
+    assert cf.figura_calibracion(ridge) is None and np.isnan(ridge.candidatos["ridge"].metricas["brier"])
 
 
 def test_reproducible(foto):

@@ -1,9 +1,13 @@
-# Uso: docker compose up --build   ->  App: http://localhost:8501   MLflow: http://localhost:5000
+# Uso:
+#   docker compose up --build                              ->  simulador :8501 + MLflow :5000
+#   docker compose --profile pipeline run --rm campeon     ->  elige el campeón (escribe models/ y reports/)
+# Responsabilidades separadas: "campeon" entrena y es el único que escribe models/; "app" solo lee el campeón.
+# Linux: models/ y reports/ deben ser escribibles por el uid 1000 (appuser): sudo chown -R 1000 models reports
 services:
   app:
     build: .
     image: proyecto-ml:latest
-    # El simulador del abandono (con el campeón de models/; si no está, lo elige al arrancar).
+    # El simulador del abandono con el campeón de models/; si no hay, lo elige al abrir (datos sintéticos).
     command: streamlit run src/proyecto_ml/app_abandono.py --server.address=0.0.0.0 --server.port=8501 --server.headless=true
     ports:
       - "8501:8501"
@@ -12,25 +16,59 @@ services:
         required: false
     environment:
       MLFLOW_TRACKING_URI: http://mlflow:5000
+      STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
     volumes:
-      - ./models:/app/models:ro   # el campeón (abandono_campeon.joblib + campeon.json)
-      - ./data:/app/data:ro       # datos locales, solo lectura
-    depends_on:
-      - mlflow
+      - ./models:/app/models:ro   # el campeón (abandono_campeon.joblib + campeon.json): solo lectura
+      - ./data:/app/data:ro       # datos locales: solo lectura
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    restart: unless-stopped
 
   mlflow:
     image: proyecto-ml:latest
+    # Sirve también los artefactos (--artifacts-destination): los clientes de otros contenedores los suben por
+    # HTTP en vez de escribir en una ruta local que no tienen.
     command: >
       mlflow server
       --backend-store-uri sqlite:////mlflow/mlflow.db
-      --default-artifact-root /mlflow/artifacts
+      --artifacts-destination /mlflow/artifacts
       --host 0.0.0.0 --port 5000
       --allowed-hosts mlflow:5000,localhost:5000,127.0.0.1:5000
     ports:
       - "5000:5000"
-    user: root
     volumes:
-      - mlflow_data:/mlflow
+      - mlflow_data:/mlflow       # experimentos y artefactos persisten entre reinicios
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 6
+    restart: unless-stopped
+
+  campeon:
+    build: .
+    image: proyecto-ml:latest
+    profiles: ["pipeline"]        # no arranca con "up": se corre a pedido
+    # CAMPEON_ARGS: opciones de make campeon (ej. "--datos data/raw/anon.parquet" o "--repeticiones 1").
+    command: python scripts/elegir_campeon.py ${CAMPEON_ARGS:-}
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      GIT_COMMIT: ${GIT_COMMIT:-}  # la imagen no lleva .git: el commit llega de afuera (make docker-campeon, CI)
+    volumes:
+      - ./models:/app/models      # escribe el campeón
+      - ./reports:/app/reports    # figuras y métricas
+      - ./data:/app/data:ro
+    depends_on:
+      mlflow:
+        condition: service_healthy
 
 volumes:
   mlflow_data:

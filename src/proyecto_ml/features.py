@@ -6,6 +6,8 @@ min-max, max-abs, robusto, normalizer), codificación (OneHot, ordinal, target),
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
@@ -112,7 +114,7 @@ def build_preprocessor(
     recortar = []
     # Con clip_columns solo se recortan esas (aunque el binning las tome todas: los conteos nunca se recortan).
     solo_algunas = bool(clip_outliers and clip_columns)
-    if solo_algunas:
+    if clip_outliers and clip_columns:
         sobran = sorted(set(clip_columns) - set(numeric) - set(binear))
         if sobran:
             raise ValueError(f"clip_columns deben ser numéricas: {sobran}")
@@ -212,8 +214,8 @@ class Preprocesador(TransformerMixin, BaseEstimator):
 
     def __init__(
         self,
-        numeric: list[str] = (),
-        categorical: list[str] = (),
+        numeric: Sequence[str] = (),
+        categorical: Sequence[str] = (),
         numeric_strategy: str = "median",
         encoding: str = "onehot",
         clip_outliers: str | None = None,

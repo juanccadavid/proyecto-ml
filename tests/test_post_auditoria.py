@@ -13,6 +13,7 @@ from streamlit.testing.v1 import AppTest
 
 from proyecto_ml import abandono as a
 from proyecto_ml import campeon as c
+from proyecto_ml import campeon_figuras as cf
 from proyecto_ml import config
 from proyecto_ml import registro as r
 from proyecto_ml.figuras import MARCA, marcar_origen
@@ -121,7 +122,7 @@ def test_umbrales_iguales_una_sola_matriz(elegido):
     iguales.umbral_alto = iguales.umbral
     matrices = c.matrices_confusion(iguales)
     assert list(matrices) == ["alerta"]
-    assert len(c.figura_confusion(iguales).data) == 1
+    assert len(cf.figura_confusion(iguales).data) == 1
     distintos = copy.copy(elegido)
     distintos.umbral_alto = elegido.umbral + 0.1
     assert list(c.matrices_confusion(distintos)) == ["alerta", "se retira"]

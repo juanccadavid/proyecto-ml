@@ -5,6 +5,7 @@
 
 # Datos y artefactos (se montan como volumen, nunca dentro de la imagen)
 data/
+models/
 mlflow.db*
 mlruns/
 mlartifacts/

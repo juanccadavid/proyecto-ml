@@ -23,6 +23,7 @@ cancelaciones y declaran intención de retiro. Un objetivo aleatorio no le ense�
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TypedDict
 
 import numpy as np
 import pandas as pd
@@ -31,12 +32,19 @@ from proyecto_ml.config import DATA_DIR
 
 CARPETA_EJEMPLO = DATA_DIR / "ejemplo"
 
+
 # Datos de desarrollo: 5.000 asociados (semilla 7) con 10 % de retiro, más cerca de un fondo real que el
 # 30 % por defecto. Con ellos se elige el campeón; los 50 de data/ejemplo quedan para el contrato y las
 # pruebas. ``make datos-desarrollo`` los escribe en data/processed/ y el simulador los genera en memoria
 # cuando no hay archivo (Streamlit Community Cloud): mismos parámetros, mismos datos. Son 5.000 y no 2.000
 # porque la foto a 3 meses deja ~105 retiros; con 2.000 eran 40 y el umbral alto se apoyaba en ~31 aciertos.
-DESARROLLO = {"n": 5000, "seed": 7, "tasa_retiro": 0.1}
+class Desarrollo(TypedDict):
+    n: int
+    seed: int
+    tasa_retiro: float
+
+
+DESARROLLO: Desarrollo = {"n": 5000, "seed": 7, "tasa_retiro": 0.1}
 NOMBRE_DESARROLLO = "asociados_desarrollo"
 
 # Apellidos evidentemente ficticios para que nadie confunda un registro con una persona real.

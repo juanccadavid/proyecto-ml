@@ -6,6 +6,7 @@ import pytest
 
 from proyecto_ml import abandono as a
 from proyecto_ml import campeon as c
+from proyecto_ml import campeon_figuras as cf
 from proyecto_ml.generador import GeneradorAsociados
 
 
@@ -77,7 +78,7 @@ def test_guardar_y_cargar(elegido, foto, tmp_path):
 
 
 def test_figura_de_umbrales(elegido):
-    fig = c.figura_umbrales(elegido)
+    fig = cf.figura_umbrales(elegido)
     assert [t.name for t in fig.data] == ["Precisión", "Recall"]
 
 
