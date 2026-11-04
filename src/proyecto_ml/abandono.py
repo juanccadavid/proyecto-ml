@@ -74,6 +74,10 @@ COMPORTAMIENTO = [
 CONTEOS_SIN_FECHA = COMPORTAMIENTO
 NUMERICAS = [*COMPORTAMIENTO, "SALARIO", "ESTRATO", "EDAD", "ANTIGUEDAD"]
 CATEGORICAS = ["SEXO", "TIPOCONTRATO", "TIPOPACTO", "PERIODODEDUCE", "TIPOCUENTA", "CARGO", "CODCIUDAD", "AGENCIA"]
+# Lo mismo, con menos riesgo, para los atributos: el extracto trae su valor a la extracción (o al retiro), no a t0.
+# Un ascenso o un cambio de agencia entre t0 y el retiro se vería "antes" de tiempo. Se confirma con el fondo junto
+# con los conteos (TEMPORALIDAD_CONFIRMADA); SEXO no cambia.
+ATRIBUTOS_SIN_FECHA = [c for c in ["SALARIO", "ESTRATO", *CATEGORICAS] if c != "SEXO"]
 # Las únicas que tiene sentido recortar (clip_outliers): continuas. Los conteos de COMPORTAMIENTO casi
 # siempre valen 0, su IQR queda en [0, 0] y recortarlos borraría a quienes sí tienen solicitudes.
 COLUMNAS_RECORTE = ["SALARIO", "EDAD", "ANTIGUEDAD"]

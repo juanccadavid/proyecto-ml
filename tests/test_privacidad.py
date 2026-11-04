@@ -168,7 +168,8 @@ def test_prediccion_sin_cedulas_ni_datos_personales(campeon_guardado, extracto, 
     real = p.predecir(anonimo, campeon_guardado, origen="real_anonimizado")
     assert list(real.columns) == ["fila", "CEDULA_SEUDO", "IDASOCIADOS_SEUDO", *p.COLUMNAS]
     assert not set(k.columnas_pii()) & set(real.columns)
-    assert (real["CEDULA_SEUDO"].to_numpy() == anonimo["CEDULA_SEUDO"].to_numpy()).all()  # se puede cruzar
+    cruce = anonimo["CEDULA_SEUDO"].to_numpy()[real["fila"].to_numpy()]  # fila = posición en la entrada
+    assert (real["CEDULA_SEUDO"].to_numpy() == cruce).all()  # se puede cruzar
 
 
 def test_prediccion_rechaza_cedulas_crudas(campeon_guardado, extracto, anonimo):

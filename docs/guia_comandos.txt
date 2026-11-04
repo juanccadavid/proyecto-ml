@@ -156,6 +156,7 @@
                            Mapa interactivo: reports/figures/segmentos.html. ej.: ARGS="--k 4"
      make predecir         predice con el campeón guardado (zona, alerta, grupo) y escribe
                            data/processed/predicciones.csv. ej.: make predecir DATA=data/raw/extracto.parquet
+                           Solo puntúa a los activos (sin FECHARETIRO): a quien ya se retiró no hay qué predecirle.
      make pipeline         todo el flujo en orden: campeon, predecir, segmentos, validacion, regresion
                            (es lo que corre el CI en cada push; los resultados quedan como artefacto)
      make datos-desarrollo los 5.000 asociados de desarrollo (semilla 7, 10 % de retiro) en data/processed/

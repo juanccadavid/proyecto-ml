@@ -75,6 +75,12 @@ def resumen(info: dict) -> str:
             f"{z['tasa_retiro']:.0%} ({z['se_retiran']} de {z['asociados']}); "
             f"recall de la alerta {nuevos['recall']:.0%}."
         )
+    if t := info.get("validacion_temporal"):
+        lineas.append(
+            f"\nValidación temporal (entrena con la foto a {t['t0_entrenamiento']}, mide en la de {t['t0_prueba']}, "
+            f"umbral de la foto vieja): PR-AUC {t['pr_auc']:.3f} (base {t['base_rate']:.3f}), "
+            f"precisión {t['precision']:.0%}, recall {t['recall']:.0%}."
+        )
     debil = [
         e for e in info.get("escenarios", []) if e["modelo"] == info["modelo"] and e["escenario"] == ESCENARIO_DEBIL
     ]

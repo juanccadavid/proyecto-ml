@@ -141,6 +141,34 @@ def datos_eleccion(ruta: Path | None = None, origen: str | None = None) -> tuple
     return df, archivo.name
 
 
+def datos_exploracion(ruta: Path, script: str, limpiar: bool = True) -> pd.DataFrame:
+    """Los datos de los scripts EXPLORATORIOS (make abandono, afinar, optuna, pycaret), o ``DatosInvalidos``.
+
+    Esos scripts validan contra asociados "nuevos" del generador: solo tienen sentido con datos sintéticos. Con
+    ``ORIGEN_DATOS=real_anonimizado`` mezclarían orígenes (y registrarían en el experimento real de MLflow), así
+    que se niegan; la evaluación con datos reales es ``make campeon``. Con sintéticos, el archivo debe cumplir el
+    contrato de origen, igual que en ``datos_eleccion``.
+    """
+    from pathlib import Path
+
+    from proyecto_ml import contrato
+    from proyecto_ml.config import ORIGEN_REAL, origen_datos
+
+    if origen_datos() == ORIGEN_REAL:
+        raise DatosInvalidos(
+            f"{script} es exploratorio: compara contra asociados generados y solo tiene sentido con "
+            "ORIGEN_DATOS=sintetico. Con datos reales usa make campeon DATA=<extracto anonimizado>."
+        )
+    df = a.cargar(ruta, limpiar)
+    if errores := contrato.validar(df):
+        detalle = "\n".join(f"  - {e}" for e in errores[:10])
+        raise DatosInvalidos(
+            f"{Path(ruta).name} no cumple el contrato de datos ({len(errores)} incumplimientos):\n{detalle}\n"
+            f"Revísalo con: make contrato DATA={ruta}"
+        )
+    return df
+
+
 def lista_candidatos(X: pd.DataFrame | None = None, random_state: int = 42) -> dict[str, Pipeline]:
     """Los 4 supervisados + las técnicas que en ``make tecnicas`` le ganan a la base de forma concluyente
     (intervalo de la diferencia partición a partición sin el 0), aplicadas a la logística, que es esa base:
@@ -258,6 +286,55 @@ def umbrales_honestos(
         "recall_alto": float((alto & (y == 1)).sum() / positivos),
         "alertas_alto": int(alto.sum()),
         "particiones_sin_alto": sin_alto,
+    }
+
+
+def validacion_temporal(
+    modelo: Pipeline,
+    df: pd.DataFrame,
+    horizonte_meses: int = a.HORIZONTE_MESES,
+    meses_prueba: int | None = None,
+    folds: int = FOLDS,
+    beta: float = BETA,
+    precision_min: float = PRECISION_MIN,
+) -> dict:
+    """Validación de afuera en el tiempo: entrena con la foto vieja y mide en la foto reciente, sin tocarla.
+
+    ``df`` es el extracto completo (antes de ``a.foto``). Con ``validacion.particion_temporal``:
+
+    1. foto vieja (``meses_prueba`` antes, por defecto ``horizonte_meses``): predicciones fuera de partición ->
+       ``elegir_umbrales``. El umbral sale SOLO de la foto vieja;
+    2. el modelo se entrena con toda la foto vieja;
+    3. se mide en la foto reciente con ese umbral fijo: ni el modelo ni el umbral vieron esas etiquetas.
+
+    Es la evaluación que vale con datos reales (no hay "asociados nuevos" del generador). Límite: con un solo
+    extracto, los conteos sin fecha (``a.CONTEOS_SIN_FECHA``) son los mismos números en las dos fotos; si se
+    midieron a la fecha de extracción, las dos tienen fuga. Ver ``config.temporalidad_confirmada``.
+    """
+    from proyecto_ml.validacion import particion_temporal
+
+    meses_prueba = meses_prueba or horizonte_meses
+    vieja, reciente = particion_temporal(df, horizonte_meses, meses_prueba)
+    Xv, yv = a.separar(vieja)
+    Xr, yr = a.separar(reciente)
+    for nombre, y in (("vieja", yv), ("reciente", yr)):
+        if int(y.sum()) < folds or int((y == 0).sum()) < folds:
+            raise ValueError(f"La foto {nombre} tiene menos de {folds} asociados en alguna clase: usa más datos.")
+    puntajes, _ = puntajes_fuera_de_particion(modelo, Xv, yv, folds, repeticiones=1)
+    umbrales = elegir_umbrales(yv, puntajes.mean(axis=0), beta, precision_min)
+    entrenado = clone(modelo).fit(Xv, yv)
+    metricas = compute_metrics(
+        yr, a.puntaje(entrenado, Xr), threshold=umbrales["umbral"], metodo=a.metodo_puntaje(entrenado)
+    )
+    return {
+        "t0_entrenamiento": str(vieja[a.FECHA_OBSERVACION].iloc[0].date()),
+        "t0_prueba": str(reciente[a.FECHA_OBSERVACION].iloc[0].date()),
+        "asociados_entrenamiento": len(vieja),
+        "retiros_entrenamiento": int(yv.sum()),
+        "asociados_prueba": len(reciente),
+        "retiros_prueba": int(yr.sum()),
+        "umbral": umbrales["umbral"],
+        **metricas,
     }
 
 

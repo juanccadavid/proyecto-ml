@@ -51,3 +51,35 @@ def test_simulador_elige_el_campeon_si_no_hay(tmp_path, monkeypatch):
     assert not app.exception
     assert "se eligió al abrir la app" in app.info[0].value
     assert not list(tmp_path.iterdir())  # en memoria: no escribe en models/
+
+
+def test_simulador_rechaza_edad_y_antiguedad_imposibles(carpeta_campeon):
+    app = AppTest.from_file(str(APP), default_timeout=120).run()
+    app.number_input(key="EDAD").set_value(30.0).run()
+    app.number_input(key="ANTIGUEDAD").set_value(20.0).run()  # habría ingresado a los 10 años
+    assert not app.exception
+    assert any("Combinación imposible" in e.value for e in app.error)
+    assert not app.metric  # no puntúa a un asociado que no puede existir
+
+
+def test_simulador_con_un_campeon_corrupto_no_muestra_traceback(tmp_path, monkeypatch):
+    for archivo in (c.ARCHIVO_MODELO, c.ARCHIVO_GRUPOS):  # un guardado a medias: los archivos están, pero rotos
+        (tmp_path / archivo).write_bytes(b"no es un modelo")
+    (tmp_path / c.ARCHIVO_INFO).write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(config, "MODELS_DIR", tmp_path)
+    app = AppTest.from_file(str(APP), default_timeout=120).run()
+    assert not app.exception
+    assert any("No se pudo leer el campeón" in e.value for e in app.error)
+    assert all(str(tmp_path) not in e.value for e in app.error)  # sin rutas
+
+
+def test_mapa_sin_detalle_individual_con_datos_reales():
+    from proyecto_ml import segmentacion as sg
+
+    df = a.foto(GeneradorAsociados(n=400, seed=2).generar(), 3)
+    segmentacion = sg.Segmentacion().fit(df)
+    con = sg.figura_mapa(segmentacion, df)
+    sin = sg.figura_mapa(segmentacion, df, detalle_individual=False)
+    puntos = [t for t in sin.data if t.mode == "markers"]
+    assert puntos and all(t.customdata is None and "se retiró" not in t.hovertemplate for t in puntos)
+    assert any(t.customdata is not None for t in con.data if t.mode == "markers")

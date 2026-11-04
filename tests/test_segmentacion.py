@@ -78,12 +78,14 @@ def test_predecir_con_el_campeon_guardado(tmp_path, datos):
     assert list(salida.columns) == ["fila", *p.COLUMNAS]  # sin cédulas ni identificadores crudos
     assert set(salida["zona"]) <= set(c.ZONAS) and set(salida["grupo_kmeans"]) <= {"riesgo", "estable"}
     modelo, _, _ = c.cargar(tmp_path)
-    assert np.allclose(salida["puntaje"], a.puntaje(modelo, nuevos.drop(columns=a.TARGET)))
+    activos = nuevos[nuevos["FECHARETIRO"].isna()]  # solo se predice a quien sigue activo
+    assert list(salida["fila"]) == [nuevos.index.get_loc(i) for i in activos.index]
+    assert np.allclose(salida["puntaje"], a.puntaje(modelo, activos.drop(columns=a.TARGET)))
 
     archivo = tmp_path / "nuevos.parquet"
     nuevos.to_parquet(archivo)
     p.main(["--datos", str(archivo), "--salida", str(tmp_path / "pred.csv"), "--modelos", str(tmp_path)])
-    assert len(pd.read_csv(tmp_path / "pred.csv")) == len(nuevos)
+    assert len(pd.read_csv(tmp_path / "pred.csv")) == len(activos)
 
 
 def test_predecir_sin_campeon(tmp_path):
