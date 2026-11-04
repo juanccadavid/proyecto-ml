@@ -21,6 +21,35 @@ Con **extractos sacados en fechas distintas**, cada uno trae sus conteos medidos
 
 El objetivo nunca sale del mismo archivo que las variables, así que no hay fuga por conteos sin fecha.
 
+## Qué se valida y cómo se evita la fuga
+
+**El uso real:** predecir qué asociados **actuales** se retiran en los **próximos** `horizonte` meses. Por eso la
+validación es **temporal** (entrenar con el pasado, medir en un período posterior) y no "por individuo": en
+producción el modelo puntúa a asociados que ya vio en fotos anteriores, así que verlos de nuevo en la prueba no
+es una fuga. Lo que sí sería fuga es usar el futuro, o la misma fila, para elegir.
+
+| Paso | Con qué datos | Cómo |
+|---|---|---|
+| Elegir el candidato (mayor PR-AUC) | solo las fotos de entrenamiento | 1 foto (3 extractos): `StratifiedKFold`, cada asociado aparece una vez. 2+ fotos (4+ extractos): **hacia adelante** (`campeon.puntajes_hacia_adelante`): cada foto se puntúa con un modelo entrenado solo con las anteriores |
+| Elegir el umbral (F2 y precisión mínima) | los mismos puntajes de la selección | igual que arriba: nunca con la prueba |
+| Entrenar el modelo final | todas las fotos de entrenamiento | |
+| **Evaluación final** | **el último par de extractos, reservado** | se mide una sola vez, con el modelo y el umbral ya fijos |
+
+**Por qué no una partición al azar con varias fotos.** El mismo asociado está en todas las fotos de entrenamiento
+(con datos sintéticos, 2.754 de 3.000 en dos fotos seguidas). Una `StratifiedKFold` sobre las fotos juntas lo ponía
+a la vez en entrenamiento y validación y, en cada partición, entrenaba con una foto posterior a la que validaba.
+**Por qué no agrupar por individuo** (`StratifiedGroupKFold`): evitaría repetir personas, pero seguiría entrenando
+con el futuro, y simularía asociados nuevos, que no es el caso de uso.
+
+**Controles:** si un identificador se repite dentro de una misma foto, o un período no tiene retiros y no retiros,
+o la prueba tiene menos retiros que particiones, el proceso se detiene con un error (no se relaja en silencio).
+El seudónimo solo se usa para cruzar extractos y revisar repetidos: no es una variable del modelo (las variables son
+una lista fija, `abandono.NUMERICAS` + `CATEGORICAS`). Los resultados no lo incluyen.
+
+**Límite:** con 3 extractos, la selección usa una sola foto (no hay período anterior con qué ir hacia adelante).
+Con 4 o más, la selección hacia adelante usa menos filas (la primera foto solo entrena), a cambio de no mirar el
+futuro.
+
 ## Requisitos mínimos de los datos
 
 1. **Al menos 3 extractos** en fechas distintas, separados por al menos el horizonte (3 meses). Con 3 (E1, E2, E3)
