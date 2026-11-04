@@ -54,6 +54,14 @@ htmlcov/
 # ---------- Reportes generados pesados ----------
 reports/**/*.html
 
+# ---------- Métricas que regenera make pipeline en cada corrida (local y en el CI) ----------
+# Reproducibles (semillas fijas) y ya guardadas en MLflow y en el artefacto "resultados" del CI. Los JSON que ya
+# están en Git siguen versionados; para fijar uno nuevo a propósito: git add -f (ver reports/README.md).
+reports/metrics/campeon_*.json
+reports/metrics/regresion_*.json
+reports/metrics/segmentos_*.json
+reports/metrics/validacion_cruzada_*.json
+
 # ---------- IDEs / SO ----------
 .vscode/*
 !.vscode/extensions.json
