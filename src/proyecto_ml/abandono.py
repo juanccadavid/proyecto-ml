@@ -67,6 +67,11 @@ COMPORTAMIENTO = [
     "#CANTIDAD_SERVICIOS",
     "#INTENCIONRETIROS_ULT3MESES",
 ]
+# Temporalidad: EDAD y ANTIGUEDAD se calculan a t0 desde fechas (sin fuga). Los conteos de COMPORTAMIENTO, en
+# cambio, llegan como números sin fecha de medición: el código no puede saber si son a t0 o a la fecha de
+# extracción. Si son a la extracción, para los retirados incluyen lo que pasó después de t0 (fuga). Lo confirma
+# el fondo; mientras tanto, una evaluación con datos reales queda marcada (config.temporalidad_confirmada).
+CONTEOS_SIN_FECHA = COMPORTAMIENTO
 NUMERICAS = [*COMPORTAMIENTO, "SALARIO", "ESTRATO", "EDAD", "ANTIGUEDAD"]
 CATEGORICAS = ["SEXO", "TIPOCONTRATO", "TIPOPACTO", "PERIODODEDUCE", "TIPOCUENTA", "CARGO", "CODCIUDAD", "AGENCIA"]
 # Las únicas que tiene sentido recortar (clip_outliers): continuas. Los conteos de COMPORTAMIENTO casi
@@ -346,7 +351,8 @@ def puntaje(modelo: Pipeline, X: pd.DataFrame) -> np.ndarray:
 
 
 def metricas_supervisado(modelo: Pipeline, df: pd.DataFrame) -> dict[str, float]:
-    return compute_metrics(df[TARGET], puntaje(modelo, df), threshold=UMBRAL[metodo_puntaje(modelo)])
+    metodo = metodo_puntaje(modelo)
+    return compute_metrics(df[TARGET], puntaje(modelo, df), threshold=UMBRAL[metodo], metodo=metodo)
 
 
 def guardar_modelo(pipeline: Pipeline, carpeta: Path, nombre: str) -> dict[str, Path]:

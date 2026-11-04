@@ -27,6 +27,14 @@ def resumen(info: dict) -> str:
     lineas = [
         f"## Campeón: {info['titulo']}",
         f"> {'⚠️ ' if es_experimental(origen) else ''}{aviso_origen(origen)}",
+        *(
+            [
+                "> ⚠️ **Temporalidad sin confirmar:** la evaluación no es válida hasta que el fondo confirme que los "
+                "conteos se miden a t0 (TEMPORALIDAD_CONFIRMADA=si)."
+            ]
+            if info.get("temporalidad_confirmada") is False
+            else []
+        ),
         "",
         f"Foto a {h} meses · {info['filas']} asociados · {info['tasa_retiro']:.1%} se retira "
         f"({round(info['filas'] * info['tasa_retiro'])} retiros)"

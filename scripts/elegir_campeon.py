@@ -61,6 +61,7 @@ from proyecto_ml.config import (
     aviso_origen,
     es_experimental,
     origen_datos,
+    temporalidad_confirmada,
 )
 from proyecto_ml.evaluate import compute_metrics
 from proyecto_ml.figuras import marcar_origen
@@ -109,10 +110,16 @@ def main() -> None:
     if experimental:
         print(aviso_origen() + "\n")
     else:
-        print(
-            "DATOS REALES ANONIMIZADOS. Ojo: si los conteos (ULT3MESES...) se midieron a la fecha de extracción y no "
-            "a t0, para los retirados incluyen lo que pasó después (fuga). Confírmalo con el fondo.\n"
-        )
+        print(aviso_origen())
+        if temporalidad_confirmada():
+            print("Temporalidad confirmada (TEMPORALIDAD_CONFIRMADA=si): los conteos se miden a t0.\n")
+        else:
+            print(
+                "OJO: TEMPORALIDAD SIN CONFIRMAR. Los conteos de comportamiento no traen su fecha de medición;\n"
+                "si son a la fecha de extracción y no a t0, para los retirados incluyen lo que pasó después (fuga).\n"
+                "La evaluación queda marcada como no válida hasta que el fondo lo confirme\n"
+                "(TEMPORALIDAD_CONFIRMADA=si en el .env).\n"
+            )
 
     X, y = a.separar(df)
     candidatos = c.lista_candidatos(X, random_state=args.semilla)
@@ -134,6 +141,9 @@ def main() -> None:
             "datos": fuente,
             "horizonte_meses": h,
             "fecha_observacion": str(t0),
+            "fecha_corte": str(a.FECHA_CORTE.date()),  # FECHA_CORTE efectiva (.env o la de los sintéticos)
+            # con datos reales, la evaluación vale solo si el fondo confirmó que los conteos son a t0
+            "temporalidad_confirmada": None if experimental else temporalidad_confirmada(),
             **r.parametros_datos(df),
             "experimental": experimental,
             "semilla": args.semilla,
@@ -183,7 +193,10 @@ def main() -> None:
         nuevos = nuevos.generar()
         nuevos = a.foto(nuevos, h) if h else nuevos
         Xn, yn = a.separar(nuevos)
-        en_nuevos = {n: compute_metrics(yn, a.puntaje(m, Xn), threshold=umbrales[n]) for n, m in entrenados.items()}
+        en_nuevos = {
+            n: compute_metrics(yn, a.puntaje(m, Xn), threshold=umbrales[n], metodo=a.metodo_puntaje(m))
+            for n, m in entrenados.items()
+        }
         print(f"\n=== Asociados nuevos ({len(nuevos)}, {yn.mean():.1%} retiro), cada uno con su umbral ===")
         print(pd.DataFrame(en_nuevos).T.round(3).to_string())
 

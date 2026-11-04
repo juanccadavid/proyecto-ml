@@ -118,7 +118,8 @@ def datos_eleccion(ruta: Path | None = None, origen: str | None = None) -> tuple
         return contrato.limpiar_extracto(datos_desarrollo()), "datos_desarrollo() en memoria"
     archivo = ruta or desarrollo
     df = a.cargar(archivo)
-    errores = contrato.validar(df)
+    # Datos reales: el contrato del dataset ANONIMIZADO (sin PII, con seudónimos); sintéticos: el de origen.
+    errores = contrato.validar(df, contrato.para_ml() if origen == ORIGEN_REAL else None)
     if origen == ORIGEN_REAL:  # fechas después del corte: FECHA_CORTE no es la del extracto y la foto queda corrida
         for columna in ("FECHARETIRO", "FECHAULTACTUALIZACION", "FECHAINGRESOLABORA"):
             if columna in df and (pd.to_datetime(df[columna], errors="coerce") > a.FECHA_CORTE).any():
@@ -131,7 +132,7 @@ def datos_eleccion(ruta: Path | None = None, origen: str | None = None) -> tuple
         detalle = "\n".join(f"  - {e}" for e in mostrar[:10])
         raise DatosInvalidos(
             f"{archivo.name} no cumple el contrato de datos ({len(errores)} incumplimientos):\n{detalle}\n"
-            f"Revísalo con: make contrato DATA={archivo}"
+            f"Revísalo con: make {'contrato-ml' if origen == ORIGEN_REAL else 'contrato'} DATA={archivo}"
         )
     return df, archivo.name
 
@@ -372,10 +373,11 @@ def evaluar(nombre: str, modelo: Pipeline, X, y, folds: int = FOLDS, repeticione
     promedio = puntajes.mean(axis=0)  # el umbral se elige sobre el promedio de las repeticiones
     umbrales = elegir_umbrales(y, promedio, **kw)
     alerta = (promedio >= umbrales["umbral"]).astype(int)
-    al_umbral = compute_metrics(y, promedio, threshold=umbrales["umbral"])
-    es_proba = a.metodo_puntaje(modelo) == "predict_proba"  # por el método, no por el rango de los valores
+    metodo = a.metodo_puntaje(modelo)
+    al_umbral = compute_metrics(y, promedio, threshold=umbrales["umbral"], metodo=metodo)
+    es_proba = metodo == "predict_proba"  # por el método, no por el rango de los valores
     tasa = float(np.mean(y))
-    brier = al_umbral["brier"] if es_proba else float("nan")
+    brier = al_umbral["brier"]
     ic_inf, ic_sup = intervalo_bootstrap(y, promedio)
     metricas = {
         "pr_auc": float(np.mean(pr)),

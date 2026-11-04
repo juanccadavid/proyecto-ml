@@ -103,7 +103,7 @@ ORIGEN_DATOS=real_anonimizado     # y luego: make campeon DATA=data/raw/extracto
 | | `sintetico` | `real_anonimizado` |
 |---|---|---|
 | De dónde salen los datos | `--datos`, o `data/processed/asociados_desarrollo.parquet`, o el generador en memoria | **solo** `--datos` (sin él, falla: nunca cae en los generados) |
-| Contrato de datos | se exige a todo archivo | se exige; el error dice cuántas filas y qué columnas, **sin valores** (`contrato.sin_valores`) |
+| Contrato de datos | el **de origen**, a todo archivo | el **del dataset anonimizado para ML** (`contrato.para_ml`: sin PII, con seudónimos); el error dice cuántas filas y qué columnas, **sin valores** (`contrato.sin_valores`). Ver "Privacidad: dos contratos y la anonimización" |
 | Asociados nuevos y escenarios del generador | sí (validación sobre datos que el modelo no vio) | no: serían de otro origen. La validación de afuera es la temporal (`validacion.particion_temporal`) |
 | MLflow | experimentos `abandono`, `salario`; modelo `abandono` | experimentos `abandono_real`, `salario_real`; modelo `abandono_real` |
 | Etiqueta en consola, `campeon.json`, resumen del CI y simulador | **MODO SINTÉTICO: resultados experimentales** | DATOS REALES ANONIMIZADOS |
@@ -942,11 +942,60 @@ regla a conciencia, actualiza su caso en el mismo PR.
 
 - `data/`, `models/`, `mlflow.db`, `.env` y `*.bundle` están en `.gitignore`.
 - Pre-commit bloquea archivos de datos, borra salidas de notebooks (nbstripout) y escanea secretos (Gitleaks).
-- Los datos reales se anonimizan con `scripts/anonimizar.py` **por quien los custodia, antes de compartirlos**.
-  Antes aplica `contrato.limpiar_extracto` (espacios, textos tipo 'N/A', números como texto, filas
-  repetidas; `--sin-limpiar` lo apaga) con una configuración que no rompe el contrato: `clean_dataset` con
-  sus valores por defecto renombra `#RETIROS`, borra columnas opcionales vacías y vuelve números los teléfonos.
 - Cualquier demo pública se hace con datos sintéticos.
+
+### Privacidad: dos contratos y la anonimización
+
+| Etapa | Contrato | Quién / dónde |
+|---|---|---|
+| Extracto original (con datos personales) | **de origen**: `contratos/asociados.yaml` (`contrato.cargar`); también los datos sintéticos y Supabase | el custodio, dentro de su organización |
+| Anonimización | el de origen dice qué es personal: `pii: eliminar` (16 columnas: nombres, dirección, teléfonos, correo, cuenta...) o `pii: seudonimizar` (`CEDULA`, `IDASOCIADOS`) | el custodio: `make anonimizar DATA=extracto.xlsx SALIDA=data/raw/extracto_anon.parquet` |
+| Dataset anonimizado para ML | **para ML**: `contrato.para_ml()` = el de origen sin las columnas `eliminar`, con `CEDULA_SEUDO` e `IDASOCIADOS_SEUDO` y sin la regla que usa nombres | el equipo: `make contrato-ml DATA=...` y `make campeon` con `ORIGEN_DATOS=real_anonimizado` |
+
+- **El contrato para ML no relaja nada del modelo:** las variables, el objetivo, sus tipos y rangos, la
+  distribución y las reglas que no tocan datos personales siguen exigidos. Es estricto: si en el archivo quedó
+  una columna personal (p. ej. `NOMBRES`), lo rechaza. Las columnas personales tampoco pueden entrar al modelo:
+  las variables son una lista fija (`abandono.NUMERICAS` + `CATEGORICAS`).
+- **`scripts/anonimizar.py` no deja salir PII por un descuido:**
+  - toma la configuración del contrato (`pii`), y una columna que el contrato no conoce lo detiene hasta que se
+    decida `--conservar`, `--eliminar` o `--seudonimizar`;
+  - exige `ANON_SALT` (`make salt`);
+  - verifica la salida: ninguna columna personal, seudónimos válidos y ningún valor personal copiado en otra
+    columna;
+  - si algo falla, **no escribe nada** (escribe a un temporal y lo renombra solo al final);
+  - los errores dicen columnas y cantidades, nunca valores;
+  - antes aplica `contrato.limpiar_extracto` (`--sin-limpiar` lo apaga).
+- **Seudónimo:** HMAC-SHA256 con la clave `ANON_SALT`, los 64 caracteres hexadecimales completos y en texto
+  (nunca un número). El mismo identificador da siempre el mismo seudónimo, así que se pueden unir extractos.
+  **Seudonimizar no es anonimizar de forma irreversible:** con la clave se puede recalcular el seudónimo de una
+  cédula conocida. La clave la guarda solo el custodio: nunca va al repositorio, a MLflow ni a los logs.
+- **Predicciones (`make predecir`):** la salida nunca copia cédulas ni datos personales. Para cruzarla quedan
+  `fila` y los seudónimos `*_SEUDO`. Un `*_SEUDO` que no sea un HMAC (p. ej. una cédula renombrada) se rechaza, y
+  en modo real también un archivo que traiga columnas personales. Volver del seudónimo a la persona, si hace
+  falta para contactar a alguien, es una tabla de correspondencia que guarda el custodio, **fuera** de este
+  pipeline, del repositorio y de MLflow.
+- **Cuasi-identificadores que quedan:** `FECHANACIMIENTO` (la necesita EDAD), barrio, comuna, cargo y agencia.
+  Combinados podrían señalar a alguien en un fondo chico. Si el fondo lo pide, se agrupan con `--bin`, o la edad
+  se calcula antes de compartir; eso cambia el contrato para ML y se decide con el equipo.
+
+### Fecha de corte y temporalidad (confirmar con el fondo)
+
+- **Una sola fecha:** `FECHA_CORTE` (`.env`, por defecto `2026-10-31`, la de los sintéticos). La usan la foto
+  (t0 = corte − 3 meses), el objetivo, EDAD y ANTIGUEDAD, y la regla de edad del contrato. Ya no hay ninguna
+  fecha escrita a mano en el contrato. La efectiva queda en `campeon.json` (`fecha_corte`). En modo real, si el
+  archivo trae fechas posteriores al corte, `make campeon` se detiene.
+- **Qué depende del tiempo:**
+  - EDAD y ANTIGUEDAD se calculan a t0 desde fechas: sin fuga;
+  - el objetivo sale de `FECHARETIRO` entre t0 y el corte;
+  - los conteos de comportamiento (`abandono.CONTEOS_SIN_FECHA`: solicitudes, ahorros, créditos, servicios,
+    intenciones de retiro, incluidos los `ULT3MESES`) llegan como números **sin fecha de medición**.
+
+  El código no puede saber si se midieron a t0 o a la fecha de extracción. Si fue a la extracción, para los
+  retirados incluyen lo que pasó después de t0, y eso es fuga.
+- **Mientras el fondo no lo confirme**, con datos reales `make campeon` entrena pero avisa. Además marca la
+  evaluación como **no válida** (`temporalidad_confirmada: false` en `campeon.json`, en el resumen del CI y en el
+  simulador). Cuando el fondo confirme que los conteos son a t0: `TEMPORALIDAD_CONFIRMADA=si` en el `.env`. Si no
+  lo son, la solución es pedir los conteos a t0; el pipeline no inventa historia que no está en el extracto.
 
 ## Experimentos (MLflow)
 

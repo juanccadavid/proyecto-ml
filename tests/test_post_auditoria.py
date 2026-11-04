@@ -37,15 +37,25 @@ def elegido(foto):
 
 @pytest.mark.integration
 def test_simulador_se_detiene_si_la_referencia_real_no_es_la_del_campeon(tmp_path, monkeypatch, foto):
+    from proyecto_ml.anonymize import anonimizar_extracto
+
     elegido = c.elegir(foto, candidatos={"logreg": a.modelos_supervisados()["logreg"]}, repeticiones=1)
     elegido.info |= {"origen_datos": config.ORIGEN_REAL, "datos_huella": "otra000huella"}
     c.guardar(elegido, tmp_path)
     monkeypatch.setattr(config, "MODELS_DIR", tmp_path)
-    monkeypatch.setenv("DATOS_ASOCIADOS", "data/ejemplo/asociados_ejemplo.parquet")  # el de ejemplo, no el real
+    # 1) un dataset anonimizado válido, pero no el del campeón: la huella no coincide
+    otro = tmp_path / "otro_anon.parquet"
+    anonimizar_extracto(GeneradorAsociados(n=400, seed=21).generar(), salt="clave-de-prueba-123456").to_parquet(otro)
+    monkeypatch.setenv("DATOS_ASOCIADOS", str(otro))
     app = AppTest.from_file(str(APP), default_timeout=180).run()
     assert not app.exception
     assert any("huella no coincide" in e.value for e in app.error)
     assert not app.metric  # se detuvo antes de predecir
+    # 2) el archivo de ejemplo (con PII) no cumple el contrato para ML: error claro, sin excepción ni valores
+    monkeypatch.setenv("DATOS_ASOCIADOS", "data/ejemplo/asociados_ejemplo.parquet")
+    app = AppTest.from_file(str(APP), default_timeout=180).run()
+    assert not app.exception and not app.metric
+    assert any("no se pueden usar" in e.value and "contrato" in e.value for e in app.error)
 
 
 # ---------------------------------------------------------------- E2: la imagen lleva el contrato

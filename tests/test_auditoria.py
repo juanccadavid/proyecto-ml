@@ -57,8 +57,10 @@ def test_el_contrato_es_obligatorio_y_con_datos_reales_no_muestra_valores(tmp_pa
         c.datos_eleccion(archivo, origen="real_anonimizado")
     assert "ej." not in str(real.value) and "fila(s)" in str(real.value)  # cuántas y dónde, sin valores
 
-    limpio = tmp_path / "limpio.parquet"
-    GeneradorAsociados(n=80, seed=3).generar().to_parquet(limpio)
+    from proyecto_ml.anonymize import anonimizar_extracto
+
+    limpio = tmp_path / "limpio.parquet"  # en modo real, el dataset ANONIMIZADO (contrato.para_ml)
+    anonimizar_extracto(GeneradorAsociados(n=80, seed=3).generar(), salt="clave-de-prueba-123456").to_parquet(limpio)
     df, fuente = c.datos_eleccion(limpio, origen="real_anonimizado")
     assert fuente == "limpio.parquet" and len(df) == 80
 
@@ -130,13 +132,14 @@ def test_smote_solo_en_el_entrenamiento_de_cada_particion(foto):
 def test_metricas_de_clases_desbalanceadas():
     y = np.array([0, 0, 0, 0, 0, 0, 1, 1, 1, 1])
     p = np.array([0.1, 0.2, 0.3, 0.6, 0.1, 0.2, 0.9, 0.8, 0.4, 0.7])
-    m = compute_metrics(y, p, threshold=0.5)  # alerta: 0.6 (FP), 0.9, 0.8, 0.7 (TP); 0.4 (FN)
+    m = compute_metrics(y, p, threshold=0.5, metodo="predict_proba")  # alerta: 0.6 (FP), 0.9, 0.8, 0.7 (TP); 0.4 (FN)
     assert m["specificity"] == pytest.approx(5 / 6) and m["recall"] == pytest.approx(3 / 4)
     assert m["balanced_accuracy"] == pytest.approx((5 / 6 + 3 / 4) / 2)
     assert m["f2"] == pytest.approx(5 * 0.75 * 0.75 / (4 * 0.75 + 0.75))
     assert m["brier"] == pytest.approx(np.mean((p - y) ** 2))
     assert precision_at_k(y, p, 0.3) == 1.0  # los 3 de mayor puntaje se retiran
-    assert np.isnan(compute_metrics(y, p * 4 - 2)["brier"])  # una distancia (Ridge) no es una probabilidad
+    distancia = p * 4 - 2  # una distancia a la frontera (Ridge) no es una probabilidad
+    assert np.isnan(compute_metrics(y, distancia, metodo="decision_function")["brier"])
 
 
 def test_calibracion_y_metricas_del_campeon(foto):

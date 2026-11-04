@@ -155,7 +155,7 @@ def run(argv: list[str] | None = None) -> dict[str, dict[str, float]]:
             )
             pipeline.fit(X_train, y_train)
             scores = pipeline.predict_proba(X_test)[:, 1]
-            metrics = compute_metrics(y_test, scores)
+            metrics = compute_metrics(y_test, scores, metodo="predict_proba")
             mlflow.log_metrics({k: v for k, v in metrics.items() if v == v})  # omite NaN
             if not args.no_log_model:
                 _log_model(pipeline)

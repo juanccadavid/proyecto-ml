@@ -75,7 +75,7 @@ def test_predecir_con_el_campeon_guardado(tmp_path, datos):
     c.guardar(c.elegir(datos, folds=3, repeticiones=1), tmp_path)
     nuevos = GeneradorAsociados(n=40, seed=8).generar()
     salida = p.predecir(nuevos, tmp_path)
-    assert list(salida.columns) == [*p.IDENTIFICADORES, *p.COLUMNAS]
+    assert list(salida.columns) == ["fila", *p.COLUMNAS]  # sin cédulas ni identificadores crudos
     assert set(salida["zona"]) <= set(c.ZONAS) and set(salida["grupo_kmeans"]) <= {"riesgo", "estable"}
     modelo, _, _ = c.cargar(tmp_path)
     assert np.allclose(salida["puntaje"], a.puntaje(modelo, nuevos.drop(columns=a.TARGET)))

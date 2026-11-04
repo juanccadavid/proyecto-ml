@@ -74,6 +74,13 @@ def fecha_corte() -> str:
     return os.getenv("FECHA_CORTE", "").strip() or FECHA_CORTE_DEFECTO
 
 
+def temporalidad_confirmada() -> bool:
+    """``TEMPORALIDAD_CONFIRMADA=si`` en el .env: el fondo confirmó que los conteos del extracto (ULT3MESES y los
+    demás de comportamiento) se miden a la fecha de observación t0 y no a la de extracción. Sin eso, una evaluación
+    con datos reales puede tener fuga temporal y no se da por válida (se entrena igual, pero queda marcada)."""
+    return os.getenv("TEMPORALIDAD_CONFIRMADA", "").strip().lower() in ("si", "sí", "true", "1")
+
+
 def aviso_origen(origen: str | None = None) -> str:
     """Una línea para la consola, los reportes y el simulador: en qué modo se está trabajando."""
     if es_experimental(origen):
