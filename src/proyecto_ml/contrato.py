@@ -35,6 +35,12 @@ PII = ("eliminar", "seudonimizar")
 SUFIJO_SEUDONIMO = "_SEUDO"
 PATRON_SEUDONIMO = "^[0-9a-f]{64}$"  # HMAC-SHA256 completo en hexadecimal (texto, nunca un número)
 TIPOS_SQL = {"entero": "bigint", "texto": "text", "fecha": "date"}
+# Nivel 2: "error" bloquea (validar); "advertencia" se informa y no bloquea (advertencias). Por defecto, error.
+SEVERIDADES = ("error", "advertencia")
+
+
+class AdvertenciaContrato(UserWarning):
+    """Un check de nivel 2 con ``severidad: advertencia`` que el lote no cumple: se informa, no bloquea."""
 
 
 @dataclass(frozen=True)
@@ -79,6 +85,8 @@ def cargar(path: str | Path = CONTRATO_ASOCIADOS) -> Contrato:
         raise ValueError(f"Tipos no soportados en el contrato: {invalidos}")
     if invalidos := {c.pii for c in columnas if c.pii} - set(PII):
         raise ValueError(f"pii debe ser uno de {PII}: {invalidos}")
+    if invalidos := {d.get("severidad", "error") for d in raw.get("distribucion", [])} - set(SEVERIDADES):
+        raise ValueError(f"severidad debe ser una de {SEVERIDADES}: {invalidos}")
     meta = (raw["nombre"], str(raw["version"]), raw["tabla_db"], raw["objetivo"])
     return Contrato(*meta, columnas, raw.get("reglas", []), raw.get("distribucion", []))
 
@@ -238,11 +246,15 @@ def _check_lote(check: Callable[[pd.DataFrame], Any]) -> Callable[[pd.DataFrame]
     return envuelto
 
 
+def _severidad(d: dict) -> str:
+    return d.get("severidad", "error")
+
+
 def esquema(contrato: Contrato | None = None) -> pa.DataFrameSchema:
-    """Esquema pandera con los tres niveles del contrato."""
+    """Esquema pandera con los tres niveles del contrato (del nivel 2, solo los de severidad ``error``)."""
     contrato = contrato or cargar()
     checks = []
-    for d in contrato.distribucion:
+    for d in [d for d in contrato.distribucion if _severidad(d) == "error"]:
         medida, condicion = DISTRIBUCION[d["id"]]
         lote = lambda df, d=d, m=medida, ok=condicion: bool(ok(m(df, d), d))  # noqa: E731
         checks.append(pa.Check(_check_lote(lote), name=d["id"]))
@@ -295,8 +307,7 @@ def _mensajes(fallas: pd.DataFrame, df: pd.DataFrame, contrato: Contrato) -> lis
     for d in contrato.distribucion:
         if (check == d["id"]).any():
             observado = DISTRIBUCION[d["id"]][0](df, d)
-            limites = {k: v for k, v in d.items() if k not in ("id", "descripcion")}
-            errores.append(f"Nivel 2 · {d['id']}: {d['descripcion']} (observado: {observado:.4g}; límites: {limites})")
+            errores.append(_mensaje_lote(d, observado))
 
     # Nivel 3: pandera repite cada fila fallida una vez por columna; se cuentan filas únicas.
     for r in contrato.reglas:
@@ -309,8 +320,34 @@ def _mensajes(fallas: pd.DataFrame, df: pd.DataFrame, contrato: Contrato) -> lis
     return errores
 
 
+def _mensaje_lote(d: dict, observado: float) -> str:
+    """Nivel 2: el valor observado del lote (un agregado, nunca un dato de una persona) y sus límites."""
+    limites = {k: v for k, v in d.items() if k not in ("id", "descripcion", "severidad")}
+    return f"Nivel 2 · {d['id']}: {d['descripcion']} (observado: {observado:.4g}; límites: {limites})"
+
+
+def advertencias(df: pd.DataFrame, contrato: Contrato | None = None) -> list[str]:
+    """Los checks de nivel 2 con ``severidad: advertencia`` que el lote no cumple. No bloquean: son heurísticas de
+    calidad sin una regla de negocio confirmada (p. ej. la tasa de retiro), y un dato real distinto del sintético
+    no es por eso un dato malo. Quien valida las muestra; ``validar`` no las cuenta como incumplimientos."""
+    contrato = contrato or cargar()
+    avisos = []
+    for d in [d for d in contrato.distribucion if _severidad(d) == "advertencia"]:
+        medida, condicion = DISTRIBUCION[d["id"]]
+        try:
+            observado = medida(df, d)
+        except (KeyError, TypeError, ValueError):  # falta la columna o vino corrupta: ya lo reporta validar
+            continue
+        if not condicion(observado, d):
+            avisos.append(f"{_mensaje_lote(d, observado)} [advertencia: no bloquea]")
+    return avisos
+
+
 def validar(df: pd.DataFrame, contrato: Contrato | None = None) -> list[str]:
-    """Devuelve los incumplimientos del contrato en los tres niveles (lista vacía si cumple)."""
+    """Devuelve los incumplimientos del contrato en los tres niveles (lista vacía si cumple).
+
+    Los checks de nivel 2 con ``severidad: advertencia`` no están aquí: ver ``advertencias``.
+    """
     contrato = contrato or cargar()
     normalizado = _normalizar(df, contrato)
     try:

@@ -183,7 +183,9 @@
      make salt                 genera ANON_SALT para anonimizar (va al .env, no se comparte)
      make anonimizar DATA=extracto.xlsx SALIDA=data/raw/extracto_anon.parquet
                                anonimiza según el contrato (pii: eliminar / seudonimizar). Lo corre el
-                               custodio. Si queda algo personal, no escribe nada.
+                               custodio. Antes de escribir verifica que no quede PII (también
+                               incrustada en textos) y valida el contrato para ML; si algo falla, no
+                               escribe nada ni reemplaza la salida que ya existía.
      make contrato-ml DATA=data/raw/extracto_anon.parquet
                                valida el dataset ANONIMIZADO contra el contrato para ML (sin PII; los
                                errores no muestran valores)
@@ -254,6 +256,8 @@
  5.2 Tres niveles de verificación
      Nivel 1  Por fila         registros corruptos           ESTRATO entre 1 y 6, SEXO en F/M
      Nivel 2  Distribución     problemas del lote completo   salario_en_pesos, volumen_minimo
+              (severidad: error bloquea; advertencia se informa: tasa_retiro_plausible, rango por
+              confirmar con el fondo)
      Nivel 3  Entre columnas   incoherencias                 retiro_coherente (#RETIROS=1 exige
                                                              fecha y motivo de retiro)
 

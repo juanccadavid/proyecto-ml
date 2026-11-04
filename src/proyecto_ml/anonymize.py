@@ -16,6 +16,25 @@ contactar asociados, vive fuera del pipeline de ML, con el custodio.
 ``anonimizar_extracto`` no devuelve nada si algo queda mal (``AnonimizacionInsegura``): columnas sin decisión,
 columnas personales que siguen ahí, seudónimos inválidos o valores personales copiados en otra columna. Sus
 mensajes dicen columnas y cantidades, nunca valores.
+
+Detección de PII residual (``verificar``, configurable con ``Deteccion``). Busca en la salida los valores de
+las columnas personales DE ESTE extracto, no "cualquier número" (eso daría falsos positivos en masa):
+
+1. **Exacto:** una celda igual a un valor personal de al menos ``largo_min_valor`` caracteres (cualquier columna).
+2. **Identificador incrustado:** en las columnas de texto, cada secuencia de dígitos, también escrita con puntos,
+   guiones o espacios (``cc 1.037.000.000``, ``300-123-4567``), se compara con las cédulas, teléfonos y cuentas
+   del extracto (``largo_min_digitos`` dígitos o más). Solo cuenta si es una de ellas, no por ser un número.
+3. **Texto incrustado:** nombres completos, direcciones y correos (valores de varias palabras o con ``@``, de
+   ``largo_min_texto`` caracteres o más) dentro de un texto más largo, sin distinguir mayúsculas.
+4. **Forma de correo:** una celda con forma de correo electrónico en una columna de texto que se conserva.
+5. **Nombre de columna:** ``--conservar`` una columna cuyo nombre sugiere un dato personal (``nombres_sensibles``)
+   se rechaza. Si de verdad no es personal, se agrega al contrato (con revisión), no se fuerza aquí.
+
+Límites (no es una garantía de anonimización): un nombre o apellido suelto solo se busca exacto (buscarlo dentro
+de textos marcaría "Santa María" o "Calle Gómez"); los valores cortos (menos de ``largo_min_valor`` caracteres,
+p. ej. una extensión o un IDASOCIADOS de 4 dígitos) no se buscan; tampoco un dato personal transformado (con
+errores, abreviado, en otro orden) ni uno que no esté en las columnas personales del extracto. Los
+cuasi-identificadores (edad, barrio, cargo) siguen en la salida: ver README, "Privacidad".
 """
 
 from __future__ import annotations
@@ -26,6 +45,7 @@ import math
 import os
 import re
 from collections.abc import Iterable
+from dataclasses import dataclass
 
 import pandas as pd
 
@@ -33,6 +53,26 @@ from proyecto_ml import contrato as k
 
 LARGO_MIN_SAL = 16
 LARGO_MIN_VALOR = 6  # los valores personales más cortos (p. ej. una extensión) chocarían con códigos legítimos
+SEPARADORES = r"[.\- ]"  # cómo se escribe a mano una cédula o un teléfono: 1.037.000.000, 300-123-4567, 300 123 4567
+_RE_CORREO = re.compile(r"[^\s@]+@[^\s@]+\.[a-z]{2,}", re.IGNORECASE)
+_PUNTUACION = ".,;:()[]{}<>\"'¡!¿?"
+
+
+@dataclass(frozen=True)
+class Deteccion:
+    """Qué busca ``verificar`` en la salida (ver el docstring del módulo). ``None`` en ``nombres_sensibles`` lo
+    apaga; los largos se pueden subir si un fondo tiene códigos legítimos que chocan con sus identificadores."""
+
+    largo_min_valor: int = LARGO_MIN_VALOR
+    largo_min_digitos: int = 6
+    largo_min_texto: int = 8
+    buscar_correos: bool = True
+    nombres_sensibles: str | None = (
+        r"CEDULA|DOCUMENTO|IDENTIFICACION|E_?MAIL|CORREO|TELEFONO|CELULAR|MOVIL|DIRECCION|APELLIDO|NOMBRES"
+    )
+
+
+DETECCION = Deteccion()
 
 
 class AnonimizacionInsegura(ValueError):
@@ -95,15 +135,82 @@ def anonymize(
     return out
 
 
-def _valores(serie: pd.Series) -> set[str]:
-    textos = serie.dropna().map(lambda v: str(int(v)) if isinstance(v, float) and v.is_integer() else str(v).strip())
-    return {t for t in textos if len(t) >= LARGO_MIN_VALOR}
+def _como_texto(v: object) -> str:
+    return str(int(v)) if isinstance(v, float) and v.is_integer() else str(v).strip()
+
+
+def _normalizar(texto: str) -> str:
+    """Minúsculas, sin puntuación en los bordes de cada palabra y con un solo espacio entre palabras."""
+    return " ".join(t.strip(_PUNTUACION) for t in texto.lower().split() if t.strip(_PUNTUACION))
+
+
+def _es_texto(serie: pd.Series) -> bool:
+    return (
+        pd.api.types.is_object_dtype(serie)
+        or pd.api.types.is_string_dtype(serie)
+        or isinstance(serie.dtype, pd.CategoricalDtype)
+    )
+
+
+@dataclass(frozen=True)
+class _Personales:
+    """Los valores de las columnas personales del extracto, preparados para cada tipo de búsqueda."""
+
+    exactos: set[str]
+    digitos: set[str]  # identificadores numéricos (cédula, teléfono, cuenta) solo con sus dígitos
+    textos: set[str]  # nombres completos, direcciones y correos, normalizados
+    palabras_max: int
+
+    @classmethod
+    def de(cls, original: pd.DataFrame, columnas: set[str], d: Deteccion) -> _Personales:
+        valores = {_como_texto(v) for c in sorted(columnas & set(original.columns)) for v in original[c].dropna()}
+        valores = {v for v in valores if v}
+        numerico = re.compile(rf"\+?\d(?:{SEPARADORES}?\d)*")
+        digitos = {re.sub(r"\D", "", v) for v in valores if numerico.fullmatch(v)}
+        textos = {_normalizar(v) for v in valores if not numerico.fullmatch(v)}
+        textos = {t for t in textos if len(t) >= d.largo_min_texto and (" " in t or "@" in t)}
+        return cls(
+            exactos={v for v in valores if len(v) >= d.largo_min_valor},
+            digitos={v for v in digitos if len(v) >= d.largo_min_digitos},
+            textos=textos,
+            palabras_max=max((t.count(" ") + 1 for t in textos), default=0),
+        )
+
+    def numero_incrustado(self, texto: str) -> bool:
+        if not self.digitos:
+            return False
+        corridas = set(re.findall(r"\d+", texto))  # 1037000000 tal cual
+        corridas |= {re.sub(r"\D", "", m) for m in re.findall(rf"\d(?:{SEPARADORES}?\d)+", texto)}  # 1.037.000.000
+        return not corridas.isdisjoint(self.digitos)
+
+    def texto_incrustado(self, texto: str) -> bool:
+        if not self.textos:
+            return False
+        palabras = _normalizar(texto).split()
+        for n in range(1, min(self.palabras_max, len(palabras)) + 1):  # ventanas de n palabras seguidas
+            if any(" ".join(palabras[i : i + n]) in self.textos for i in range(len(palabras) - n + 1)):
+                return True
+        return False
+
+
+def columnas_sensibles(columnas: Iterable[str], deteccion: Deteccion = DETECCION) -> list[str]:
+    """Las ``columnas`` cuyo nombre sugiere un dato personal (``Deteccion.nombres_sensibles``)."""
+    if not deteccion.nombres_sensibles:
+        return []
+    patron = re.compile(deteccion.nombres_sensibles, re.IGNORECASE)
+    return [c for c in columnas if patron.search(str(c).replace(" ", "_"))]
 
 
 def verificar(
-    original: pd.DataFrame, salida: pd.DataFrame, eliminadas: set[str], seudonimizadas: set[str], salt: str
+    original: pd.DataFrame,
+    salida: pd.DataFrame,
+    eliminadas: set[str],
+    seudonimizadas: set[str],
+    salt: str,
+    deteccion: Deteccion = DETECCION,
 ) -> list[str]:
-    """Problemas de la salida (lista vacía si está bien). Solo nombres de columnas y cantidades, nunca valores."""
+    """Problemas de la salida (lista vacía si está bien). Solo nombres de columnas, reglas y cantidades, nunca
+    valores. Qué busca y qué no: ver el docstring del módulo. Una lista vacía no garantiza que no quede PII."""
     problemas = []
     if len(salida) != len(original):
         problemas.append(f"la salida tiene {len(salida)} filas y el extracto {len(original)}")
@@ -116,13 +223,30 @@ def verificar(
             problemas.append(f"falta {destino} (seudónimo de {c})")
         elif not salida[destino].astype(str).map(lambda v: bool(patron.fullmatch(v))).all():
             problemas.append(f"{destino}: hay valores que no son un seudónimo de 64 caracteres hexadecimales")
-    personales = set().union(*(_valores(original[c]) for c in (eliminadas | seudonimizadas) & set(original.columns)))
-    for col in salida.columns:  # un dato personal copiado en otra columna (p. ej. la cédula dentro de un texto)
-        textos = salida[col].dropna().map(lambda v: str(int(v)) if isinstance(v, float) and v.is_integer() else str(v))
-        if (n := int(textos.str.strip().isin(personales).sum())) > 0:
+    personales = _Personales.de(original, eliminadas | seudonimizadas, deteccion)
+    for col in salida.columns:
+        textos = salida[col].dropna().map(_como_texto)
+        exacto = textos.map(personales.exactos.__contains__).astype(bool)  # (isin con texto Arrow es lentísimo)
+        if (n := int(exacto.sum())) > 0:
             problemas.append(f"{col}: {n} fila(s) con valores de columnas personales del extracto")
         if (n := int(textos.str.contains(salt, regex=False).sum())) > 0:
             problemas.append(f"{col}: {n} fila(s) contienen la clave ANON_SALT")
+        if str(col).endswith(k.SUFIJO_SEUDONIMO) or not _es_texto(salida[col]):
+            continue  # el seudónimo ya se revisó arriba; números y fechas, con la comparación exacta
+        resto = textos[~exacto]  # lo exacto ya se contó: no se cuenta dos veces
+        distintos = pd.Series(
+            resto.unique(), dtype=object
+        )  # cada valor distinto, una vez (barrio, cargo... se repiten)
+        busquedas = [
+            (personales.numero_incrustado, "con un número de una columna personal (cédula, teléfono) dentro"),
+            (personales.texto_incrustado, "con un nombre, dirección o correo del extracto dentro del texto"),
+        ]
+        if deteccion.buscar_correos:
+            busquedas.append((lambda v: bool(_RE_CORREO.search(v)), "con forma de correo electrónico"))
+        for buscar, problema in busquedas:
+            marcados = set(distintos[distintos.map(buscar).astype(bool)])
+            if marcados and (n := int(resto.map(marcados.__contains__).astype(bool).sum())) > 0:
+                problemas.append(f"{col}: {n} fila(s) {problema}")
     return problemas
 
 
@@ -135,6 +259,7 @@ def anonimizar_extracto(
     eliminar: Iterable[str] = (),
     seudonimizar_columnas: Iterable[str] = (),
     bins: dict[str, list[float]] | None = None,
+    deteccion: Deteccion = DETECCION,
 ) -> pd.DataFrame:
     """El extracto listo para compartir, según el contrato de origen, o ``AnonimizacionInsegura``.
 
@@ -149,6 +274,11 @@ def anonimizar_extracto(
     a_seudo |= set(k.columnas_pii(contrato, "seudonimizar"))
     if choque := sorted(conservar & (a_eliminar | a_seudo)):
         raise AnonimizacionInsegura(f"Columnas personales marcadas para conservar: {choque}")
+    if sensibles := columnas_sensibles(sorted(conservar - set(contrato.nombres)), deteccion):
+        raise AnonimizacionInsegura(
+            f"Por su nombre, {sensibles} parecen datos personales y se marcaron para conservar: usa --eliminar o "
+            "--seudonimizar. Si de verdad no son personales, agrégalas al contrato (con revisión del equipo)."
+        )
     decididas = set(contrato.nombres) | conservar | a_eliminar | a_seudo
     if sin_decision := [c for c in df.columns if c not in decididas]:
         raise AnonimizacionInsegura(
@@ -163,6 +293,7 @@ def anonimizar_extracto(
         salida.insert(posicion, c + k.SUFIJO_SEUDONIMO, seudonimos)
     for col, edges in (bins or {}).items():
         salida[col] = pd.cut(salida[col], bins=edges, include_lowest=True).astype(str)
-    if problemas := verificar(df, salida, a_eliminar & set(df.columns), a_seudo & set(df.columns), salt):
+    eliminadas, seudonimizadas = a_eliminar & set(df.columns), a_seudo & set(df.columns)
+    if problemas := verificar(df, salida, eliminadas, seudonimizadas, salt, deteccion):
         raise AnonimizacionInsegura("La salida no es segura:\n  - " + "\n  - ".join(problemas))
     return salida

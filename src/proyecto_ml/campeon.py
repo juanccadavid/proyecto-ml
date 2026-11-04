@@ -33,6 +33,7 @@ Los afinados, Optuna y PyCaret son evidencia de experimentos (van a MLflow); el 
 from __future__ import annotations
 
 import json
+import warnings
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -119,7 +120,10 @@ def datos_eleccion(ruta: Path | None = None, origen: str | None = None) -> tuple
     archivo = ruta or desarrollo
     df = a.cargar(archivo)
     # Datos reales: el contrato del dataset ANONIMIZADO (sin PII, con seudónimos); sintéticos: el de origen.
-    errores = contrato.validar(df, contrato.para_ml() if origen == ORIGEN_REAL else None)
+    exigido = contrato.para_ml() if origen == ORIGEN_REAL else contrato.cargar()
+    errores = contrato.validar(df, exigido)
+    for aviso in contrato.advertencias(df, exigido):  # heurísticas sin regla de negocio: se avisa, no se rechaza
+        warnings.warn(aviso, contrato.AdvertenciaContrato, stacklevel=2)
     if origen == ORIGEN_REAL:  # fechas después del corte: FECHA_CORTE no es la del extracto y la foto queda corrida
         for columna in ("FECHARETIRO", "FECHAULTACTUALIZACION", "FECHAINGRESOLABORA"):
             if columna in df and (pd.to_datetime(df[columna], errors="coerce") > a.FECHA_CORTE).any():
