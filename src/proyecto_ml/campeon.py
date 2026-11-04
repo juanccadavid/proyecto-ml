@@ -135,6 +135,33 @@ def puntajes_fuera_de_particion(modelo: Pipeline, X, y, folds: int = FOLDS, repe
     return puntajes, por_particion
 
 
+def puntajes_hacia_adelante(modelo: Pipeline, X: pd.DataFrame, y, periodos: pd.Series) -> tuple[np.ndarray, np.ndarray]:
+    """(puntajes, validadas): cada fila de un período se puntúa con un modelo entrenado SOLO con períodos anteriores.
+
+    Es la selección con varias fotos de entrenamiento (``validacion_fuera_de_tiempo`` con 4+ extractos): el mismo
+    asociado está en varias fotos, y una partición al azar lo pondría a la vez en entrenamiento y en validación, y
+    entrenaría con un período posterior al que valida. Hacia adelante ninguna de las dos cosas pasa. El primer
+    período solo entrena: ``validadas`` marca las filas puntuadas (los demás períodos), en el orden de ``X``.
+    ``ValueError`` si hay menos de 2 períodos, o si una ventana de entrenamiento o un período validado no tiene las
+    dos clases (no hay con qué elegir un umbral): nunca se relaja en silencio.
+    """
+    y, periodos = np.asarray(y), pd.to_datetime(pd.Series(periodos)).to_numpy()
+    orden = np.unique(periodos)
+    if len(orden) < 2:
+        raise ValueError("La validación hacia adelante necesita al menos 2 períodos de entrenamiento.")
+    puntajes, validadas = np.full(len(y), np.nan), periodos > orden[0]
+    for periodo in orden[1:]:
+        entrena, valida = periodos < periodo, periodos == periodo
+        for nombre, filas in (("de entrenamiento antes de", entrena), ("validado", valida)):
+            if len(np.unique(y[filas])) < 2:
+                raise ValueError(
+                    f"El período {nombre} {pd.Timestamp(periodo).date()} no tiene las dos clases (retiros y no "
+                    "retiros): no se puede elegir modelo ni umbral con él."
+                )
+        puntajes[valida] = a.puntaje(clone(modelo).fit(X[entrena], y[entrena]), X[valida])
+    return puntajes[validadas], validadas
+
+
 def intervalo_bootstrap(y, puntaje, n: int = BOOTSTRAP, nivel: float = NIVEL, seed: int = 0) -> tuple[float, float]:
     """Intervalo de la PR-AUC remuestreando asociados con reemplazo (dentro de cada clase, para que la tasa de
     retiro no cambie entre remuestras)."""
@@ -263,22 +290,48 @@ def elegir_y_medir(
 ) -> dict:
     """El procedimiento ciego de ``validacion_temporal`` y ``validacion_fuera_de_tiempo``.
 
-    Con ``entrenamiento`` (una foto) y nada más: predicciones fuera de partición de cada candidato -> gana la mayor
-    PR-AUC -> ``elegir_umbrales`` -> se entrena con todo. Después se mide en ``prueba`` con ese umbral fijo.
+    Solo con ``entrenamiento``: puntajes de selección de cada candidato -> gana la mayor PR-AUC ->
+    ``elegir_umbrales`` con esos mismos puntajes -> se entrena con todo. Después se mide en ``prueba`` (que no
+    participó en nada de lo anterior) con ese umbral fijo. Los puntajes de selección dependen de cuántas fotos
+    (``FECHA_OBSERVACION``) tiene ``entrenamiento``:
+
+    - **una**: ``StratifiedKFold`` (cada asociado aparece una sola vez; si un identificador se repite, error);
+    - **varias**: ``puntajes_hacia_adelante`` (cada período se valida con un modelo entrenado con los anteriores):
+      el mismo asociado está en varias fotos y una partición al azar mezclaría sus filas y el futuro.
+
+    Los identificadores (``extractos.LLAVES``) solo sirven para revisar repetidos: no son variables del modelo
+    (``abandono.preparar`` usa una lista fija).
     """
+    from proyecto_ml.extractos import LLAVES
+
     if not isinstance(candidatos, dict):
         candidatos = {"modelo": candidatos}
     Xe, ye = a.separar(entrenamiento)
     Xp, yp = a.separar(prueba)
-    for nombre, y in (("de entrenamiento", ye), ("de prueba", yp)):
-        if int(y.sum()) < folds or int((y == 0).sum()) < folds:
-            raise ValueError(f"La foto {nombre} tiene menos de {folds} asociados en alguna clase: usa más datos.")
-    oof = {n: puntajes_fuera_de_particion(m, Xe, ye, folds, repeticiones=1)[0][0] for n, m in candidatos.items()}
-    pr_auc_vieja = {n: float(average_precision_score(ye, p)) for n, p in oof.items()}
+    if int(yp.sum()) < folds or int((yp == 0).sum()) < folds:
+        raise ValueError(f"La foto de prueba tiene menos de {folds} asociados en alguna clase: usa más datos.")
+    periodos = entrenamiento.get(a.FECHA_OBSERVACION)
+    varios = periodos is not None and len(pd.unique(periodos)) > 1
+    por_periodo = [entrenamiento] if periodos is None else [g for _, g in entrenamiento.groupby(periodos)]
+    for columna in [c for c in LLAVES if c in entrenamiento]:
+        if any(g[columna].duplicated().any() for g in por_periodo):
+            raise ValueError(f"{columna} se repite dentro de una misma foto de entrenamiento: no se puede validar.")
+    if varios:
+        estrategia = "hacia adelante (cada período validado con un modelo de los anteriores)"
+        hacia_adelante = {n: puntajes_hacia_adelante(m, Xe, ye, periodos) for n, m in candidatos.items()}
+        oof = {n: p for n, (p, _) in hacia_adelante.items()}
+        y_sel = np.asarray(ye)[next(iter(hacia_adelante.values()))[1]]
+    else:
+        if int(ye.sum()) < folds or int((ye == 0).sum()) < folds:
+            raise ValueError(f"La foto de entrenamiento tiene menos de {folds} asociados en alguna clase.")
+        estrategia = f"StratifiedKFold({folds}) en una sola foto"
+        oof = {n: puntajes_fuera_de_particion(m, Xe, ye, folds, repeticiones=1)[0][0] for n, m in candidatos.items()}
+        y_sel = np.asarray(ye)
+    pr_auc_vieja = {n: float(average_precision_score(y_sel, p)) for n, p in oof.items()}
     elegido = max(pr_auc_vieja, key=lambda n: pr_auc_vieja[n])
 
     def medir(nombre: str) -> dict:
-        umbrales = elegir_umbrales(ye, oof[nombre], beta, precision_min)
+        umbrales = elegir_umbrales(y_sel, oof[nombre], beta, precision_min)
         entrenado = clone(candidatos[nombre]).fit(Xe, ye)
         metodo = a.metodo_puntaje(entrenado)
         return {
@@ -289,6 +342,8 @@ def elegir_y_medir(
     resultado = {
         "elegido": elegido,
         "pr_auc_vieja": pr_auc_vieja,
+        "seleccion": estrategia,
+        "filas_seleccion": len(y_sel),
         "asociados_entrenamiento": len(entrenamiento),
         "retiros_entrenamiento": int(ye.sum()),
         "asociados_prueba": len(prueba),
@@ -316,6 +371,11 @@ def validacion_fuera_de_tiempo(
     todos los pares menos el último y se mide en el último con ``elegir_y_medir``: la prueba usa variables y
     etiquetas posteriores a todo lo que se usó para elegir. Es la validación que la prueba de estrés de un solo
     extracto no puede dar; necesita extractos reales (docs/datos_reales.md).
+
+    Con 3 extractos hay una foto de entrenamiento (cada asociado una vez) y la selección es estratificada. Con 4 o
+    más, el mismo asociado está en varias fotos de entrenamiento y la selección va hacia adelante
+    (``puntajes_hacia_adelante``). En los dos casos la prueba incluye a asociados que el modelo vio en fotos
+    anteriores: es el uso real (predecir a los asociados actuales en el período siguiente), no una fuga.
     """
     from proyecto_ml import extractos as ex
 

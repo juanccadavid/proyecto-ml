@@ -81,7 +81,7 @@ def main(argv: list[str] | None = None) -> None:
         f"({resultado['asociados_entrenamiento']} asociados, {resultado['retiros_entrenamiento']} retiros); "
         f"mide en t0 = {resultado['t0_prueba']} ({resultado['asociados_prueba']}, {resultado['retiros_prueba']})"
     )
-    print(f"Elegido: {c.TITULOS.get(resultado['elegido'], resultado['elegido'])}")
+    print(f"Elegido: {c.TITULOS.get(resultado['elegido'], resultado['elegido'])} · selección: {resultado['seleccion']}")
     print(
         f"PR-AUC {resultado['pr_auc']:.3f} (base {resultado['base_rate']:.3f}) · ROC-AUC {resultado['roc_auc']:.3f} · "
         f"al umbral {resultado['umbral']:.3f}: precisión {resultado['precision']:.2f}, recall {resultado['recall']:.2f}"
