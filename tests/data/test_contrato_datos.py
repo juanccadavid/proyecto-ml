@@ -128,9 +128,15 @@ DISTRIBUCION = [
 
 @pytest.mark.parametrize(("check", "cumple", "no_cumple"), DISTRIBUCION, ids=[c for c, *_ in DISTRIBUCION])
 def test_nivel_2_distribucion(lote, contrato, check, cumple, no_cumple):
+    """Cada check de nivel 2 se dispara justo en su límite: como error (bloquea) o como advertencia (se informa),
+    según su ``severidad`` en el YAML."""
     prefijo = f"Nivel 2 · {check}:"
-    assert not _errores(cumple(lote), contrato, prefijo)
-    assert _errores(no_cumple(lote), contrato, prefijo)
+    severidad = next(d.get("severidad", "error") for d in contrato.distribucion if d["id"] == check)
+    detectar = k.validar if severidad == "error" else k.advertencias
+    otro = k.advertencias if severidad == "error" else k.validar
+    assert not [e for e in detectar(cumple(lote), contrato) if e.startswith(prefijo)]
+    assert [e for e in detectar(no_cumple(lote), contrato) if e.startswith(prefijo)]
+    assert not [e for e in otro(no_cumple(lote), contrato) if e.startswith(prefijo)]  # nunca en los dos lados
 
 
 # ---------------------------------------------------------------- nivel 3: entre columnas

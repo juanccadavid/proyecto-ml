@@ -57,10 +57,13 @@ def main() -> None:
         # el contrato está escrito con pandera sobre pandas: se le pasa una copia en pandas
         exigido = contrato.cargar(args.contrato)
         exigido = contrato.para_ml(exigido) if args.ml else exigido
-        errores = contrato.validar(df.to_pandas(), exigido)
+        en_pandas = df.to_pandas()
+        errores = contrato.validar(en_pandas, exigido)
         errores = contrato.sin_valores(errores) if args.ml else errores  # anonimizado: sin valores en la consola
         if errores:
             raise SystemExit("El archivo no cumple el contrato:\n  - " + "\n  - ".join(errores))
+        for aviso in contrato.advertencias(en_pandas, exigido):
+            print(f"ADVERTENCIA del contrato (no bloquea): {aviso}")
     if args.target not in df.columns:
         raise SystemExit(f"Falta la columna objetivo '{args.target}'")
     if df[args.target].drop_nulls().n_unique() != 2:  # pandas: df[target].nunique(dropna=True)

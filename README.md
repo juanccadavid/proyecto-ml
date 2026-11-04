@@ -840,6 +840,12 @@ make tecnicas ARGS="--datos data/raw/supabase_asociados.parquet --sin-mlflow"
 | 2. Distribución | `distribucion` → check sobre el lote | problemas sistemáticos | `salario_en_pesos`, `volumen_minimo` | No: la BD ve fila a fila |
 | 3. Entre columnas | `reglas` → check con varias columnas | incoherencias | `retiro_coherente`, `nombreintegrado_coherente` | Sí (CHECK) |
 
+Cada check de nivel 2 tiene `severidad`: **`error`** (por defecto, bloquea) o **`advertencia`** (se informa con
+`contrato.advertencias` y no bloquea). `tasa_retiro_plausible` (5 %–50 % de `#RETIROS=1` en el lote) es
+advertencia: el rango salió del diseño de los sintéticos (10 % de retiro), no de una regla del fondo, y un
+extracto real con otra prevalencia no es por eso un dato malo. **Pendiente: confirmar el rango con el fondo.** Si
+da una regla validada, se ajustan `min`/`max` en el YAML y se pasa a `severidad: error`.
+
 De ahí salen la validación en Python, la tabla de Supabase y el formulario web:
 
 ```bash
@@ -960,20 +966,46 @@ regla a conciencia, actualiza su caso en el mismo PR.
   - toma la configuración del contrato (`pii`), y una columna que el contrato no conoce lo detiene hasta que se
     decida `--conservar`, `--eliminar` o `--seudonimizar`;
   - exige `ANON_SALT` (`make salt`);
-  - verifica la salida: ninguna columna personal, seudónimos válidos y ningún valor personal copiado en otra
-    columna;
-  - si algo falla, **no escribe nada** (escribe a un temporal y lo renombra solo al final);
-  - los errores dicen columnas y cantidades, nunca valores;
+  - **antes de escribir**, verifica que no quede PII (abajo) **y** valida la salida contra el contrato para ML;
+  - si algo falla, **no escribe nada ni reemplaza la salida que ya existía** (escribe a un temporal y lo renombra
+    solo al final);
+  - los errores dicen columnas, reglas y cantidades, nunca valores;
+  - como el contrato para ML es estricto, una columna que se conserva fuera del contrato (`--conservar`) o en
+    rangos (`--bin`) no pasa: primero se agrega al contrato, con revisión del equipo;
   - antes aplica `contrato.limpiar_extracto` (`--sin-limpiar` lo apaga).
+- **PII residual (`anonymize.verificar`, configurable con `anonymize.Deteccion`).** Busca en la salida los valores
+  de las columnas personales **de ese extracto** (no "cualquier número", que daría falsos positivos en masa):
+  - **exacto:** una celda igual a un valor personal (6 caracteres o más);
+  - **número incrustado:** cédulas, teléfonos y cuentas del extracto dentro de un texto, también con puntos,
+    guiones o espacios (`cc 1.037.000.000`, `300-123-4567`);
+  - **texto incrustado:** nombres completos, direcciones y correos del extracto dentro de un texto más largo;
+  - **forma de correo:** cualquier correo en una columna de texto que se conserva;
+  - **nombre de columna:** `--conservar CELULAR_ALTERNO` se rechaza porque su nombre sugiere un dato personal.
+
+  **Límites: no garantiza una anonimización completa.** Un nombre o apellido suelto solo se busca exacto (dentro
+  de un texto marcaría "Santa María"). Tampoco ve:
+  - los valores cortos, como una extensión;
+  - un dato transformado (abreviado, con errores);
+  - un dato personal que no venga de las columnas personales del extracto.
+
+  La revisión humana del extracto sigue siendo necesaria.
 - **Seudónimo:** HMAC-SHA256 con la clave `ANON_SALT`, los 64 caracteres hexadecimales completos y en texto
   (nunca un número). El mismo identificador da siempre el mismo seudónimo, así que se pueden unir extractos.
   **Seudonimizar no es anonimizar de forma irreversible:** con la clave se puede recalcular el seudónimo de una
   cédula conocida. La clave la guarda solo el custodio: nunca va al repositorio, a MLflow ni a los logs.
 - **Predicciones (`make predecir`):** la salida nunca copia cédulas ni datos personales. Para cruzarla quedan
-  `fila` y los seudónimos `*_SEUDO`. Un `*_SEUDO` que no sea un HMAC (p. ej. una cédula renombrada) se rechaza, y
-  en modo real también un archivo que traiga columnas personales. Volver del seudónimo a la persona, si hace
-  falta para contactar a alguien, es una tabla de correspondencia que guarda el custodio, **fuera** de este
-  pipeline, del repositorio y de MLflow.
+  `fila` y los seudónimos `*_SEUDO`. Un `*_SEUDO` que no sea un HMAC (p. ej. una cédula renombrada) se rechaza.
+
+  | Origen | Qué se acepta | Qué sale en el CSV |
+  |---|---|---|
+  | `sintetico` | cualquier archivo (compatibilidad) | `fila`, los `*_SEUDO` válidos, puntaje, zona, alerta, grupo |
+  | `real_anonimizado` | solo columnas del contrato para ML (lista blanca), sin PII y con al menos `CEDULA_SEUDO` o `IDASOCIADOS_SEUDO` | `fila`, `CEDULA_SEUDO`, `IDASOCIADOS_SEUDO`, puntaje, zona, alerta, grupo |
+
+  Volver del seudónimo a la persona, si hace falta para contactar a alguien, es una tabla de correspondencia que
+  guarda el custodio, **fuera** de este pipeline, del repositorio y de MLflow.
+- **Brier:** solo se calcula si el puntaje viene de `predict_proba` (señal explícita `metodo=`, no el rango de los
+  valores). Con `decision_function` (Ridge) o sin método queda en NaN. Un método desconocido, o NaN, infinitos o
+  valores fuera de [0, 1] con `predict_proba`, dan error.
 - **Cuasi-identificadores que quedan:** `FECHANACIMIENTO` (la necesita EDAD), barrio, comuna, cargo y agencia.
   Combinados podrían señalar a alguien en un fondo chico. Si el fondo lo pide, se agrupan con `--bin`, o la edad
   se calcula antes de compartir; eso cambia el contrato para ML y se decide con el equipo.

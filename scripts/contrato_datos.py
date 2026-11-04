@@ -35,9 +35,12 @@ SUPABASE_BAJADA = DATA_DIR / "raw" / "supabase_asociados.parquet"
 
 
 def _validar(path: Path, contrato: k.Contrato, sin_valores: bool = False) -> bool:
-    errores = k.validar(load_dataset(path), contrato)
+    df = load_dataset(path)
+    errores = k.validar(df, contrato)
     for e in k.sin_valores(errores) if sin_valores else errores:
         print(f"  x {e}")
+    for aviso in k.advertencias(df, contrato):  # agregados del lote, sin valores de personas
+        print(f"  ! {aviso}")
     print(f"{path}: {'cumple' if not errores else f'{len(errores)} incumplimiento(s)'} el contrato v{contrato.version}")
     return not errores
 

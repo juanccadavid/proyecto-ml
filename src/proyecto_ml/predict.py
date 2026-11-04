@@ -7,8 +7,10 @@ Supabase o del formulario: el pipeline del campeón prepara las variables (``aba
 Privacidad: la salida NUNCA copia cédulas ni otros datos personales. Para cruzar las predicciones con los
 registros quedan ``fila`` (la posición en el archivo de entrada) y, si el archivo viene anonimizado, sus seudónimos
 ``*_SEUDO`` (HMAC de 64 caracteres hex; se rechaza uno que no tenga esa forma, p. ej. una cédula cruda renombrada).
-Con ``ORIGEN_DATOS=real_anonimizado`` se rechaza además un archivo que traiga columnas personales del contrato.
-Volver del seudónimo a la persona es una tabla de correspondencia que guarda el custodio, fuera de este pipeline.
+Con ``ORIGEN_DATOS=real_anonimizado`` se rechaza además un archivo con columnas personales, con columnas que el
+contrato para ML no conoce o sin ningún seudónimo (``revisar_real``).
+Volver del seudónimo a la persona es una tabla de correspondencia que guarda el custodio, fuera de este pipeline
+y de MLflow.
 
 Uso:
     uv run python -m proyecto_ml.predict --datos data/raw/supabase_asociados.parquet
@@ -55,11 +57,38 @@ def cargar(carpeta: Path = MODELS_DIR):
     return guardado
 
 
+def revisar_real(df: pd.DataFrame) -> None:
+    """Modo ``real_anonimizado``: el archivo solo puede traer columnas del contrato para ML (lista blanca: una
+    columna que el contrato no conoce podría ser personal) y al menos un seudónimo que el contrato reconoce
+    (``CEDULA_SEUDO``, ``IDASOCIADOS_SEUDO``) para cruzar las predicciones. Los errores dicen columnas, no valores.
+
+    No exige el contrato completo: un lote para predecir puede ser chico (``volumen_minimo``) o traer solo
+    asociados activos; lo que sí se exige es que no traiga nada que no deba salir.
+    """
+    if personales := [col for col in k.columnas_pii() if col in df]:
+        raise DatosPersonales(f"El archivo trae columnas personales {personales}: anonimízalo antes (make anonimizar).")
+    contrato_ml = k.para_ml()
+    if desconocidas := [str(col) for col in df.columns if col not in contrato_ml.nombres]:
+        raise DatosPersonales(
+            f"Columnas que el contrato del dataset anonimizado no conoce {desconocidas}: podrían ser personales. "
+            "Quítalas o agrégalas al contrato (con revisión del equipo)."
+        )
+    if not [col for col in contrato_ml.nombres if col.endswith(k.SUFIJO_SEUDONIMO) and col in df]:
+        raise DatosPersonales(
+            "El archivo no trae ningún seudónimo (CEDULA_SEUDO / IDASOCIADOS_SEUDO): sin él, las predicciones no se "
+            "pueden cruzar con los asociados. Usa el archivo que deja make anonimizar."
+        )
+
+
 def predecir(df: pd.DataFrame, carpeta: Path = MODELS_DIR, origen: str | None = None) -> pd.DataFrame:
     """Una fila por asociado de ``df``: ``fila``, los seudónimos que traiga, puntaje del campeón, zona, alerta
-    (0/1) y grupo de KMeans. Sin datos personales (ver el docstring del módulo)."""
-    if origen_datos(origen) == ORIGEN_REAL and (personales := [col for col in k.columnas_pii() if col in df]):
-        raise DatosPersonales(f"El archivo trae columnas personales {personales}: anonimízalo antes (make anonimizar).")
+    (0/1) y grupo de KMeans. Sin datos personales (ver el docstring del módulo).
+
+    - ``sintetico``: cualquier archivo; la salida solo copia ``fila`` y los ``*_SEUDO`` válidos.
+    - ``real_anonimizado``: además, ``revisar_real`` (sin PII, solo columnas del contrato para ML, con seudónimo).
+    """
+    if origen_datos(origen) == ORIGEN_REAL:
+        revisar_real(df)
     ids = seudonimos(df)
     modelo, agrupador, _ = cargar(carpeta)
     X = df.drop(columns=a.TARGET, errors="ignore")

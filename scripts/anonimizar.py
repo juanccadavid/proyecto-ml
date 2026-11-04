@@ -7,10 +7,21 @@ La configuración de qué es personal es el contrato de origen (contratos/asocia
 clave ANON_SALT del .env). Una columna del extracto que el contrato no conoce detiene el proceso hasta que se
 decida qué hacer con ella: --conservar, --eliminar o --seudonimizar.
 
-Antes de escribir verifica que no quede ninguna columna personal, que los seudónimos sean válidos y que ningún
-valor personal se haya colado en otra columna; si algo falla, NO escribe nada (ni un archivo a medias) y el
-error dice columnas y cantidades, nunca valores. Al final valida la salida contra el contrato del dataset
-anonimizado para ML (contrato.para_ml), el mismo que exige make campeon con ORIGEN_DATOS=real_anonimizado.
+Orden (nada se escribe hasta el paso 5):
+  1. carga el extracto (y lo limpia, salvo --sin-limpiar);
+  2. lo anonimiza según el contrato;
+  3. verifica que no quede PII: columnas personales, seudónimos inválidos, valores personales copiados o
+     incrustados en otra columna (anonymize.verificar: qué detecta y qué no);
+  4. valida la salida contra el contrato del dataset anonimizado para ML (contrato.para_ml), el mismo que exige
+     make campeon con ORIGEN_DATOS=real_anonimizado;
+  5. solo si 3 y 4 pasan, escribe (a un temporal que se renombra al final: o el archivo completo, o nada).
+Si algo falla, termina con error y NO escribe ni reemplaza la salida existente. Los errores dicen columnas,
+reglas y cantidades, nunca valores. Las advertencias del contrato (p. ej. una tasa de retiro distinta de la
+esperada) se muestran y no bloquean.
+
+Como el contrato para ML es estricto, una columna conservada que no está en el contrato (--conservar,
+--seudonimizar de una columna extra) o agrupada en rangos (--bin) hace que la salida no lo cumpla: hay que
+agregarla primero al contrato (con revisión del equipo).
 
 Seudonimizar no es anonimizar de forma irreversible: con la clave se puede recalcular el seudónimo de una cédula
 conocida. La clave la guarda solo quien anonimiza; nunca va al repositorio, a MLflow ni a los logs.
@@ -89,20 +100,24 @@ def main(argv: list[str] | None = None) -> None:
             seudonimizar_columnas=args.seudonimizar,
             bins=dict(args.bin),
         )
-    except AnonimizacionInsegura as e:
+    except AnonimizacionInsegura as e:  # paso 3: quedaría PII
         sys.exit(f"No se escribió nada. {e}")
-    escribir_atomico(salida, args.output)
+    contrato_ml = k.para_ml(contrato)
+    if errores := k.sin_valores(k.validar(salida, contrato_ml)):  # paso 4, sin valores por si quedó algo personal
+        detalle = "\n".join(f"  - {e}" for e in errores[:10])
+        sys.exit(
+            "No se escribió nada. La salida no cumple el contrato del dataset anonimizado para ML "
+            f"({len(errores)} incumplimientos):\n{detalle}"
+        )
+    escribir_atomico(salida, args.output)  # paso 5
     eliminadas = sorted(set(df.columns) - set(salida.columns) - set(k.columnas_pii(contrato, "seudonimizar")))
     seudo = [c for c in salida.columns if c.endswith(k.SUFIJO_SEUDONIMO)]
     print(f"{len(salida)} filas, {salida.shape[1]} columnas -> {args.output}")
     print(f"Eliminadas ({len(eliminadas)}): {', '.join(eliminadas)}")
     print(f"Seudonimizadas: {', '.join(seudo)}")
-    errores = k.sin_valores(k.validar(salida, k.para_ml(contrato)))
-    if errores:
-        print(f"Ojo: la salida no cumple el contrato del dataset anonimizado para ML ({len(errores)}):")
-        print("\n".join(f"  - {e}" for e in errores[:10]))
-    else:
-        print("La salida cumple el contrato del dataset anonimizado para ML (contrato.para_ml).")
+    print("La salida cumple el contrato del dataset anonimizado para ML (contrato.para_ml).")
+    for aviso in k.advertencias(salida, contrato_ml):
+        print(f"Advertencia del contrato (no bloquea): {aviso}")
 
 
 if __name__ == "__main__":

@@ -70,12 +70,26 @@ def es_probabilidad(y_score) -> bool:
     return bool(((y_score >= 0) & (y_score <= 1)).all())
 
 
+METODOS_PUNTAJE = ("predict_proba", "decision_function")  # de dónde sale el puntaje (abandono.metodo_puntaje)
+
+
 def _brier(y_true, y_score, metodo: str | None) -> float:
+    """Brier solo con ``metodo="predict_proba"``; NaN si el puntaje no es una probabilidad (o no se sabe).
+
+    No se deduce del rango: una ``decision_function`` puede caer entre 0 y 1 y no ser una probabilidad. Un
+    ``metodo`` desconocido es un error (un nombre mal escrito no debe dar NaN en silencio), igual que NaN, infinitos
+    o valores fuera de [0, 1] en un puntaje que dice ser una probabilidad.
+    """
+    if metodo is not None and metodo not in METODOS_PUNTAJE:
+        raise ValueError(f"metodo debe ser uno de {METODOS_PUNTAJE} o None, no {metodo!r}")
     if metodo != "predict_proba":
         return float("nan")
-    if not es_probabilidad(y_score):
+    valores = np.asarray(y_score, dtype=float)
+    if not np.isfinite(valores).all():
+        raise ValueError("metodo='predict_proba' pero hay puntajes NaN o infinitos: no son probabilidades")
+    if not es_probabilidad(valores):
         raise ValueError("metodo='predict_proba' pero hay puntajes fuera de [0, 1]: no son probabilidades")
-    return float(brier_score_loss(y_true, y_score))
+    return float(brier_score_loss(y_true, valores))
 
 
 def compute_metrics(y_true, y_score, threshold: float = 0.5, metodo: str | None = None) -> dict[str, float]:
@@ -84,11 +98,13 @@ def compute_metrics(y_true, y_score, threshold: float = 0.5, metodo: str | None 
     Sin umbral: ``roc_auc``, ``pr_auc``, ``recall_at_10pct``, ``precision_at_10pct`` y ``brier`` (error
     cuadrático de la probabilidad: mide la calibración). El Brier solo se calcula si ``metodo`` dice que el puntaje
     es una probabilidad (``"predict_proba"``); si no se dice, o es ``decision_function`` (Ridge), queda en NaN: un
-    puntaje entre 0 y 1 no es por eso una probabilidad. Con ``predict_proba`` y valores fuera de [0, 1], error.
+    puntaje entre 0 y 1 no es por eso una probabilidad. Con ``predict_proba`` y valores NaN, infinitos o fuera de
+    [0, 1], error; con un ``metodo`` que no es ninguno de ``METODOS_PUNTAJE``, también (ver ``_brier``).
     Con ``threshold``: precisión, recall, F1, F2, especificidad (``specificity``: de los que se quedan, cuántos
     no reciben alerta), ``balanced_accuracy`` (promedio de recall y especificidad), MCC y Kappa.
     """
     y_true = np.asarray(y_true)
+    brier = _brier(y_true, y_score, metodo)  # primero: un puntaje inválido se explica antes de que falle otra métrica
     y_pred = (np.asarray(y_score) >= threshold).astype(int)
     single_class = len(np.unique(y_true)) < 2
     tn, fp, _, _ = confusion_matrix(y_true, y_pred, labels=[0, 1]).ravel()
@@ -107,7 +123,7 @@ def compute_metrics(y_true, y_score, threshold: float = 0.5, metodo: str | None 
         "kappa": float(cohen_kappa_score(y_true, y_pred)),
         "recall_at_10pct": recall_at_k(y_true, y_score, 0.10),
         "precision_at_10pct": precision_at_k(y_true, y_score, 0.10),
-        "brier": _brier(y_true, y_score, metodo),
+        "brier": brier,
     }
 
 

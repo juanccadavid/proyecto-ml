@@ -9,6 +9,8 @@
 #   1. Por fila      (grupos)        registros corruptos individuales.        También como CHECK en la BD.
 #   2. Distribución  (distribucion)  problemas sistemáticos del lote: cambio de unidades, ingesta cortada.
 #                                    Solo en Python: la BD valida fila a fila y no ve el lote completo.
+#                                    severidad: error (por defecto, bloquea) | advertencia (se informa y no
+#                                    bloquea: heurística de calidad sin una regla de negocio confirmada).
 #   3. Entre columnas (reglas)       incoherencias que no se ven mirando una sola columna. También en la BD.
 #
 # Campos por columna:
@@ -118,7 +120,13 @@ distribucion:
     descripcion: El lote trae al menos min_filas asociados (una ingesta cortada trae muy pocos)
     min_filas: 30
   - id: tasa_retiro_plausible
-    descripcion: "La fracción con #RETIROS=1 está entre min y max (fuera de ahí: etiqueta mal calculada o filtro)"
+    # Fracción de filas con #RETIROS=1 en el lote completo (todos los retirados del extracto, no el objetivo de la
+    # foto a 3 meses). El rango 5 %-50 % es una HEURÍSTICA de calidad, no una regla de negocio: salió del diseño de
+    # los sintéticos (10 % de retiro) y no hay documento del fondo que lo respalde. Por eso es advertencia: un
+    # extracto real con otra prevalencia se informa, no se rechaza. Confirmar el rango con el fondo; si da una
+    # regla validada (p. ej. "un extracto completo nunca baja de X %"), ajustar min/max y pasar a severidad: error.
+    descripcion: "La fracción con #RETIROS=1 está entre min y max (fuera de ahí: revisar la etiqueta o un filtro)"
+    severidad: advertencia
     min: 0.05
     max: 0.50
   - id: salario_en_pesos
