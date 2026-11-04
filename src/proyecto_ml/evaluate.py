@@ -118,7 +118,7 @@ def compute_metrics(y_true, y_score, threshold: float = 0.5, metodo: str | None 
         "f2": float(fbeta_score(y_true, y_pred, beta=2, zero_division=0)),
         "specificity": float(tn / (tn + fp)) if tn + fp else float("nan"),
         "balanced_accuracy": float("nan") if single_class else float(balanced_accuracy_score(y_true, y_pred)),
-        # MCC y Kappa corrigen el desbalance: 0 = no mejor que el azar, 1 = perfecto (ver README: qué métrica)
+        # MCC y Kappa corrigen el desbalance: 0 = no mejor que el azar, 1 = perfecto (docs/metodologia.md: qué métrica)
         "mcc": float(matthews_corrcoef(y_true, y_pred)),
         "kappa": float(cohen_kappa_score(y_true, y_pred)),
         "recall_at_10pct": recall_at_k(y_true, y_score, 0.10),

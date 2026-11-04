@@ -50,6 +50,7 @@ from sklearn.base import clone
 from proyecto_ml import abandono as a
 from proyecto_ml import busqueda_optuna as bo
 from proyecto_ml import campeon as c
+from proyecto_ml import campeon_figuras as cf
 from proyecto_ml import explicar as e
 from proyecto_ml import registro as r
 from proyecto_ml import validacion as v
@@ -152,6 +153,8 @@ def main() -> None:
             "validacion": f"StratifiedKFold({args.folds}) x {args.repeticiones} repeticiones (semilla = repetición)",
             "variables": a.NUMERICAS + a.CATEGORICAS,
             "versiones": {k: v for k, v in r.contexto_reproducible().items() if k.startswith("version.")},
+            "codigo": r.version_codigo(),  # commit de git y si había cambios sin commit
+            "argumentos": {k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()},
         },
     )
     print("=== Candidatos (fuera de partición; umbral = máximo F2, umbral_alto = precisión mínima) ===")
@@ -217,22 +220,35 @@ def main() -> None:
         print("\nDatos reales: sin asociados nuevos ni escenarios del generador (serían de otro origen). La validación")
         print("de afuera es la temporal (abajo).")
 
-    temporal = None  # foto vieja -> foto reciente: umbral elegido solo con la vieja, medido en la reciente
+    temporal = None  # foto vieja -> foto reciente: candidato y umbral elegidos solo con la vieja
     if h:
         try:
             temporal = c.validacion_temporal(
-                campeon.modelo, extracto, h, folds=args.folds, beta=args.beta, precision_min=args.precision_min
+                {n: cand.modelo for n, cand in campeon.candidatos.items()},
+                extracto,
+                h,
+                folds=args.folds,
+                beta=args.beta,
+                precision_min=args.precision_min,
+                referencia=campeon.nombre,
             )
         except ValueError as error:
             print(f"\nValidación temporal: no se pudo ({error}).")
         else:
             print(
-                f"\n=== Validación temporal del campeón: entrena con la foto a {temporal['t0_entrenamiento']} "
+                "\n=== Prueba de estrés temporal (un solo extracto: las mismas personas en las dos fotos) ===\n"
+                f"Elige y entrena con la foto a {temporal['t0_entrenamiento']} "
                 f"({temporal['retiros_entrenamiento']} retiros) y mide en la de {temporal['t0_prueba']} "
-                f"({temporal['retiros_prueba']} retiros) ===\n"
+                f"({temporal['retiros_prueba']} retiros)\n"
+                f"Elegido con la foto vieja: {c.TITULOS.get(temporal['elegido'], temporal['elegido'])}\n"
                 f"PR-AUC {temporal['pr_auc']:.3f} (base {temporal['base_rate']:.3f}) · "
                 f"ROC-AUC {temporal['roc_auc']:.3f} · al umbral {temporal['umbral']:.3f} de la foto vieja: "
                 f"precisión {temporal['precision']:.2f}, recall {temporal['recall']:.2f}, MCC {temporal['mcc']:.2f}"
+            )
+            ref = temporal["referencia"]
+            print(
+                f"El campeón ({c.TITULOS[campeon.nombre]}), con el mismo procedimiento (su elección no es ciega): "
+                f"PR-AUC {ref['pr_auc']:.3f}, precisión {ref['precision']:.2f}, recall {ref['recall']:.2f}"
             )
             if not experimental and not temporalidad_confirmada():
                 print("OJO: con temporalidad sin confirmar, las dos fotos usan los mismos conteos (posible fuga).")
@@ -262,16 +278,16 @@ def main() -> None:
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     METRICS_DIR.mkdir(parents=True, exist_ok=True)
     figura = FIGURES_DIR / "campeon_umbrales.html"
-    marcar_origen(c.figura_umbrales(campeon)).write_html(figura, include_plotlyjs="cdn")
+    marcar_origen(cf.figura_umbrales(campeon)).write_html(figura, include_plotlyjs="cdn")
     tabla_escenarios = FIGURES_DIR / "campeon_escenarios.html"
     if escenarios is not None:
         tabla_escenarios.write_text(escenarios.round(3).to_html(), encoding="utf-8", newline="\n")
     figura_roc = FIGURES_DIR / "campeon_roc.html"
-    marcar_origen(c.figura_roc(campeon)).write_html(figura_roc, include_plotlyjs="cdn")
+    marcar_origen(cf.figura_roc(campeon)).write_html(figura_roc, include_plotlyjs="cdn")
     figura_confusion = FIGURES_DIR / "campeon_confusion.html"
-    marcar_origen(c.figura_confusion(campeon)).write_html(figura_confusion, include_plotlyjs="cdn")
+    marcar_origen(cf.figura_confusion(campeon)).write_html(figura_confusion, include_plotlyjs="cdn")
     figuras = [figura, *([tabla_escenarios] if escenarios is not None else []), figura_roc, figura_confusion]
-    calibracion = c.figura_calibracion(campeon)
+    calibracion = cf.figura_calibracion(campeon)
     if calibracion is not None:  # solo si el puntaje es una probabilidad (no en Ridge)
         figura_calibracion = FIGURES_DIR / "campeon_calibracion.html"
         marcar_origen(calibracion).write_html(figura_calibracion, include_plotlyjs="cdn")

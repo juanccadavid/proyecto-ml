@@ -96,8 +96,12 @@ class Segmentacion:
     def fit(self, df: pd.DataFrame) -> Segmentacion:
         self.escalador_ = escalador().fit(df)
         Z = self.escalador_.transform(df)
-        self.tabla_k_ = tabla_k(Z, random_state=self.random_state) if self.k is None else None
-        self.k_ = self.k or int(self.tabla_k_["silueta"].idxmax())
+        if self.k is None:  # k por silueta
+            self.tabla_k_ = tabla_k(Z, random_state=self.random_state)
+            self.k_ = int(self.tabla_k_["silueta"].idxmax())
+        else:
+            self.tabla_k_ = None
+            self.k_ = self.k
         kmeans = KMeans(n_clusters=self.k_, n_init=20, random_state=self.random_state).fit(Z)
         centros = pd.DataFrame(kmeans.cluster_centers_, columns=VARIABLES)
         senal = sum(centros[c] * peso for c, peso in a.SENAL_RIESGO.items())

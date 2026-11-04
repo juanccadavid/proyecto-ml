@@ -73,3 +73,16 @@ def test_particion_temporal_entrena_con_la_foto_vieja():
     assert entrenamiento[a.TARGET].sum() > 0 and prueba[a.TARGET].sum() > 0
     with pytest.raises(ValueError):
         v.particion_temporal(df, meses_prueba=0)
+
+
+def test_con_un_solo_extracto_las_dos_fotos_son_las_mismas_personas():
+    """Lo que documenta el README ("prueba de estrés, no validación fuera de tiempo"): con un solo extracto, los
+    retiros de la foto reciente son asociados que en la vieja cuentan como activos, con los mismos conteos."""
+    df = GeneradorAsociados(n=1500, seed=5, tasa_retiro=0.3).generar()
+    vieja, reciente = v.particion_temporal(df, horizonte_meses=3, meses_prueba=3)
+    assert set(reciente["CEDULA"]) <= set(vieja["CEDULA"])
+    retiros = reciente.loc[reciente[a.TARGET] == 1, "CEDULA"]
+    en_vieja = vieja.set_index("CEDULA").loc[retiros]
+    assert len(retiros) and (en_vieja[a.TARGET] == 0).all()  # en la vieja, activos
+    conteos = reciente.set_index("CEDULA").loc[retiros, a.CONTEOS_SIN_FECHA]
+    assert conteos.equals(en_vieja[a.CONTEOS_SIN_FECHA])  # mismos números en las dos fotos

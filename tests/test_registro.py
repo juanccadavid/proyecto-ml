@@ -114,3 +114,21 @@ def test_misma_huella_en_memoria_y_en_archivo(tmp_path, monkeypatch):
     archivo, fuente = c.datos_eleccion()
     assert fuente == f"{generador.NOMBRE_DESARROLLO}.parquet"
     assert r.huella(archivo) == r.huella(memoria)
+
+
+def test_version_codigo_con_variable_y_sin_git(monkeypatch):
+    import subprocess
+
+    from proyecto_ml import registro as r
+
+    monkeypatch.setenv("GIT_COMMIT", "0123456789abcdef0123")
+    assert r.version_codigo()["git.commit"] == "0123456789ab"  # GIT_COMMIT manda (CI, Docker)
+    monkeypatch.delenv("GIT_COMMIT")
+    monkeypatch.delenv("GITHUB_SHA", raising=False)
+
+    def sin_git(*args, **kw):
+        raise OSError("git no está instalado")
+
+    monkeypatch.setattr(subprocess, "run", sin_git)
+    assert r.version_codigo() == {"git.commit": "desconocido", "git.sucio": "desconocido"}  # nunca falla
+    assert r.contexto_reproducible()["git.commit"] == "desconocido"

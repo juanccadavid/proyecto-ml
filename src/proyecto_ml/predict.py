@@ -109,6 +109,8 @@ def predecir(
     if solo_activos:
         vigentes = activos(df).to_numpy()
         df, filas = df[vigentes], filas[vigentes]
+    if df.empty:  # todos ya se retiraron (o el archivo viene vacío): nada que predecir
+        return pd.DataFrame(columns=["fila", *ids, *COLUMNAS])
     X = df.drop(columns=a.TARGET, errors="ignore")
     salida = df[ids].copy()
     salida.insert(0, "fila", filas)

@@ -63,12 +63,39 @@ def modelo_registrado(origen: str | None = None) -> str:
     return con_origen(MODELO_REGISTRADO, origen)
 
 
+def version_codigo() -> dict[str, str]:
+    """Con qué código se corrió: ``git.commit`` y ``git.sucio`` (había cambios sin commit).
+
+    El commit sale de ``GIT_COMMIT`` (o ``GITHUB_SHA`` en el CI) o de ``git rev-parse``; sin Git (p. ej. dentro de
+    la imagen de Docker, que no copia .git) queda ``"desconocido"``. Nunca falla por esto.
+    """
+    import os
+    import subprocess
+
+    def git(*args: str) -> str | None:
+        try:
+            salida = subprocess.run(
+                ["git", *args], capture_output=True, text=True, timeout=5, cwd=Path(__file__).parent
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return salida.stdout.strip() if salida.returncode == 0 else None
+
+    commit = os.getenv("GIT_COMMIT") or os.getenv("GITHUB_SHA") or git("rev-parse", "HEAD")
+    if commit is None:
+        return {"git.commit": "desconocido", "git.sucio": "desconocido"}
+    cambios = git("status", "--porcelain", "--untracked-files=no")
+    return {"git.commit": commit[:12], "git.sucio": "desconocido" if cambios is None else str(bool(cambios)).lower()}
+
+
 def contexto_reproducible(origen: str | None = None) -> dict[str, str]:
-    """Tags de reproducibilidad: origen de los datos, si es experimental y versiones de Python y librerías."""
+    """Tags de reproducibilidad: origen de los datos, si es experimental, el commit del código y las versiones de
+    Python y de las librerías."""
     import platform
     from importlib import metadata
 
     tags = {"origen_datos": origen_datos(origen), "experimental": str(es_experimental(origen)).lower()}
+    tags |= version_codigo()
     tags["version.python"] = platform.python_version()
     for paquete in PAQUETES:
         try:
@@ -148,13 +175,14 @@ def registrar_datos(
     """
     import mlflow
     from mlflow.data.code_dataset_source import CodeDatasetSource
+    from mlflow.data.pandas_dataset import from_pandas
 
     digest = huella(df)
     # Aviso de MLflow: "las columnas enteras no admiten vacíos". Aquí es solo el esquema descriptivo del dataset
     # (no el del modelo). MLflow lo calcula dentro de log_input, así que el bloque debe cubrirlo también.
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        dataset = mlflow.data.from_pandas(
+        dataset = from_pandas(
             df,
             source=CodeDatasetSource({"fuente": fuente}),  # explícita: un texto suelto MLflow lo toma por ruta
             targets=objetivo if objetivo in df else None,

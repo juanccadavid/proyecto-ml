@@ -34,7 +34,7 @@ Límites (no es una garantía de anonimización): un nombre o apellido suelto so
 de textos marcaría "Santa María" o "Calle Gómez"); los valores cortos (menos de ``largo_min_valor`` caracteres,
 p. ej. una extensión o un IDASOCIADOS de 4 dígitos) no se buscan; tampoco un dato personal transformado (con
 errores, abreviado, en otro orden) ni uno que no esté en las columnas personales del extracto. Los
-cuasi-identificadores (edad, barrio, cargo) siguen en la salida: ver README, "Privacidad".
+cuasi-identificadores (edad, barrio, cargo) siguen en la salida: ver docs/privacidad.md.
 """
 
 from __future__ import annotations

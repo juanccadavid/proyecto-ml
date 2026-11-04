@@ -44,6 +44,7 @@ dev = [
     "nbstripout>=0.7",
     "ipykernel>=6.29",
     "nbformat>=5.10",
+    "mypy>=1.13",
 ]
 
 [build-system]
@@ -55,6 +56,12 @@ packages = ["src/proyecto_ml"]
 
 [tool.uv]
 default-groups = ["dev"]
+
+[tool.mypy]
+# El paquete (src/proyecto_ml). Las librerías sin tipos (sklearn, mlflow, shap...) se toman como Any.
+files = ["src/proyecto_ml"]
+ignore_missing_imports = true
+warn_unused_ignores = true
 
 [tool.ruff]
 line-length = 120

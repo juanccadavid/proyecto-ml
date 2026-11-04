@@ -61,6 +61,8 @@ reports/metrics/campeon_*.json
 reports/metrics/regresion_*.json
 reports/metrics/segmentos_*.json
 reports/metrics/validacion_cruzada_*.json
+# make fuera-de-tiempo solo corre con extractos reales: sus agregados (tasa de retiro del fondo...) no se publican.
+reports/metrics/fuera_de_tiempo_*.json
 
 # ---------- IDEs / SO ----------
 .vscode/*

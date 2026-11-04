@@ -164,7 +164,7 @@ def resultados_estudio(estudio: optuna.Study, top: int = 5) -> pd.DataFrame:
             "std": float(np.std(t.user_attrs["folds"])),
             **{k: v for k, v in t.params.items()},
         }
-        for t in sorted(completos, key=lambda t: t.value, reverse=True)[:top]
+        for t in sorted(completos, key=lambda t: t.value if t.value is not None else -np.inf, reverse=True)[:top]
     ]
     return pd.DataFrame(filas).set_index("intento")
 

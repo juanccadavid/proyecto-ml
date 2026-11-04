@@ -364,3 +364,38 @@ def test_scripts_exploratorios_solo_con_sinteticos_y_con_contrato(tmp_path, monk
     roto.to_parquet(malo)
     with pytest.raises(c.DatosInvalidos, match="no cumple el contrato"):
         c.datos_exploracion(malo, "make afinar")
+
+
+def test_validacion_temporal_elige_entre_candidatos_solo_con_la_foto_vieja(monkeypatch):
+    df = GeneradorAsociados(n=1500, seed=5, tasa_retiro=0.3).generar()
+    modelos = a.modelos_supervisados()
+    candidatos = {"logreg": modelos["logreg"], "ridge": modelos["ridge"]}
+    filas = []
+    original = c.puntajes_fuera_de_particion
+
+    def espia(modelo, X, y, *args, **kw):
+        filas.append(len(X))
+        return original(modelo, X, y, *args, **kw)
+
+    monkeypatch.setattr(c, "puntajes_fuera_de_particion", espia)
+    resultado = c.validacion_temporal(candidatos, df, horizonte_meses=3, referencia="ridge")
+    assert filas == [resultado["asociados_entrenamiento"]] * 2  # la elección solo mira la foto vieja
+    assert resultado["elegido"] == max(resultado["pr_auc_vieja"], key=resultado["pr_auc_vieja"].get)
+    assert set(resultado["pr_auc_vieja"]) == {"logreg", "ridge"}
+    assert resultado["referencia"]["modelo"] == "ridge" and 0 <= resultado["referencia"]["pr_auc"] <= 1
+
+
+def test_prediccion_sin_activos_devuelve_tabla_vacia(campeon_guardado, extracto):
+    retirados = extracto[extracto["FECHARETIRO"].notna()]
+    salida = p.predecir(retirados, campeon_guardado, origen="sintetico")
+    assert salida.empty and list(salida.columns) == ["fila", *p.COLUMNAS]
+
+
+def test_exploracion_sin_limpieza_valida_la_version_limpia(tmp_path, monkeypatch, extracto):
+    monkeypatch.setenv("ORIGEN_DATOS", "sintetico")
+    sucio = extracto.copy()
+    sucio["SEXO"] = sucio["SEXO"].astype(object).map(lambda v: f" {v} ")  # espacios: la limpieza los quita
+    ruta = tmp_path / "sucio.parquet"
+    sucio.to_parquet(ruta)
+    crudo = c.datos_exploracion(ruta, "make abandono", limpiar=False)
+    assert crudo["SEXO"].iloc[0].startswith(" ")  # se entrena con el archivo tal cual (--sin-limpieza)

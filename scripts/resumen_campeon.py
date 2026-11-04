@@ -76,11 +76,18 @@ def resumen(info: dict) -> str:
             f"recall de la alerta {nuevos['recall']:.0%}."
         )
     if t := info.get("validacion_temporal"):
+        elegido = c.TITULOS.get(t.get("elegido", ""), t.get("elegido", "?"))
         lineas.append(
-            f"\nValidación temporal (entrena con la foto a {t['t0_entrenamiento']}, mide en la de {t['t0_prueba']}, "
-            f"umbral de la foto vieja): PR-AUC {t['pr_auc']:.3f} (base {t['base_rate']:.3f}), "
-            f"precisión {t['precision']:.0%}, recall {t['recall']:.0%}."
+            f"\nPrueba de estrés temporal (un solo extracto: las mismas personas en las dos fotos; elige y entrena "
+            f"con la foto a {t['t0_entrenamiento']}, mide en la de "
+            f"{t['t0_prueba']}, umbral de la foto vieja): {elegido}, PR-AUC {t['pr_auc']:.3f} "
+            f"(base {t['base_rate']:.3f}), precisión {t['precision']:.0%}, recall {t['recall']:.0%}."
         )
+        if ref := t.get("referencia"):
+            lineas.append(
+                f"El campeón con el mismo procedimiento (elección no ciega): PR-AUC {ref['pr_auc']:.3f}, "
+                f"precisión {ref['precision']:.0%}, recall {ref['recall']:.0%}."
+            )
     debil = [
         e for e in info.get("escenarios", []) if e["modelo"] == info["modelo"] and e["escenario"] == ESCENARIO_DEBIL
     ]

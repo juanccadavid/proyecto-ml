@@ -8,6 +8,7 @@ from sklearn.metrics import average_precision_score, cohen_kappa_score, matthews
 from proyecto_ml import abandono as a
 from proyecto_ml import busqueda_optuna as bo
 from proyecto_ml import campeon as c
+from proyecto_ml import campeon_figuras as cf
 from proyecto_ml import explicar as e
 from proyecto_ml import regresion as g
 from proyecto_ml import validacion as v
@@ -54,11 +55,11 @@ def test_matriz_de_confusion_cuadra_con_precision_y_recall(campeon):
 
 
 def test_figuras_roc_y_confusion(campeon):
-    roc = c.figura_roc(campeon)
+    roc = cf.figura_roc(campeon)
     nombres = [t.name for t in roc.data]
     assert sum("AUC" in n for n in nombres) == len(campeon.candidatos) + 1  # cada candidato + el azar
     assert any("campeón" in n for n in nombres) and "umbral alerta (zona gris)" in nombres
-    confusion = c.figura_confusion(campeon)
+    confusion = cf.figura_confusion(campeon)
     assert len(confusion.data) == len(c.matrices_confusion(campeon))
 
 
