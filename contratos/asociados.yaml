@@ -14,6 +14,9 @@
 # Campos por columna:
 #   tipo: entero | texto | fecha        requerido: no admite nulos ni texto vacío (por defecto false)
 #   unico, min, max (enteros y fechas), valores (lista cerrada), patron (regex), descripcion
+#   pii: dato personal. "eliminar" (no sale de la organización) o "seudonimizar" (sale como <COLUMNA>_SEUDO, un
+#        HMAC-SHA256 de 64 caracteres hex). Lo usan scripts/anonimizar.py y el contrato del dataset anonimizado
+#        para ML (contrato.para_ml): ese no exige PII y rechaza cualquier columna personal que haya quedado.
 # En la BD los nombres van en minúscula y el prefijo '#' se convierte en 'num_' (#RETIROS -> num_retiros).
 
 nombre: asociados
@@ -23,25 +26,25 @@ objetivo: "#RETIROS"
 
 grupos:
   SOCIODEMOGRAFICO:
-    - {nombre: CEDULA, tipo: entero, requerido: true, unico: true, min: 1, max: 9999999999, descripcion: Número de documento}
-    - {nombre: PRIMERAPELLIDO, tipo: texto, requerido: true}
-    - {nombre: SEGUNDOAPELLIDO, tipo: texto}
-    - {nombre: NOMBRES, tipo: texto, requerido: true}
-    - {nombre: SEGUNDONOMBRE, tipo: texto}
-    - {nombre: NOMBREINTEGRADO, tipo: texto, requerido: true}
-    - {nombre: DIRECCION, tipo: texto, requerido: true}
+    - {nombre: CEDULA, tipo: entero, requerido: true, unico: true, min: 1, max: 9999999999, descripcion: Número de documento, pii: seudonimizar}
+    - {nombre: PRIMERAPELLIDO, tipo: texto, requerido: true, pii: eliminar}
+    - {nombre: SEGUNDOAPELLIDO, tipo: texto, pii: eliminar}
+    - {nombre: NOMBRES, tipo: texto, requerido: true, pii: eliminar}
+    - {nombre: SEGUNDONOMBRE, tipo: texto, pii: eliminar}
+    - {nombre: NOMBREINTEGRADO, tipo: texto, requerido: true, pii: eliminar}
+    - {nombre: DIRECCION, tipo: texto, requerido: true, pii: eliminar}
     - {nombre: TIPOIDENTIFICACION, tipo: texto, requerido: true, valores: [CC, CE, TI, PA]}
     - {nombre: RELACION, tipo: texto, requerido: true, valores: [ASOCIADO]}
     - {nombre: AGENCIA, tipo: entero, requerido: true, min: 1, max: 99}
-    - {nombre: TELEFONO1, tipo: texto, requerido: true, patron: "^[0-9]{7,10}$"}
-    - {nombre: EXTENSION1, tipo: texto, patron: "^[0-9]{1,6}$"}
-    - {nombre: TELEFONO2, tipo: texto, patron: "^[0-9]{7,10}$"}
-    - {nombre: EXTENSION2, tipo: texto, patron: "^[0-9]{1,6}$"}
-    - {nombre: APARTADOAEREO, tipo: texto}
+    - {nombre: TELEFONO1, tipo: texto, requerido: true, patron: "^[0-9]{7,10}$", pii: eliminar}
+    - {nombre: EXTENSION1, tipo: texto, patron: "^[0-9]{1,6}$", pii: eliminar}
+    - {nombre: TELEFONO2, tipo: texto, patron: "^[0-9]{7,10}$", pii: eliminar}
+    - {nombre: EXTENSION2, tipo: texto, patron: "^[0-9]{1,6}$", pii: eliminar}
+    - {nombre: APARTADOAEREO, tipo: texto, pii: eliminar}
     - {nombre: SEXO, tipo: texto, requerido: true, valores: [F, M]}
     - {nombre: CODPAISCEDULA, tipo: entero, requerido: true, min: 1, max: 999}
     - {nombre: CODCIUDADCEDULA, tipo: entero, requerido: true, min: 1, max: 99999, descripcion: Código DANE}
-    - {nombre: EMAIL, tipo: texto, requerido: true, patron: "^[^@ ]+@[^@ ]+[.][^@ ]+$"}
+    - {nombre: EMAIL, tipo: texto, requerido: true, patron: "^[^@ ]+@[^@ ]+[.][^@ ]+$", pii: eliminar}
     - {nombre: FECHARETIRO, tipo: fecha, min: "1990-01-01", descripcion: Solo si el asociado se retiró}
     - {nombre: FECHAULTACTUALIZACION, tipo: fecha, requerido: true, min: "1990-01-01"}
     - {nombre: FECHANACIMIENTO, tipo: fecha, requerido: true, min: "1920-01-01"}
@@ -67,7 +70,7 @@ grupos:
     - {nombre: FECHATERMINACONTRATO, tipo: fecha, descripcion: Solo para contrato FIJO}
     - {nombre: CARGO, tipo: texto, requerido: true}
     - {nombre: CODBANCO, tipo: entero, requerido: true, min: 1, max: 999}
-    - {nombre: NUMEROCUENTA, tipo: texto, requerido: true, patron: "^[0-9]{6,20}$"}
+    - {nombre: NUMEROCUENTA, tipo: texto, requerido: true, patron: "^[0-9]{6,20}$", pii: eliminar}
     - {nombre: AGENCIA_LABORAL, tipo: entero, requerido: true, min: 1, max: 99, descripcion: AGENCIA del bloque LABORAL}
     - {nombre: CODANALISTA, tipo: entero, requerido: true, min: 1}
     - {nombre: RUTAANALISTA, tipo: texto, requerido: true}
@@ -78,14 +81,14 @@ grupos:
     - {nombre: SZIN, tipo: entero, requerido: true, min: 0}
     - {nombre: IDTIPOSALARIO, tipo: entero, requerido: true, valores: [1, 2], descripcion: "1 convencional, 2 integral"}
     - {nombre: TIPOPACTO, tipo: texto, requerido: true, valores: [CONVENCIONAL, INTEGRAL]}
-    - {nombre: IDASOCIADOS, tipo: entero, requerido: true, unico: true, min: 1}
+    - {nombre: IDASOCIADOS, tipo: entero, requerido: true, unico: true, min: 1, pii: seudonimizar}
     - {nombre: CODIGOTIPO, tipo: entero, requerido: true, min: 1}
     - {nombre: CODPAISOFI, tipo: entero, requerido: true, min: 1, max: 999}
     - {nombre: CODDEPARTAMENTOOFI, tipo: entero, requerido: true, min: 1, max: 99}
     - {nombre: CODCIUDADOFI, tipo: entero, requerido: true, min: 1, max: 99999}
-    - {nombre: DIRECCIONEMPRESA, tipo: texto, requerido: true}
-    - {nombre: TELOFICINA, tipo: texto, requerido: true, patron: "^[0-9]{7,10}$"}
-    - {nombre: EXTENSION, tipo: texto, patron: "^[0-9]{1,6}$"}
+    - {nombre: DIRECCIONEMPRESA, tipo: texto, requerido: true, pii: eliminar}
+    - {nombre: TELOFICINA, tipo: texto, requerido: true, patron: "^[0-9]{7,10}$", pii: eliminar}
+    - {nombre: EXTENSION, tipo: texto, patron: "^[0-9]{1,6}$", pii: eliminar}
     - {nombre: MODALIDADSALARIAL, tipo: texto, requerido: true, valores: [FIJO, INTEGRAL]}
   PRODUCTOS:
     - {nombre: "#SOLICITUD_DISMINUCIONCUOTAS", tipo: entero, requerido: true, min: 0}
@@ -127,8 +130,8 @@ distribucion:
     factor: 5
     max_fraccion: 0.05
   - id: edad_mediana_plausible
+    # La fecha de corte NO va aquí: es FECHA_CORTE del .env (config.fecha_corte), la misma de la foto y de EDAD.
     descripcion: La mediana de edad al corte está entre min y max años (fechas de nacimiento mal leídas la mueven)
-    fecha_corte: "2026-10-31"
     min: 22
     max: 60
 

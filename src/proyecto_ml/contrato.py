@@ -2,6 +2,15 @@
 
 Del mismo contrato salen la validación de DataFrames en tres niveles (pandera), el SQL de
 Supabase (tabla + CHECK + RLS), los registros listos para la API y la configuración del formulario web.
+
+Dos contratos, según la etapa:
+
+- **De origen** (``cargar()``): el extracto completo, con sus datos personales. Lo usa quien custodia los datos
+  (antes de anonimizar), los datos sintéticos (que imitan ese extracto) y Supabase.
+- **Del dataset anonimizado para ML** (``para_ml()``): el mismo contrato sin las columnas ``pii: eliminar``, con
+  las ``pii: seudonimizar`` como ``<COLUMNA>_SEUDO`` (HMAC de 64 caracteres hex) y sin las reglas que usan
+  columnas eliminadas. Exige igual todas las variables del modelo y del objetivo, y como es estricto, rechaza
+  cualquier columna personal que haya quedado en el archivo. Lo usa el modo ``real_anonimizado``.
 """
 
 from __future__ import annotations
@@ -19,9 +28,12 @@ import yaml
 from pandera.errors import SchemaErrors
 
 from proyecto_ml.cleaning import clean_dataset
-from proyecto_ml.config import ROOT_DIR
+from proyecto_ml.config import ROOT_DIR, fecha_corte
 
 CONTRATO_ASOCIADOS = ROOT_DIR / "contratos" / "asociados.yaml"
+PII = ("eliminar", "seudonimizar")
+SUFIJO_SEUDONIMO = "_SEUDO"
+PATRON_SEUDONIMO = "^[0-9a-f]{64}$"  # HMAC-SHA256 completo en hexadecimal (texto, nunca un número)
 TIPOS_SQL = {"entero": "bigint", "texto": "text", "fecha": "date"}
 
 
@@ -37,6 +49,7 @@ class Columna:
     valores: list | None = None
     patron: str | None = None
     descripcion: str | None = None
+    pii: str | None = None  # "eliminar" o "seudonimizar" (ver contratos/asociados.yaml)
 
     @property
     def db(self) -> str:
@@ -64,8 +77,59 @@ def cargar(path: str | Path = CONTRATO_ASOCIADOS) -> Contrato:
     columnas = [Columna(grupo=grupo, **col) for grupo, cols in raw["grupos"].items() for col in cols]
     if invalidos := {c.tipo for c in columnas} - TIPOS_SQL.keys():
         raise ValueError(f"Tipos no soportados en el contrato: {invalidos}")
+    if invalidos := {c.pii for c in columnas if c.pii} - set(PII):
+        raise ValueError(f"pii debe ser uno de {PII}: {invalidos}")
     meta = (raw["nombre"], str(raw["version"]), raw["tabla_db"], raw["objetivo"])
     return Contrato(*meta, columnas, raw.get("reglas", []), raw.get("distribucion", []))
+
+
+def columnas_pii(contrato: Contrato | None = None, tratamiento: str | None = None) -> list[str]:
+    """Las columnas con datos personales del contrato de origen (todas, o solo las de ``tratamiento``)."""
+    contrato = contrato or cargar()
+    return [c.nombre for c in contrato.columnas if c.pii and (tratamiento is None or c.pii == tratamiento)]
+
+
+def columnas_de_regla(regla: dict, contrato: Contrato) -> list[str]:
+    """Las columnas que usa una regla de nivel 3, leídas de su SQL (nombres de la BD)."""
+    return [c.nombre for c in contrato.columnas if re.search(rf"\b{re.escape(c.db)}\b", regla["sql"])]
+
+
+def para_ml(contrato: Contrato | None = None) -> Contrato:
+    """El contrato del dataset anonimizado para ML (ver el docstring del módulo).
+
+    No relaja nada de lo que usa el modelo: las variables, el objetivo, sus tipos, rangos, la distribución y las
+    reglas que no tocan PII siguen exigidas. Lo único que cambia son las columnas personales.
+    """
+    contrato = contrato or cargar()
+    columnas = []
+    for c in contrato.columnas:
+        if c.pii == "eliminar":
+            continue
+        if c.pii == "seudonimizar":
+            columnas.append(
+                Columna(
+                    nombre=c.nombre + SUFIJO_SEUDONIMO,
+                    grupo=c.grupo,
+                    tipo="texto",
+                    requerido=c.requerido,
+                    unico=c.unico,
+                    patron=PATRON_SEUDONIMO,
+                    descripcion=f"Seudónimo (HMAC-SHA256) de {c.nombre}",
+                )
+            )
+        else:
+            columnas.append(c)
+    quedan = {c.nombre for c in columnas}
+    reglas = [r for r in contrato.reglas if set(columnas_de_regla(r, contrato)) <= quedan]
+    return Contrato(
+        f"{contrato.nombre}_ml",
+        contrato.version,
+        contrato.tabla_db,
+        contrato.objetivo,
+        columnas,
+        reglas,
+        contrato.distribucion,
+    )
 
 
 # ---------------------------------------------------------------------------- validación (pandera)
@@ -105,7 +169,8 @@ DISTRIBUCION: dict[str, tuple[Callable[[pd.DataFrame, dict], float], Callable[[f
         lambda v, p: v <= p["max_fraccion"],
     ),
     "edad_mediana_plausible": (
-        lambda d, p: ((pd.Timestamp(p["fecha_corte"]) - _fecha(d["FECHANACIMIENTO"])).dt.days / 365.25).median(),
+        # Edad a FECHA_CORTE (config.fecha_corte): la misma fecha que usan la foto y EDAD en abandono.preparar.
+        lambda d, p: ((pd.Timestamp(fecha_corte()) - _fecha(d["FECHANACIMIENTO"])).dt.days / 365.25).median(),
         lambda v, p: p["min"] <= v <= p["max"],
     ),
 }
@@ -448,7 +513,7 @@ def js(contrato: Contrato | None = None) -> str:
     contrato = contrato or cargar()
     grupos: dict[str, list] = {}
     for c in contrato.columnas:
-        campo = {k: v for k, v in vars(c).items() if v not in (None, False) and k != "grupo"}
+        campo = {k: v for k, v in vars(c).items() if v not in (None, False) and k not in ("grupo", "pii")}
         grupos.setdefault(c.grupo, []).append({**campo, "db": c.db})
     data = {"nombre": contrato.nombre, "version": contrato.version, "tabla_db": contrato.tabla_db}
     data |= {"grupos": grupos}

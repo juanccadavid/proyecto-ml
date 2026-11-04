@@ -134,7 +134,7 @@ def main() -> None:
         supervisados[nombre] = modelo.fit(X, y)
         m_supervisados[nombre] = {
             "entrenamiento": a.metricas_supervisado(modelo, train),
-            "validación cruzada (5)": compute_metrics(y, puntaje_cv, threshold=a.UMBRAL[metodo]),
+            "validación cruzada (5)": compute_metrics(y, puntaje_cv, threshold=a.UMBRAL[metodo], metodo=metodo),
             **{nombre_df: a.metricas_supervisado(modelo, df) for nombre_df, df in validaciones.items()},
         }
         print(f"=== {a.TITULOS[nombre]}: ¿abandona? ===")

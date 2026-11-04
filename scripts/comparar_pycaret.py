@@ -105,7 +105,7 @@ def main() -> None:
     en_nuevos = {}
     for nombre, modelo in modelos.items():
         if nombre.startswith("pycaret_"):  # ya reentrenados por finalize_model
-            en_nuevos[nombre] = compute_metrics(yn, modelo.predict_proba(Xn)[:, 1])
+            en_nuevos[nombre] = compute_metrics(yn, modelo.predict_proba(Xn)[:, 1], metodo="predict_proba")
         else:
             en_nuevos[nombre] = a.metricas_supervisado(modelo.fit(X, y), nuevos)
     en_nuevos = pd.DataFrame(en_nuevos).T.loc[comparativa.index]  # mismo orden que la tabla

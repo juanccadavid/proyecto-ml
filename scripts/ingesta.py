@@ -47,12 +47,18 @@ def main() -> None:
     parser.add_argument("--target", required=True)
     parser.add_argument("--output", type=Path, default=PROCESSED_DIR / "dataset.parquet")
     parser.add_argument("--contrato", type=Path, help="Contrato de datos a exigir (ej. contratos/asociados.yaml)")
+    parser.add_argument(
+        "--ml", action="store_true", help="Con --contrato: exigir su versión para el dataset anonimizado (sin PII)"
+    )
     args = parser.parse_args()
 
     df = leer(args.input)
     if args.contrato:
         # el contrato está escrito con pandera sobre pandas: se le pasa una copia en pandas
-        errores = contrato.validar(df.to_pandas(), contrato.cargar(args.contrato))
+        exigido = contrato.cargar(args.contrato)
+        exigido = contrato.para_ml(exigido) if args.ml else exigido
+        errores = contrato.validar(df.to_pandas(), exigido)
+        errores = contrato.sin_valores(errores) if args.ml else errores  # anonimizado: sin valores en la consola
         if errores:
             raise SystemExit("El archivo no cumple el contrato:\n  - " + "\n  - ".join(errores))
     if args.target not in df.columns:

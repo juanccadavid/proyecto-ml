@@ -82,35 +82,35 @@ def elegir_campeon_aqui():
 
 
 @st.cache_data
-def datos_referencia(horizonte: int | None, origen: str) -> pd.DataFrame:
+def datos_referencia(horizonte: int | None, origen: str, ruta: str | None = None) -> pd.DataFrame:
     """Los asociados del MISMO origen que el campeón: con un campeón real, el extracto de DATOS_ASOCIADOS (.env).
     Así el fondo de SHAP, los rangos y el mapa no mezclan datos sintéticos con un modelo real."""
-    ruta = get_settings().datos_asociados if origen == ORIGEN_REAL else None
-    df, _ = c.datos_eleccion(ruta, origen=origen)
+    # ``ruta`` (DATOS_ASOCIADOS) es parte de la llave de las cachés: si cambia, se recalcula todo.
+    df, _ = c.datos_eleccion(Path(ruta) if ruta else None, origen=origen)
     return a.foto(df, horizonte) if horizonte else df
 
 
 @st.cache_data
-def huella_referencia(horizonte: int | None, origen: str) -> str:
-    return r.huella(datos_referencia(horizonte, origen))
+def huella_referencia(horizonte: int | None, origen: str, ruta: str | None = None) -> str:
+    return r.huella(datos_referencia(horizonte, origen, ruta))
 
 
 @st.cache_data
-def cargar_referencia(horizonte: int | None, origen: str = ORIGEN_SINTETICO) -> pd.DataFrame:
+def cargar_referencia(horizonte: int | None, origen: str = ORIGEN_SINTETICO, ruta: str | None = None) -> pd.DataFrame:
     """Variables de los datos del campeón, para rangos, valores iniciales y categorías."""
-    return a.preparar(datos_referencia(horizonte, origen))
+    return a.preparar(datos_referencia(horizonte, origen, ruta))
 
 
 @st.cache_resource(show_spinner="Preparando la explicación (SHAP)...")
-def explicador(_modelo, horizonte: int | None, origen: str = ORIGEN_SINTETICO) -> e.Explicador:
+def explicador(_modelo, horizonte: int | None, origen: str = ORIGEN_SINTETICO, ruta: str | None = None) -> e.Explicador:
     """SHAP del campeón frente a los asociados de referencia (``_modelo``: Streamlit no lo usa como llave)."""
-    return e.Explicador(_modelo, cargar_referencia(horizonte, origen))
+    return e.Explicador(_modelo, cargar_referencia(horizonte, origen, ruta))
 
 
 @st.cache_resource(show_spinner="Segmentando a los asociados (KMeans y DBSCAN)...")
-def segmentar(horizonte: int | None, origen: str = ORIGEN_SINTETICO):
+def segmentar(horizonte: int | None, origen: str = ORIGEN_SINTETICO, ruta: str | None = None):
     """(segmentación, datos con el retiro) de los asociados de referencia, para el mapa."""
-    df = datos_referencia(horizonte, origen)
+    df = datos_referencia(horizonte, origen, ruta)
     return sg.Segmentacion().fit(df), df
 
 
@@ -149,7 +149,14 @@ modelo, agrupador, info = elegir_campeon_aqui() if elegido_aqui else guardado
 metodo, umbral, umbral_alto = info["metodo"], info["umbral"], info["umbral_alto"]
 origen = info.get("origen_datos", ORIGEN_SINTETICO)  # campeones guardados antes: todos eran sintéticos
 experimental = origen == ORIGEN_SINTETICO
-if "datos_huella" in info and huella_referencia(info.get("horizonte_meses"), origen) != info["datos_huella"]:
+# Con un campeón real, la referencia es el extracto anonimizado de DATOS_ASOCIADOS (.env); si no, los sintéticos.
+ruta_ref = str(get_settings().datos_asociados) if origen == ORIGEN_REAL else None
+try:  # los datos de referencia deben cumplir su contrato (con datos reales, el del dataset anonimizado)
+    huella_ref = huella_referencia(info.get("horizonte_meses"), origen, ruta_ref) if "datos_huella" in info else None
+except c.DatosInvalidos as error:  # el mensaje ya viene sin valores personales en modo real
+    st.error(f"Los datos de referencia (DATOS_ASOCIADOS del .env) no se pueden usar: {error}")
+    st.stop()
+if huella_ref is not None and huella_ref != info["datos_huella"]:
     # Los datos de referencia (fondo de SHAP, rangos, mapa) no son los mismos con que se eligió el campeón.
     if not experimental:
         st.error(
@@ -158,7 +165,7 @@ if "datos_huella" in info and huella_referencia(info.get("horizonte_meses"), ori
         )
         st.stop()
     st.warning("Los datos de desarrollo cambiaron desde que se eligió el campeón: corre `make campeon` de nuevo.")
-referencia = cargar_referencia(info.get("horizonte_meses"), origen)
+referencia = cargar_referencia(info.get("horizonte_meses"), origen, ruta_ref)
 etiqueta = c.etiqueta_puntaje(metodo, info.get("metricas_cv", {}))
 
 st.caption("Fondo de empleados · modelo de abandono")
@@ -170,6 +177,11 @@ if experimental:
     )
 else:
     st.info(aviso_origen(origen))
+    if info.get("temporalidad_confirmada") is False:
+        st.warning(
+            "**Temporalidad sin confirmar:** si los conteos del extracto se midieron a la fecha de extracción y no a "
+            "t0, las cifras de este modelo están infladas por fuga. Pendiente de confirmar con el fondo."
+        )
 
 with st.sidebar:
     st.header("Modelo campeón")
@@ -261,7 +273,7 @@ getattr(st, tipo)(texto)
 
 # ---- SHAP: de dónde sale el puntaje de este asociado
 st.subheader("¿Por qué este puntaje?")
-explicacion = explicador(modelo, info.get("horizonte_meses"), origen)
+explicacion = explicador(modelo, info.get("horizonte_meses"), origen, ruta_ref)
 tabla = explicacion.explicar(asociado)
 st.plotly_chart(e.figura_explicacion(tabla, explicacion.base, metodo, etiquetas=ETIQUETAS), width="stretch", key="shap")
 st.caption(
@@ -291,7 +303,7 @@ st.dataframe(perfil.round(2), width="stretch")
 
 # ---- Mapa de segmentos (no supervisado): dónde cae este asociado
 st.subheader("Mapa de segmentos")
-segmentacion, datos_mapa = segmentar(info.get("horizonte_meses"), origen)
+segmentacion, datos_mapa = segmentar(info.get("horizonte_meses"), origen, ruta_ref)
 atipico = segmentacion.dbscan(asociado)[0] == sg.ATIPICO
 st.plotly_chart(
     sg.figura_mapa(segmentacion, datos_mapa, asociado=asociado, titulo="Asociados de referencia por comportamiento"),

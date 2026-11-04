@@ -27,7 +27,7 @@ ARGS ?=
 .DEFAULT_GOAL := help
 
 .PHONY: help setup setup-hf demo-data demo train train-hf abandono campeon tecnicas validacion regresion segmentos predecir pipeline pycaret afinar optuna mlflow-ui app \
-        simulador ejemplo datos-desarrollo contrato contrato-sql contrato-web supabase-subir supabase-bajar supabase-crear formulario \
+        simulador ejemplo datos-desarrollo contrato contrato-ml anonimizar contrato-sql contrato-web supabase-subir supabase-bajar supabase-crear formulario \
         test test-fast cov lint format check hooks secrets up down logs salt bundle clean clean-all
 
 # ==============================================================================
@@ -124,8 +124,14 @@ ejemplo: ## Regenera los 50 asociados ficticios de data/ejemplo/
 datos-desarrollo: ## Genera los 5.000 asociados de desarrollo (semilla 7, 10 % de retiro) en data/processed/
 	$(PY) scripts/generar_asociados_ejemplo.py --desarrollo
 
-contrato: ## Valida un dataset contra el contrato (DATA=..., por defecto el de ejemplo)
+contrato: ## Valida un dataset contra el contrato de origen (DATA=..., por defecto el de ejemplo)
 	$(PY) scripts/contrato_datos.py validar $(or $(DATA),$(EJEMPLO))
+
+contrato-ml: ## Valida un dataset ANONIMIZADO contra el contrato para ML (sin PII; DATA=...)
+	$(PY) scripts/contrato_datos.py validar $(DATA) --ml
+
+anonimizar: ## Anonimiza un extracto según el contrato (lo corre el custodio; DATA=entrada SALIDA=salida)
+	$(PY) scripts/anonimizar.py --input $(DATA) --output $(SALIDA) $(ARGS)
 
 contrato-sql: ## Regenera supabase/asociados.sql desde contratos/asociados.yaml
 	$(PY) scripts/contrato_datos.py sql

@@ -181,6 +181,12 @@
  3.5 Otros
      make up / down / logs     Docker (app + MLflow)
      make salt                 genera ANON_SALT para anonimizar (va al .env, no se comparte)
+     make anonimizar DATA=extracto.xlsx SALIDA=data/raw/extracto_anon.parquet
+                               anonimiza según el contrato (pii: eliminar / seudonimizar). Lo corre el
+                               custodio. Si queda algo personal, no escribe nada.
+     make contrato-ml DATA=data/raw/extracto_anon.parquet
+                               valida el dataset ANONIMIZADO contra el contrato para ML (sin PII; los
+                               errores no muestran valores)
      make bundle               respaldo offline de todo el historial de Git
      make clean / clean-all    limpia cachés (clean-all borra también .venv, mlruns/ y models/)
 

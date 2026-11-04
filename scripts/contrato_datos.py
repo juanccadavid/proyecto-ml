@@ -2,6 +2,7 @@
 
 Uso:
     uv run python scripts/contrato_datos.py validar data/ejemplo/asociados_ejemplo.parquet
+    uv run python scripts/contrato_datos.py validar data/raw/extracto_anon.parquet --ml   # dataset anonimizado
     uv run python scripts/contrato_datos.py sql       # -> supabase/asociados.sql
     uv run python scripts/contrato_datos.py web       # -> web/contrato.js
     uv run python scripts/contrato_datos.py subir data/ejemplo/asociados_ejemplo.parquet
@@ -33,9 +34,9 @@ from proyecto_ml.data import load_dataset
 SUPABASE_BAJADA = DATA_DIR / "raw" / "supabase_asociados.parquet"
 
 
-def _validar(path: Path, contrato: k.Contrato) -> bool:
+def _validar(path: Path, contrato: k.Contrato, sin_valores: bool = False) -> bool:
     errores = k.validar(load_dataset(path), contrato)
-    for e in errores:
+    for e in k.sin_valores(errores) if sin_valores else errores:
         print(f"  x {e}")
     print(f"{path}: {'cumple' if not errores else f'{len(errores)} incumplimiento(s)'} el contrato v{contrato.version}")
     return not errores
@@ -144,6 +145,11 @@ def main() -> None:
     parser.add_argument("--contrato", type=Path, default=k.CONTRATO_ASOCIADOS)
     parser.add_argument("--salida", type=Path, default=SUPABASE_BAJADA, help="Destino de 'bajar'")
     parser.add_argument("--forzar", action="store_true", help="'bajar' guarda aunque el lote no cumpla el contrato")
+    parser.add_argument(
+        "--ml",
+        action="store_true",
+        help="'validar' con el contrato del dataset anonimizado para ML (sin PII ni valores)",
+    )
     args = parser.parse_args()
     if args.accion == "bajar":
         _bajar(args.salida, k.cargar(args.contrato), args.forzar)
@@ -153,6 +159,8 @@ def main() -> None:
     if args.accion in ("validar", "subir") and args.archivo is None:
         parser.error(f"'{args.accion}' necesita la ruta del dataset")
     if args.accion == "validar":
+        if args.ml:  # el dataset anonimizado: sin PII, y los errores no muestran valores
+            sys.exit(0 if _validar(args.archivo, k.para_ml(contrato), sin_valores=True) else 1)
         sys.exit(0 if _validar(args.archivo, contrato) else 1)
     if args.accion == "sql":
         _escribir(ROOT_DIR / "supabase" / f"{contrato.tabla_db}.sql", k.sql(contrato))

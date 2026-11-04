@@ -64,16 +64,27 @@ def precision_at_k(y_true, y_score, k_frac: float = 0.1) -> float:
 
 
 def es_probabilidad(y_score) -> bool:
-    """True si el puntaje está en [0, 1] (predict_proba); la distancia a la frontera de Ridge no lo está."""
+    """True si todos los puntajes están en [0, 1]. NO basta para decir que son probabilidades (una distancia a la
+    frontera también puede caer ahí): ``compute_metrics`` usa el método del modelo y esto solo como control."""
     y_score = np.asarray(y_score, dtype=float)
     return bool(((y_score >= 0) & (y_score <= 1)).all())
 
 
-def compute_metrics(y_true, y_score, threshold: float = 0.5) -> dict[str, float]:
+def _brier(y_true, y_score, metodo: str | None) -> float:
+    if metodo != "predict_proba":
+        return float("nan")
+    if not es_probabilidad(y_score):
+        raise ValueError("metodo='predict_proba' pero hay puntajes fuera de [0, 1]: no son probabilidades")
+    return float(brier_score_loss(y_true, y_score))
+
+
+def compute_metrics(y_true, y_score, threshold: float = 0.5, metodo: str | None = None) -> dict[str, float]:
     """Métricas de clasificación desbalanceada sobre datos que el modelo NO vio (prueba, CV o nuevos).
 
     Sin umbral: ``roc_auc``, ``pr_auc``, ``recall_at_10pct``, ``precision_at_10pct`` y ``brier`` (error
-    cuadrático de la probabilidad: mide la calibración; NaN si el puntaje no es una probabilidad, como en Ridge).
+    cuadrático de la probabilidad: mide la calibración). El Brier solo se calcula si ``metodo`` dice que el puntaje
+    es una probabilidad (``"predict_proba"``); si no se dice, o es ``decision_function`` (Ridge), queda en NaN: un
+    puntaje entre 0 y 1 no es por eso una probabilidad. Con ``predict_proba`` y valores fuera de [0, 1], error.
     Con ``threshold``: precisión, recall, F1, F2, especificidad (``specificity``: de los que se quedan, cuántos
     no reciben alerta), ``balanced_accuracy`` (promedio de recall y especificidad), MCC y Kappa.
     """
@@ -96,7 +107,7 @@ def compute_metrics(y_true, y_score, threshold: float = 0.5) -> dict[str, float]
         "kappa": float(cohen_kappa_score(y_true, y_pred)),
         "recall_at_10pct": recall_at_k(y_true, y_score, 0.10),
         "precision_at_10pct": precision_at_k(y_true, y_score, 0.10),
-        "brier": float(brier_score_loss(y_true, y_score)) if es_probabilidad(y_score) else float("nan"),
+        "brier": _brier(y_true, y_score, metodo),
     }
 
 

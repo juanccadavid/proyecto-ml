@@ -20,5 +20,5 @@ def test_anonymize_elimina_pii_y_agrupa():
     df = pd.DataFrame({"cedula": ["1", "2"], "nombre": ["A", "B"], "edad": [23, 41]})
     out = anonymize(df, id_columns=["cedula"], drop_columns=["nombre"], bins={"edad": [18, 30, 50]}, salt=SALT)
     assert "nombre" not in out.columns
-    assert out["cedula"].str.len().eq(16).all()
+    assert out["cedula"].str.fullmatch(r"[0-9a-f]{64}").all()  # HMAC-SHA256 completo, en texto (no recortado)
     assert out["edad"].tolist() == ["(17.999, 30.0]", "(30.0, 50.0]"]
