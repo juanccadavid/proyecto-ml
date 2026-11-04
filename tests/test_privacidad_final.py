@@ -208,7 +208,8 @@ def test_csv_de_predicciones_en_modo_real_sin_pii(tmp_path, monkeypatch, campeon
     p.main(["--datos", str(entrada), "--salida", str(salida), "--modelos", str(campeon_guardado)])
     pred = pd.read_csv(salida, dtype={"CEDULA_SEUDO": str, "IDASOCIADOS_SEUDO": str})
     assert list(pred.columns) == ["fila", "CEDULA_SEUDO", "IDASOCIADOS_SEUDO", *p.COLUMNAS]
-    assert (pred["CEDULA_SEUDO"] == anonimo["CEDULA_SEUDO"].to_numpy()).all()  # se cruza por el seudónimo
+    activos = anonimo[anonimo["FECHARETIRO"].isna()]
+    assert (pred["CEDULA_SEUDO"] == activos["CEDULA_SEUDO"].to_numpy()).all()  # se cruza por el seudónimo
     texto = salida.read_text(encoding="utf-8")
     personales = [extracto[col].dropna().astype(str) for col in ("CEDULA", "EMAIL", "NOMBREINTEGRADO", "TELEFONO1")]
     assert _sin_valores(texto, pd.concat(personales))
@@ -306,3 +307,60 @@ def test_severidad_configurable_en_el_yaml(tmp_path, extracto):
     malo.write_text(texto.replace("severidad: advertencia", "severidad: quizas"), encoding="utf-8")
     with pytest.raises(ValueError, match="severidad"):
         k.cargar(malo)
+
+
+# ---------------------------------------------------------------- auditoría: predicción solo de activos
+
+
+def test_prediccion_solo_de_asociados_activos(campeon_guardado, extracto):
+    """El modelo se entrenó con la foto de ACTIVOS en t0: a quien ya se retiró no hay nada que predecirle."""
+    salida = p.predecir(extracto, campeon_guardado, origen="sintetico")
+    retirados = extracto["FECHARETIRO"].notna().to_numpy()
+    assert len(salida) == int((~retirados).sum()) == 38
+    assert not retirados[salida["fila"].to_numpy()].any()  # fila = posición en la entrada, sin retirados
+    todos = p.predecir(extracto, campeon_guardado, origen="sintetico", solo_activos=False)
+    assert list(todos["fila"]) == list(range(len(extracto)))
+    sin_columna = p.predecir(extracto.drop(columns="FECHARETIRO"), campeon_guardado, origen="sintetico")
+    assert len(sin_columna) == len(extracto)  # sin FECHARETIRO no se puede saber: se predicen todos
+
+
+# ---------------------------------------------------------------- auditoría: validación temporal
+
+
+def test_validacion_temporal_elige_el_umbral_sin_ver_la_foto_reciente(monkeypatch):
+    df = GeneradorAsociados(n=1500, seed=5, tasa_retiro=0.3).generar()
+    modelo = a.modelos_supervisados()["logreg"]
+    vistos = []
+    original = c.elegir_umbrales
+
+    def espia(y, puntaje, *args, **kw):
+        vistos.append(len(y))
+        return original(y, puntaje, *args, **kw)
+
+    monkeypatch.setattr(c, "elegir_umbrales", espia)
+    resultado = c.validacion_temporal(modelo, df, horizonte_meses=3)
+    assert vistos == [resultado["asociados_entrenamiento"]]  # el umbral sale solo de la foto vieja
+    assert resultado["t0_entrenamiento"] < resultado["t0_prueba"]
+    assert 0 < resultado["retiros_prueba"] < resultado["asociados_prueba"]
+    assert 0 <= resultado["pr_auc"] <= 1 and resultado["base_rate"] == pytest.approx(
+        resultado["retiros_prueba"] / resultado["asociados_prueba"]
+    )
+    with pytest.raises(ValueError, match="menos de"):
+        c.validacion_temporal(modelo, df.head(40), horizonte_meses=3)
+
+
+# ---------------------------------------------------------------- auditoría: scripts exploratorios
+
+
+def test_scripts_exploratorios_solo_con_sinteticos_y_con_contrato(tmp_path, monkeypatch, extracto):
+    monkeypatch.setenv("ORIGEN_DATOS", "real_anonimizado")
+    with pytest.raises(c.DatosInvalidos, match="exploratorio"):
+        c.datos_exploracion("data/ejemplo/asociados_ejemplo.parquet", "make abandono")
+    monkeypatch.setenv("ORIGEN_DATOS", "sintetico")
+    assert len(c.datos_exploracion("data/ejemplo/asociados_ejemplo.parquet", "make abandono")) == 50
+    malo = tmp_path / "malo.parquet"
+    roto = extracto.copy()
+    roto.loc[roto.index[0], "ESTADO"] = "VALOR_RARO"
+    roto.to_parquet(malo)
+    with pytest.raises(c.DatosInvalidos, match="no cumple el contrato"):
+        c.datos_exploracion(malo, "make afinar")

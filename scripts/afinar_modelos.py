@@ -41,6 +41,7 @@ from sklearn.pipeline import Pipeline
 
 from proyecto_ml import abandono as a
 from proyecto_ml import registro as r
+from proyecto_ml.campeon import DatosInvalidos, datos_exploracion
 from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, PROCESSED_DIR, get_settings
 from proyecto_ml.evaluate import (
     SCORING,
@@ -125,7 +126,10 @@ def main() -> None:
         raise SystemExit("PyCaret no está instalado. Ejecuta: uv sync --extra pycaret") from exc
     warnings.filterwarnings("ignore", category=UserWarning)  # avisos internos de la versión alfa
 
-    train = a.cargar(args.datos)  # con limpiar_extracto
+    try:
+        train = datos_exploracion(args.datos, "make afinar")
+    except DatosInvalidos as error:
+        raise SystemExit(str(error)) from None  # con limpiar_extracto y el contrato
     nuevos = GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos).generar()
     X, y = a.separar(train)
     print(f"Entrenamiento: {args.datos} ({len(train)} filas, {train[a.TARGET].mean():.0%} abandono)")

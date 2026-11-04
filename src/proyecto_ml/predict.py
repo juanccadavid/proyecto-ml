@@ -23,6 +23,7 @@ import argparse
 import re
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from proyecto_ml import abandono as a
@@ -80,9 +81,22 @@ def revisar_real(df: pd.DataFrame) -> None:
         )
 
 
-def predecir(df: pd.DataFrame, carpeta: Path = MODELS_DIR, origen: str | None = None) -> pd.DataFrame:
-    """Una fila por asociado de ``df``: ``fila``, los seudónimos que traiga, puntaje del campeón, zona, alerta
-    (0/1) y grupo de KMeans. Sin datos personales (ver el docstring del módulo).
+def activos(df: pd.DataFrame) -> pd.Series:
+    """True en los asociados que siguen activos (sin FECHARETIRO). Si el archivo no trae la columna, todos."""
+    if "FECHARETIRO" not in df:
+        return pd.Series(True, index=df.index)
+    return df["FECHARETIRO"].isna() | df["FECHARETIRO"].astype("string").str.strip().eq("")
+
+
+def predecir(
+    df: pd.DataFrame, carpeta: Path = MODELS_DIR, origen: str | None = None, solo_activos: bool = True
+) -> pd.DataFrame:
+    """Una fila por asociado ACTIVO de ``df``: ``fila`` (su posición en ``df``), los seudónimos que traiga,
+    puntaje del campeón, zona, alerta (0/1) y grupo de KMeans. Sin datos personales (ver el docstring del módulo).
+
+    El modelo responde "¿se retira en los próximos meses?" para quien hoy está activo (así se entrenó: la foto
+    solo tiene activos en t0). Quien ya se retiró (trae FECHARETIRO) no tiene nada que predecir y queda fuera
+    (``solo_activos=False`` lo incluye, p. ej. para revisar el puntaje que tenían).
 
     - ``sintetico``: cualquier archivo; la salida solo copia ``fila`` y los ``*_SEUDO`` válidos.
     - ``real_anonimizado``: además, ``revisar_real`` (sin PII, solo columnas del contrato para ML, con seudónimo).
@@ -91,9 +105,13 @@ def predecir(df: pd.DataFrame, carpeta: Path = MODELS_DIR, origen: str | None = 
         revisar_real(df)
     ids = seudonimos(df)
     modelo, agrupador, _ = cargar(carpeta)
+    filas = np.arange(len(df))  # posición en el archivo de entrada, también para los que quedan fuera
+    if solo_activos:
+        vigentes = activos(df).to_numpy()
+        df, filas = df[vigentes], filas[vigentes]
     X = df.drop(columns=a.TARGET, errors="ignore")
     salida = df[ids].copy()
-    salida.insert(0, "fila", range(len(df)))
+    salida.insert(0, "fila", filas)
     salida["puntaje"] = a.puntaje(modelo, X)
     salida["zona"] = modelo.predict(X)
     salida["alerta"] = modelo.alerta(X)
@@ -113,7 +131,8 @@ def main(argv: list[str] | None = None) -> None:
     args.salida.parent.mkdir(parents=True, exist_ok=True)
     predicciones.to_csv(args.salida, index=False)
     conteo = predicciones["zona"].value_counts().reindex(list(c.ZONAS), fill_value=0)
-    print(f"{len(predicciones)} asociados de {args.datos.name}:")
+    fuera = len(df) - len(predicciones)
+    print(f"{len(predicciones)} asociados activos de {args.datos.name} ({fuera} ya retirados, sin predicción):")
     print(conteo.to_string())
     print(f"Predicciones -> {args.salida}")
 

@@ -4,11 +4,12 @@
 
 1. Actualiza `main`: `git switch main && git pull`.
 2. Crea una rama: `git switch -c feature/<autor>-<tema>` (ej. `feature/juan-eda-creditos`).
-   Prefijos: `feature/`, `fix/`, `eda/`, `docs/`.
+   Prefijos: `feature/`, `fix/`, `eda/`, `docs/`, `chore/` (configuración, mantenimiento), `test/`.
 3. Commits pequeños con mensajes en formato *Conventional Commits*:
    `feat: agrega PCA al preprocesador`, `fix: corrige fuga en split temporal`, `docs: ...`, `test: ...`.
 4. Antes de subir: `make lint test` (o `uv run ruff check . && uv run pytest`). El CI de GitHub corre lo mismo
-   en cada PR; si queda en rojo, no se hace merge.
+   (y además `make pipeline`) en cada push a cualquier rama, así que el PR muestra el resultado del último
+   push; si queda en rojo, no se hace merge.
 5. `git push -u origin <rama>` y abre un Pull Request hacia `main`.
 6. Mínimo **1 revisión** de otro integrante antes de hacer merge. Preferir *Squash and merge*.
 

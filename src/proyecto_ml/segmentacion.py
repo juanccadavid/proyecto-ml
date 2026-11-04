@@ -194,12 +194,19 @@ def _nombre_segmento(metodo: str, segmento: int, k: int) -> str:
 
 
 def figura_mapa(
-    segmentacion: Segmentacion, df: pd.DataFrame, asociado: pd.DataFrame | None = None, titulo: str | None = None
+    segmentacion: Segmentacion,
+    df: pd.DataFrame,
+    asociado: pd.DataFrame | None = None,
+    titulo: str | None = None,
+    detalle_individual: bool = True,
 ) -> go.Figure:
     """Mapa interactivo (señales de salida x vínculo) con un botón para ver KMeans o DBSCAN.
 
     Cada segmento es un color con su contorno; al pasar el mouse sale el segmento, su tasa de retiro real y el
     comportamiento del asociado. Con ``asociado`` (una fila) se marca dónde cae, con una estrella.
+
+    ``detalle_individual=False`` (datos reales): el mouse muestra solo el segmento y su tasa (agregados), no los
+    conteos ni si esa persona se retiró.
     """
     import plotly.graph_objects as go
 
@@ -251,10 +258,14 @@ def figura_mapa(
                     "symbol": "x" if s == ATIPICO else "circle",
                     "line": {"color": "#fcfcfb", "width": 0.5},
                 },
-                customdata=detalle[en],
-                hovertemplate=f"<b>{nombre}</b>{tasa}<br>intenciones de retiro: %{{customdata[0]}}"
-                "<br>cancelaciones de ahorros: %{customdata[1]}<br>disminuciones de cuotas: %{customdata[2]}"
-                + ("<br>se retiró: %{customdata[3]}" if retiro is not None else "")
+                customdata=detalle[en] if detalle_individual else None,
+                hovertemplate=(
+                    f"<b>{nombre}</b>{tasa}<br>intenciones de retiro: %{{customdata[0]}}"
+                    "<br>cancelaciones de ahorros: %{customdata[1]}<br>disminuciones de cuotas: %{customdata[2]}"
+                    + ("<br>se retiró: %{customdata[3]}" if retiro is not None else "")
+                    if detalle_individual
+                    else f"<b>{nombre}</b>{tasa}"
+                )
                 + "<extra></extra>",
                 visible=visible,
             )

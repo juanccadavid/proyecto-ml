@@ -44,7 +44,7 @@ import hmac
 import math
 import os
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 import pandas as pd
@@ -92,10 +92,10 @@ def _texto_id(value: object) -> str:
 
 
 def _clave(salt: str | None) -> str:
-    salt = salt or os.getenv("ANON_SALT", "")
-    if len(salt) < LARGO_MIN_SAL:
+    clave = salt or os.environ.get("ANON_SALT") or ""
+    if len(clave) < LARGO_MIN_SAL:
         raise AnonimizacionInsegura(f"ANON_SALT debe tener al menos {LARGO_MIN_SAL} caracteres (make salt)")
-    return salt
+    return clave
 
 
 def hash_value(value: object, salt: str) -> str:
@@ -234,10 +234,9 @@ def verificar(
         if str(col).endswith(k.SUFIJO_SEUDONIMO) or not _es_texto(salida[col]):
             continue  # el seudónimo ya se revisó arriba; números y fechas, con la comparación exacta
         resto = textos[~exacto]  # lo exacto ya se contó: no se cuenta dos veces
-        distintos = pd.Series(
-            resto.unique(), dtype=object
-        )  # cada valor distinto, una vez (barrio, cargo... se repiten)
-        busquedas = [
+        # cada valor distinto se revisa una vez (barrio, cargo... se repiten)
+        distintos = pd.Series(resto.unique(), dtype=object)
+        busquedas: list[tuple[Callable[[str], bool], str]] = [
             (personales.numero_incrustado, "con un número de una columna personal (cédula, teléfono) dentro"),
             (personales.texto_incrustado, "con un nombre, dirección o correo del extracto dentro del texto"),
         ]

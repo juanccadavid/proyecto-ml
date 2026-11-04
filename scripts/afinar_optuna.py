@@ -37,6 +37,7 @@ from sklearn.base import clone
 from proyecto_ml import abandono as a
 from proyecto_ml import busqueda_optuna as bo
 from proyecto_ml import registro as r
+from proyecto_ml.campeon import DatosInvalidos, datos_exploracion
 from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, get_settings
 from proyecto_ml.evaluate import SCORING, resaltar, tabla_comparativa
 from proyecto_ml.generador import GeneradorAsociados
@@ -68,7 +69,10 @@ def main() -> None:
         parser.error(f"Modelos no válidos: {sorted(desconocidos)}. Opciones: {', '.join(bo.MODELOS)}")
     optuna.logging.set_verbosity(optuna.logging.WARNING)  # sin una línea por intento
 
-    train = a.cargar(args.datos)  # con limpiar_extracto
+    try:
+        train = datos_exploracion(args.datos, "make optuna")
+    except DatosInvalidos as error:
+        raise SystemExit(str(error)) from None  # con limpiar_extracto y el contrato
     nuevos = GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos).generar()
     X, y = a.separar(train)
     print(f"Entrenamiento: {args.datos} ({len(train)} filas, {train[a.TARGET].mean():.0%} abandono)")

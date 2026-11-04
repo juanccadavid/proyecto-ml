@@ -1,11 +1,18 @@
 # Proyecto I — Especialización en Ciencia de Datos
 
-Proyecto de clasificación supervisada de punta a punta: EDA con Plotly, preprocesamiento con
-`Pipeline` + `ColumnTransformer`, comparación de al menos 2 modelos, seguimiento de experimentos con
-MLflow y demo en Streamlit.
+**Problema:** anticipar qué asociados de un fondo de empleados se van a retirar en los próximos 3 meses, para
+contactarlos a tiempo. Retener a un asociado cuesta menos que reemplazarlo, y el retiro es raro (pocos de cada
+100), así que el modelo tiene que encontrar a los pocos que se van sin llenar de falsas alarmas al equipo.
 
-> **Estado:** estructura base lista y probada con un **dataset sintético**. El dataset definitivo está por
-> definir (ver `sesiones/bitacora.md`). Cambiarlo solo requiere ajustar el `.env`.
+**Cómo:** contrato de datos → anonimización → foto del asociado en t0 (sin fuga de información) → pipeline de
+scikit-learn → campeón por PR-AUC en validación cruzada repetida, con umbrales medidos en validación anidada y
+una validación temporal → MLflow → predicción, simulador en Streamlit con SHAP y segmentos (KMeans, DBSCAN).
+
+> **Estado (nov-2026): todo el sistema corre y está probado, pero solo con DATOS SINTÉTICOS.** El extracto real
+> del fondo no ha llegado. Las métricas de este README salen del generador (`generador.py`): prueban que el
+> sistema funciona, **no** cómo le irá al modelo con el fondo. Para datos reales hacen falta el extracto
+> anonimizado y, en el `.env`, `ORIGEN_DATOS=real_anonimizado`, `FECHA_CORTE` y `DATOS_ASOCIADOS` (ver
+> "Datos sintéticos y datos reales"), además de confirmar la temporalidad con el fondo.
 
 > **¿Nuevo en el proyecto?** Empieza por [`docs/guia_comandos.txt`](docs/guia_comandos.txt): Git, uv, Make,
 > imports, contratos, pipeline y generador de datos, con los comandos de este proyecto.
@@ -46,7 +53,7 @@ MLflow y demo en Streamlit.
 ├── docs/                 Guía de comandos y conceptos (docs/guia_comandos.txt)
 ├── sesiones/             Notebooks (EDA) y bitácora del equipo
 ├── tests/                Pruebas unitarias e integración (pytest); tests/data: reglas del contrato
-├── reports/              Métricas y figuras versionables
+├── reports/              Métricas y figuras livianas (qué se versiona: reports/README.md)
 ├── data/                 Datos locales — NO van a Git
 └── models/               Solo el campeón (y best_model de make train) — NO van a Git
 ```
@@ -82,11 +89,11 @@ flowchart TD
 |---|---|---|---|
 | **1. Datos** | Tres fuentes con el mismo esquema. El extracto real se anonimiza **antes** de compartirlo. El equipo carga asociados desde el formulario a Supabase. Mientras llega el extracto, se trabaja con 5.000 asociados sintéticos. | `scripts/anonimizar.py`, `make supabase-bajar`, `make datos-desarrollo` | `anonymize.py`, `contrato.py`, `generador.py` |
 | **2. Contrato** | Columnas, tipos, rangos y reglas del negocio. Un lote que no cumple no sigue. | `make contrato DATA=...` (o `scripts/ingesta.py --contrato contratos/asociados.yaml`) | `contratos/asociados.yaml`, `contrato.py` |
-| **3. Foto** | Cada asociado activo en t0 (corte − 3 meses): ¿se retira antes del corte? EDAD y ANTIGUEDAD se calculan a t0, sin fuga. | (dentro de todos los comandos) | `abandono.foto`, `abandono.preparar` |
-| **4a. Supervisado** | Un solo pipeline para todos los modelos: preparar → preprocesar (imputar, codificar, escalar, recortar) → modelo. Los candidatos son los 4 supervisados y las técnicas que ganan de forma concluyente. | `make tecnicas`, `make optuna`, `make validacion` | `abandono.armar_pipeline`, `features.py`, `tecnicas.py` |
+| **3. Foto** | Cada asociado activo en t0 (corte − 3 meses): ¿se retira antes del corte? EDAD y ANTIGUEDAD se calculan a t0, sin fuga. | por defecto en `make campeon`, `tecnicas`, `validacion` y `segmentos` (`--horizonte 0` la apaga); los exploratorios `abandono`, `afinar`, `optuna` y `pycaret` solo con `--horizonte` | `abandono.foto`, `abandono.preparar` |
+| **4a. Supervisado** | Un solo pipeline para todos los modelos: preparar → preprocesar (imputar, codificar, escalar, recortar) → modelo. Los candidatos son una lista fija (`campeon.lista_candidatos`): los 4 supervisados y la logística sin balancear y con TargetEncoder, que ganaron de forma concluyente en un `make tecnicas` anterior. | `make tecnicas`, `make validacion` | `abandono.armar_pipeline`, `features.py`, `tecnicas.py` |
 | **4b. No supervisado** | Segmentos por comportamiento, sin ver el retiro. Los atípicos de DBSCAN concentran el retiro. | `make segmentos` | `segmentacion.py` |
-| **5. Campeón** | Gana la mejor PR-AUC en validación cruzada repetida (5 × 3), con su incertidumbre: ± entre particiones, intervalo bootstrap y empates. Los umbrales (F2 y precisión ≥ 0,8) se miden también en validación anidada. Se valida además con asociados nuevos y con escenarios de señal débil. | `make campeon` | `campeon.py`, `validacion.py`, `explicar.py` (SHAP) |
-| **6. Uso** | El campeón guardado recibe la fila cruda y devuelve la zona: se retira, zona gris o se queda. | `make predecir DATA=...`, `make simulador` | `predict.py`, `app_abandono.py` |
+| **5. Campeón** | Gana la mejor PR-AUC en validación cruzada repetida (5 × 3), con su incertidumbre: ± entre particiones, intervalo bootstrap y empates. Los umbrales (F2 y precisión ≥ 0,8) se miden también en validación anidada. Se valida además en el tiempo (entrena con la foto vieja, mide en la reciente con el umbral de la vieja) y, con sintéticos, con asociados nuevos y escenarios de señal débil. | `make campeon` | `campeon.py`, `validacion.py`, `explicar.py` (SHAP) |
+| **6. Uso** | El campeón guardado recibe la fila cruda de cada asociado **activo** (los que ya se retiraron no se puntúan) y devuelve la zona: se retira, zona gris o se queda. | `make predecir DATA=...`, `make simulador` | `predict.py`, `app_abandono.py` |
 | **7. CI** | En cada push: lint, pruebas y el flujo completo, con el resumen del campeón y los resultados como artefacto. | `make pipeline` (lo mismo en local) | `.github/workflows/ci.yml`, `scripts/resumen_campeon.py` |
 
 ## Datos sintéticos y datos reales
@@ -118,6 +125,38 @@ Las métricas de los dos orígenes nunca quedan en la misma tabla de MLflow ni e
 contrato es el que se conoce hoy (`contratos/asociados.yaml`): si el extracto real trae otras columnas o
 categorías, el contrato lo detiene antes de entrenar, y se ajusta el contrato con el equipo, no el modelo a ciegas.
 
+## Resultados y limitaciones
+
+**Todas las cifras son de DATOS SINTÉTICOS** (5.000 de desarrollo, foto a 3 meses: 4.602 activos, 105 retiros,
+2,3 %). Validan que el método funciona, no el rendimiento con el fondo. Salen de `make campeon`
+(`models/campeon.json`, también en el resumen de cada corrida del CI).
+
+| Evaluación (campeón: logística sin balancear) | PR-AUC (base 0,023) | Precisión / recall de la alerta |
+|---|---|---|
+| Validación cruzada repetida 5 × 3 (la que elige) | 0,918 ± 0,038 | 0,86 / 0,85, umbral elegido con esas mismas predicciones |
+| Validación anidada de la regla de umbrales (umbral elegido sin ver la prueba) | — | 0,69 / 0,86 |
+| **Temporal**: entrena con la foto a 2026-04-30 y mide en la de 2026-07-31, umbral de la foto vieja | **0,848** | **0,51 / 0,87** |
+
+La validación temporal es la más dura y la que vale con datos reales. Baja la precisión porque los conteos de
+comportamiento son los mismos números en las dos fotos (llegan sin fecha): en la foto vieja, quien se retira más
+tarde ya trae su comportamiento de retiro pero cuenta como activo, y el umbral aprendido queda bajo. Es el mismo
+riesgo de fuga que hay que confirmar con el fondo (abajo).
+
+**Limitaciones:**
+- **Sin datos reales.** El generador fija la señal: el modelo aprende la regla del generador. Los "escenarios"
+  de `make campeon` miden cuánto se degrada si la señal real es más débil; no la reemplazan.
+- **Temporalidad sin confirmar.** Los conteos (`abandono.CONTEOS_SIN_FECHA`) y atributos como salario, cargo y
+  agencia (`abandono.ATRIBUTOS_SIN_FECHA`) llegan sin fecha de medición. Si son a la extracción y no a t0, hay
+  fuga. Con datos reales, la evaluación queda marcada como no válida hasta que el fondo lo confirme
+  (`TEMPORALIDAD_CONFIRMADA`).
+- **Un solo extracto.** Las dos fotos de la validación temporal salen del mismo archivo; una validación temporal
+  completa necesita extractos de fechas distintas.
+- **SHAP explica el modelo, no la causa** del retiro: dice qué variables mueven el puntaje, no qué haría que
+  alguien se quede.
+
+**Pendiente** (necesita al fondo o datos reales): el extracto anonimizado, la confirmación de la temporalidad,
+el rango de la tasa de retiro del contrato (hoy es solo una advertencia) y una licencia para el repositorio.
+
 ## Requisitos
 
 - [uv](https://docs.astral.sh/uv/) (gestiona Python 3.12 y dependencias)
@@ -142,6 +181,11 @@ make pipeline                # todo el flujo: campeón, predicción, segmentos, 
 make check                   # lint + pruebas, antes de abrir un PR
 ```
 
+**Pruebas** (`tests/`, pytest): `make test` corre todas (unas 310, unos 2-3 minutos). Cubren contrato de datos,
+anonimización y PII, la foto y la fuga de información, el pipeline, el campeón y sus umbrales, la validación
+temporal, la predicción, MLflow, el simulador (Streamlit `AppTest`) y los scripts. Para una sola:
+`uv run pytest -q tests/test_campeon.py`.
+
 `make` (sin argumentos) lista todos los objetivos. Sin `make`, cada objetivo del `Makefile` muestra
 el comando `uv run ...` equivalente.
 
@@ -154,7 +198,7 @@ el comando `uv run ...` equivalente.
 | `notebooks/` | `sesiones/` | los notebooks de EDA y la bitácora del equipo |
 | `src/<paquete>/config.py`, `data.py`, `features.py`, `train.py` | ✅ `src/proyecto_ml/` | |
 | `model.py` | `models.py` | el catálogo de modelos; el abandono los arma en `abandono.armar_pipeline` |
-| `predict.py` | ✅ `predict.py` | `make predecir DATA=...`: filas crudas → puntaje, zona, alerta y grupo |
+| `predict.py` | ✅ `predict.py` | `make predecir DATA=...`: filas crudas de los activos → puntaje, zona, alerta y grupo |
 | `app/` (Streamlit o FastAPI) | `streamlit_app.py` + `src/proyecto_ml/app_abandono.py` | Streamlit Cloud abre `streamlit_app.py` en la raíz |
 | `tests/` | ✅ | pytest, con las pruebas del contrato en `tests/data/` |
 | `models/` | ✅ gitignored | solo el campeón; el CI lo deja como artefacto |
@@ -279,9 +323,12 @@ fechas de actualización...): con ellas cualquier modelo acierta el 100 % pero n
 
 ### La foto del asociado: fecha de observación y horizonte
 
-Sin opciones, el modelo mira a todos los asociados **al corte** (31-oct-2026): EDAD y ANTIGUEDAD se miden
+Sin la foto, el modelo mira a todos los asociados **al corte** (31-oct-2026): EDAD y ANTIGUEDAD se miden
 después de que los retirados se fueron, y como el generador reparte los retiros en los 12 meses anteriores,
-en la práctica predice "¿se retiró en el último año?". El diseño correcto es una **foto** en t0 = corte − H:
+en la práctica predice "¿se retiró en el último año?". Así corren por defecto los comandos **exploratorios**
+(`make abandono`, `afinar`, `optuna`, `pycaret`): sus métricas no se comparan con las del campeón. `make
+campeon`, `tecnicas`, `validacion` y `segmentos` usan la foto por defecto (`--horizonte 0` la apaga). El
+diseño correcto es una **foto** en t0 = corte − H:
 
 - **Población:** asociados activos en t0 (los que se retiraron antes ya no eran asociados en la foto).
 - **Objetivo:** `#RETIROS` = 1 si se retira entre t0 y el corte (usa `FECHARETIRO`).
@@ -321,8 +368,10 @@ Los afinados, Optuna y PyCaret son **experimentos** (quedan en MLflow); el **cam
   de `data/ejemplo` quedan para el contrato y las pruebas.
 - **Criterio:** PR-AUC promedio en validación cruzada **repetida** (5 particiones × 3 repeticiones), no en los
   "nuevos" del generador. PR-AUC y no AUC: con 2 % de retiros el AUC pasa de 0,97 en todos los modelos.
-- **Candidatos:** los 4 supervisados y las técnicas que en `make tecnicas` le ganan a la base de forma
-  concluyente (ver "Incertidumbre" abajo); con `--optuna N`, también los árboles afinados con Optuna.
+- **Candidatos:** una lista fija (`campeon.lista_candidatos`): los 4 supervisados y la logística sin balancear
+  y con TargetEncoder, que en un `make tecnicas` anterior le ganaron a la base de forma concluyente (ver
+  "Incertidumbre" abajo); con vacíos en los datos, también el indicador de vacíos; con `--optuna N`, también
+  los árboles afinados con Optuna. Si `make tecnicas` cambia de veredicto, la lista se actualiza a mano.
 - **Umbrales**, con las predicciones fuera de partición (cada asociado puntuado por un modelo que no lo vio):
   - *alerta*: el que maximiza **F2** (el recall pesa el doble: perder a quien se va cuesta más que una llamada);
   - *alto*: el menor puntaje desde el cual **al menos 8 de cada 10 alertas son retiros reales**.
@@ -433,13 +482,7 @@ make simulador                                   # usa el campeón
 **MCC y Kappa** (al umbral de alerta) van en la tabla de candidatos y en MLflow (`cv_mcc`, `cv_kappa`):
 
 | | Ridge | Regresión logística | Random Forest (bagging) | HistGradientBoosting (boosting) | Logística sin balancear | Logística + TargetEncoder |
-|--- |
-|--- |
-|--- |
-|--- |
-|--- |
-|--- |
-|---|
+|---|---|---|---|---|---|---|
 | MCC | 0,81 | 0,78 | 0,78 | 0,76 | **0,85** | 0,87 |
 | Kappa | 0,81 | 0,78 | 0,78 | 0,76 | **0,85** | 0,87 |
 
@@ -472,7 +515,7 @@ puntaje = promedio de 100 asociados de referencia + contribución de cada variab
 Una contribución en rojo sube el riesgo frente al promedio; una en azul lo baja. La suma da exactamente el
 puntaje del modelo. Las contribuciones se miden en puntos de probabilidad, o en distancia a la frontera si el
 campeón es Ridge. Se explican las variables originales (EDAD, SEXO...), no las columnas del OneHot, con
-`shap.PermutationExplainer`. Ese método solo necesita el puntaje, así que sirve para los cuatro candidatos.
+`shap.PermutationExplainer`. Ese método solo necesita el puntaje, así que sirve para todos los candidatos.
 
 - **En el simulador**, debajo del riesgo, aparece "¿Por qué este puntaje?": una cascada con las 8 variables
   que más pesan para ese asociado. Se recalcula al mover cualquier control.
@@ -632,7 +675,7 @@ make segmentos ARGS="--k 4"                      # 4 segmentos (los dos de riesg
 | Calibración | `campeon.figura_calibracion` / `campeon_calibracion.html` y el Brier |
 | Datos sintéticos vs. reales | `config.origen_datos` (`ORIGEN_DATOS`), sección "Datos sintéticos y datos reales" |
 | Trade-off precisión vs. recall | `campeon.figura_umbrales` / `campeon_umbrales.html` |
-| AUC-ROC | `campeon.figura_roc` / `campeon_roc.html` (los cuatro candidatos) |
+| AUC-ROC | `campeon.figura_roc` / `campeon_roc.html` (todos los candidatos) |
 | Qué métrica elegir | sección "Qué métrica usamos y por qué" |
 | MAE, MSE, RMSE, R² | `regresion.py` / `make regresion` |
 | Hiperparámetros comunes | `busqueda_optuna.espacio_random_forest`: n_estimators, max_depth, min_samples_split, min_samples_leaf, max_features |
@@ -1065,7 +1108,8 @@ Cada `make train` registra parámetros, métricas y modelo en `mlflow.db` (local
 las opciones de limpieza (`limpieza`, `clip_outliers`, `clip_columns`, `drop_columns`) para comparar con y
 sin ellas. Por defecto corre `clean_dataset` (sin renombrar columnas) y un `ColumnDropper` (`--drop-columns`
 0.5); `--sin-limpieza` apaga todo.
-El JSON de métricas en `reports/metrics/` sí se versiona para que el equipo compare resultados.
+El JSON de métricas de `make train` en `reports/metrics/` sí se versiona para que el equipo compare resultados
+(los que regenera `make pipeline` no: ver [`reports/README.md`](reports/README.md)).
 
 ## Respaldo offline
 

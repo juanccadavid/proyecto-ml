@@ -34,6 +34,7 @@ from sklearn.model_selection import StratifiedKFold, cross_val_predict
 
 from proyecto_ml import abandono as a
 from proyecto_ml import registro as r
+from proyecto_ml.campeon import DatosInvalidos, datos_exploracion
 from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, get_settings
 from proyecto_ml.evaluate import (
     COLUMNAS_COMPARATIVA,
@@ -91,13 +92,17 @@ def main() -> None:
     limpiar = not args.sin_limpieza
     clip, max_nulos = (args.clip_outliers, a.MAX_NULOS) if limpiar else (None, None)
 
-    train = a.cargar(args.datos, limpiar)
+    try:  # solo sintéticos y con el contrato (ver campeon.datos_exploracion)
+        train = datos_exploracion(args.datos, "make abandono", limpiar)
+        validar = datos_exploracion(args.validar, "make abandono", limpiar) if args.validar else None
+    except DatosInvalidos as error:
+        raise SystemExit(str(error)) from None
     validaciones = {f"nuevos (n={args.nuevos})": GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos).generar()}
     if args.faltantes:
         sucios = GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos, faltantes=FALTANTES).generar()
         validaciones["nuevos con vacíos"] = sucios
     if args.validar:
-        validaciones[args.validar.name] = a.cargar(args.validar, limpiar)
+        validaciones[args.validar.name] = validar
     if args.exportar_nuevos:
         args.exportar_nuevos.parent.mkdir(parents=True, exist_ok=True)
         next(iter(validaciones.values())).to_parquet(args.exportar_nuevos, index=False)

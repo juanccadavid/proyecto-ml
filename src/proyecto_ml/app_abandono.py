@@ -143,7 +143,14 @@ def formato_puntaje(puntaje: float, metodo: str) -> str:
     return f"{puntaje:.1%}" if metodo == "predict_proba" else f"{puntaje:+.2f}"
 
 
-guardado = cargar_campeon(MODELS_DIR)
+try:
+    guardado = cargar_campeon(MODELS_DIR)
+except Exception as error:  # archivo a medias o de otra versión: mensaje claro, sin traceback ni rutas
+    st.error(
+        f"No se pudo leer el campeón de `models/` ({type(error).__name__}). Vuelve a correr `make campeon`, o borra "
+        "`models/campeon*` para que la app elija uno con datos sintéticos."
+    )
+    st.stop()
 elegido_aqui = guardado is None
 modelo, agrupador, info = elegir_campeon_aqui() if elegido_aqui else guardado
 metodo, umbral, umbral_alto = info["metodo"], info["umbral"], info["umbral_alto"]
@@ -258,6 +265,12 @@ for col, columna in zip(columnas, UBICACION, strict=True):
     with col:
         valores[columna] = control(columna, referencia)
 
+if valores["EDAD"] - valores["ANTIGUEDAD"] < 18:  # regla mayor_de_edad_al_ingreso del contrato
+    st.error(
+        f"Combinación imposible: con {valores['EDAD']} años y {valores['ANTIGUEDAD']} de antigüedad habría ingresado "
+        "antes de los 18 (el contrato lo exige). Baja la antigüedad o sube la edad."
+    )
+    st.stop()
 asociado = pd.DataFrame([valores])[a.NUMERICAS + a.CATEGORICAS]
 asociado[a.NUMERICAS] = asociado[a.NUMERICAS].astype(float)  # como en preparar: los conteos son float
 puntaje = float(a.puntaje(modelo, asociado)[0])
@@ -306,7 +319,13 @@ st.subheader("Mapa de segmentos")
 segmentacion, datos_mapa = segmentar(info.get("horizonte_meses"), origen, ruta_ref)
 atipico = segmentacion.dbscan(asociado)[0] == sg.ATIPICO
 st.plotly_chart(
-    sg.figura_mapa(segmentacion, datos_mapa, asociado=asociado, titulo="Asociados de referencia por comportamiento"),
+    sg.figura_mapa(
+        segmentacion,
+        datos_mapa,
+        asociado=asociado,
+        titulo="Asociados de referencia por comportamiento",
+        detalle_individual=experimental,  # con datos reales, solo agregados por segmento
+    ),
     width="stretch",
     key="mapa",
 )
