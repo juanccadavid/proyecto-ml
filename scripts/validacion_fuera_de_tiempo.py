@@ -21,7 +21,8 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import datetime
+import re
+from datetime import date, datetime
 from pathlib import Path
 
 from proyecto_ml import abandono as a
@@ -36,6 +37,13 @@ def _extracto(valor: str) -> tuple[Path, str]:
     ruta, _, fecha = valor.rpartition(":")
     if not ruta or not fecha:
         raise argparse.ArgumentTypeError(f"usa RUTA:AAAA-MM-DD, no {valor!r}")
+    # Solo AAAA-MM-DD: "01/02/2026" se leería en silencio como 2 de enero (¿o era 1 de febrero?) y movería la foto.
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", fecha):
+        raise argparse.ArgumentTypeError(f"fecha {fecha!r}: usa AAAA-MM-DD (ej. 2026-04-30)")
+    try:
+        date.fromisoformat(fecha)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"fecha {fecha!r} no existe en el calendario") from None
     return Path(ruta), fecha
 
 

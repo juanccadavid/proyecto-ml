@@ -38,6 +38,16 @@ class Extracto:
     fecha: pd.Timestamp
     nombre: str = ""
 
+    def __post_init__(self) -> None:
+        # Una fecha vacía (None, "NaT") apagaría en silencio los controles de revisar_par (horizonte cubierto,
+        # retiros posteriores al extracto): toda comparación con NaT da False.
+        if pd.isna(self.fecha):
+            raise ValueError(f"El extracto {self.nombre or '(sin nombre)'} no tiene fecha: indica AAAA-MM-DD.")
+        # Las fechas de los extractos (FECHARETIRO, FECHAINGRESOLABORA) no tienen zona horaria: compararlas con una
+        # que sí la tiene daría un TypeError críptico en revisar_par.
+        if getattr(self.fecha, "tzinfo", None) is not None:
+            raise ValueError(f"La fecha del extracto {self.nombre or '(sin nombre)'} no debe tener zona horaria.")
+
     @classmethod
     def de(cls, datos: pd.DataFrame, fecha: str | pd.Timestamp, nombre: str = "") -> Extracto:
         return cls(datos, pd.Timestamp(fecha), nombre or str(pd.Timestamp(fecha).date()))
