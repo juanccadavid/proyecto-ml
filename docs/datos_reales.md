@@ -50,6 +50,26 @@ una lista fija, `abandono.NUMERICAS` + `CATEGORICAS`). Los resultados no lo incl
 Con 4 o más, la selección hacia adelante usa menos filas (la primera foto solo entrena), a cambio de no mirar el
 futuro.
 
+**Pendiente científico: la validación cruzada interna de TargetEncoder** (`features.py`, `StratifiedKFold(5)`
+sin grupos; candidato `logreg_target`). Al ajustar, TargetEncoder codifica cada fila de entrenamiento con la media
+del objetivo de su categoría calculada en las OTRAS particiones internas. Cuando el modelo se entrena con 2 o más
+fotos (el modelo final con 4+ extractos; la selección hacia adelante con 5+), el mismo asociado puede estar en otra
+partición con otra foto, y su etiqueta de esa foto entra en la codificación de su fila. **Es una fuga interna del
+ajuste, verificada por estructura** (no por métricas): con datos sintéticos y 2 fotos, el 77 % de las filas de
+entrenamiento tiene al mismo asociado en otra foto y otra partición, y en 354 la otra foto tiene otra etiqueta. Su
+peso es el de una fila en la media de su categoría: a lo sumo 0,024 (la categoría más chica, 42 asociados) y
+0,0015 o menos en las demás.
+
+- **No llega a la evaluación externa:** la validación hacia adelante y la prueba final se codifican con lo aprendido
+  en entrenamiento (`transform`), sin sus etiquetas.
+- **Efecto observado** con datos sintéticos: agrupar la CV interna por asociado no cambia la PR-AUC fuera de tiempo
+  (0,5798 en los dos casos; puntajes con correlación 1,00000). Eso dice que el efecto es chico aquí, no que no exista.
+- **Corrección posible:** sklearn 1.9 deja pasar grupos a esa CV (`fit_transform(**params)` con *metadata routing*),
+  pero exige activar el *routing* global y declarar los grupos en cada paso de cada pipeline, en todos los
+  reentrenamientos y clones. No se hace sin un beneficio medido.
+- **Revisarlo con los datos reales**, sobre todo si traen categorías con pocos asociados (cargos o agencias raros),
+  donde una sola etiqueta pesa más.
+
 ## Requisitos mínimos de los datos
 
 1. **Al menos 3 extractos** en fechas distintas, separados por al menos el horizonte (3 meses). Con 3 (E1, E2, E3)
@@ -90,8 +110,11 @@ revelar cifras del fondo. Lleva el origen y la semilla.
 
 ## Qué sigue sin resolver aun con varios extractos
 
-- La **lista** de candidatos y los hiperparámetros por defecto se armaron con datos sintéticos; la validación
-  fuera de tiempo elige entre ellos, no los rediseña.
+- La **lista** de candidatos y los hiperparámetros por defecto se armaron con datos sintéticos (`make tecnicas`
+  sobre la foto de desarrollo), así que no vieron ningún extracto real: la validación fuera de tiempo elige entre
+  ellos sin selección indirecta sobre la prueba real. **Si se rehace con datos reales** (`make tecnicas`,
+  `--optuna`), hay que hacerlo **solo con los extractos de entrenamiento**, nunca con el último par: si no, la lista
+  ya habría mirado la prueba.
 - Un cambio real en el fondo (otra tasa de retiro, una crisis) entre extractos se mide, no se corrige: la cifra
   fuera de tiempo es justamente la que lo muestra.
 - El modelo **no está validado para producción** hasta tener esta validación con datos reales y revisarla con el

@@ -231,3 +231,80 @@ def test_hacia_adelante_con_los_candidatos_del_proyecto(extractos_4):
     assert set(resultado["pr_auc_vieja"]) == set(candidatos) and resultado["elegido"] in candidatos
     assert "hacia adelante" in resultado["seleccion"] and 0 <= resultado["pr_auc"] <= 1
     assert not {str(v) for v in primera["CEDULA"].head(20)} & {str(v) for v in resultado.values()}  # sin ids
+
+
+def test_un_extracto_sin_fecha_se_rechaza(extractos):
+    """Con fecha NaT, revisar_par no avisaba nada: toda comparación con NaT da False y el control del horizonte (y
+    el de retiros posteriores) se apagaba en silencio, con etiquetas sesgadas."""
+    datos = extractos[1].datos
+    for fecha in (None, "NaT", pd.NaT, np.datetime64("NaT")):
+        with pytest.raises(ValueError, match="no tiene fecha"):
+            ex.Extracto.de(datos, fecha)
+    with pytest.raises(ValueError, match="no tiene fecha"):
+        ex.Extracto(datos, pd.NaT, "directo")
+
+
+def test_un_extracto_con_zona_horaria_se_rechaza_con_un_mensaje_claro(extractos):
+    """Antes: TypeError "Cannot compare tz-naive and tz-aware" dentro de revisar_par."""
+    with pytest.raises(ValueError, match="zona horaria"):
+        ex.Extracto.de(extractos[0].datos, "2026-01-31T00:00:00+00:00")
+
+
+@pytest.mark.parametrize(
+    ("valor", "error"),
+    [
+        ("a.parquet:01/02/2026", "usa AAAA-MM-DD"),  # ambiguo: antes se leía en silencio como 2 de enero
+        ("a.parquet:31-01-2026", "usa AAAA-MM-DD"),
+        ("a.parquet:2026-13-45", "no existe en el calendario"),
+        ("a.parquet", "usa RUTA:AAAA-MM-DD"),
+    ],
+)
+def test_el_script_solo_acepta_fechas_iso(valor, error):
+    import argparse
+
+    spec = importlib.util.spec_from_file_location(
+        "fuera_de_tiempo_fechas", config.ROOT_DIR / "scripts" / "validacion_fuera_de_tiempo.py"
+    )
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    with pytest.raises(argparse.ArgumentTypeError, match=error):
+        script._extracto(valor)
+    ruta, fecha = script._extracto("C:/datos/anon.parquet:2026-04-30")  # ruta de Windows con su C:
+    assert ruta.name == "anon.parquet" and fecha == "2026-04-30"
+
+
+def test_referencia_solo_mide_un_modelo_ya_fijo_y_no_cambia_la_eleccion(monkeypatch, extractos):
+    """``referencia`` (el campeón en la prueba de estrés) se mide DESPUÉS de elegir: pedirla no puede cambiar el
+    candidato, el umbral ni las métricas del elegido, y su propio umbral sale de la selección, no de la prueba."""
+    modelos = a.modelos_supervisados()
+    candidatos = {"logreg": modelos["logreg"], "ridge": modelos["ridge"]}
+    entreno = ex.foto_entre_extractos(extractos[0], extractos[1], 3)
+    prueba = ex.foto_entre_extractos(extractos[1], extractos[2], 3)
+    sin = c.elegir_y_medir(candidatos, entreno, prueba, folds=3)
+    perdedor = next(n for n in candidatos if n != sin["elegido"])
+    largos = []
+    original = c.elegir_umbrales
+
+    def espia(y, puntaje, *args, **kw):
+        largos.append(len(y))
+        return original(y, puntaje, *args, **kw)
+
+    monkeypatch.setattr(c, "elegir_umbrales", espia)
+    con = c.elegir_y_medir(candidatos, entreno, prueba, folds=3, referencia=perdedor)
+    sin_ref = {k: v for k, v in con.items() if k != "referencia"}
+    assert json.dumps(sin_ref, sort_keys=True) == json.dumps(sin, sort_keys=True)  # nada del elegido cambia (NaN incl.)
+    assert con["referencia"]["modelo"] == perdedor
+    assert largos == [len(entreno), len(entreno)]  # los dos umbrales salen de la selección, ninguno de la prueba
+
+
+def test_controles_documentados_sin_cobertura_previa(extractos):
+    """Dos controles que docs/datos_reales.md promete y que ninguna prueba ejecutaba (make cov)."""
+    viejo, nuevo, _ = extractos
+    repetido = pd.concat([nuevo.datos, nuevo.datos.head(1)], ignore_index=True)  # un seudónimo dos veces
+    problemas = ex.revisar_par(viejo, ex.Extracto.de(repetido, nuevo.fecha), 3)
+    assert any("repetido en algún extracto" in p for p in problemas)
+    entreno = ex.foto_entre_extractos(extractos[0], extractos[1], 3)
+    prueba = ex.foto_entre_extractos(extractos[1], extractos[2], 3)
+    pocos = pd.concat([entreno[entreno[a.TARGET] == 0], entreno[entreno[a.TARGET] == 1].head(2)])  # 2 retiros < 3
+    with pytest.raises(ValueError, match="foto de entrenamiento tiene menos de 3"):
+        c.elegir_y_medir({"logreg": a.modelos_supervisados()["logreg"]}, pocos, prueba, folds=3)
