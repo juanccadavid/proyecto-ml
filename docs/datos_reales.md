@@ -3,6 +3,21 @@
 > Parte de la documentación de [proyecto-ml](../README.md). **Hoy no hay datos reales**: todo lo de este documento
 > está listo para cuando lleguen, y nada de lo que se reporta en el README sale de datos reales.
 
+## Respuestas del fondo (custodio)
+
+Las respuestas fueron recopiladas por el custodio. Cuando el fondo no autorizó publicar una cifra o una fecha
+del extracto, la tabla registra únicamente su estado.
+
+| Pregunta | Respuesta | Fecha de la respuesta | Qué cambia en el proyecto |
+|---|---|---|---|
+| ¿Cuándo se miden los conteos de comportamiento y los campos `ULT3MESES`? | Confirmado: se miden al corte del extracto; `ULT3MESES` termina en ese corte. La fecha exacta no está autorizada para publicación. | 2026-11-21 | No se puede marcar `TEMPORALIDAD_CONFIRMADA=si` para la foto de un único extracto: esos conteos no corresponden al t0 definido como corte menos tres meses y producirían fuga. Se necesitan conteos a t0 o extractos sucesivos. |
+| ¿El extracto incluye a los retirados y sus campos de retiro? | No. Los campos de retiro y otras variables que no se usarán en el modelo no estarán en el extracto final. | 2026-11-21 | No se puede construir ni verificar el objetivo a partir del extracto: una ausencia no distingue un retiro de una omisión. Hay que solicitar al fondo los retirados y sus campos de retiro, o una fuente de etiquetas equivalente y validada. |
+| ¿Habrá tres o más extractos separados al menos tres meses? | No; solo se trabajará con el último corte. | 2026-11-21 | No se puede ejecutar la validación fuera de tiempo descrita en este documento. El modelo no puede presentarse como validado para producción con datos reales. |
+| ¿Cuál es la tasa aproximada de retiro voluntario anual y se puede publicar? | Pendiente: el dato no está disponible y no se publicará. | 2026-11-21 | Se conserva `tasa_retiro_plausible` como advertencia basada en datos sintéticos; no se ajusta el rango ni se convierte en regla de negocio. |
+| ¿Se autoriza publicar el esquema completo de 74 columnas? | No. Algunas columnas no se publicarán y está previsto que el repositorio pase a ser privado. | 2026-11-21 | No se debe publicar una revisión del esquema completo mientras el repositorio siga público. Antes de compartir cambios se debe definir el esquema autorizado o confirmar que el repositorio ya es privado. |
+| ¿Deben agruparse los cuasi-identificadores antes de compartir? | No. | 2026-11-21 | No se agregan rangos por solicitud del fondo. Se mantiene la revisión humana porque conservarlos no elimina el riesgo de reidentificación. |
+| ¿Cuándo estará el primer extracto anonimizado? | Confirmado: está disponible; la fecha exacta no se publica. | 2026-11-21 | Se mantiene el aviso “Hoy no hay datos reales” hasta que el archivo anonimizado pase las validaciones y quede disponible por el canal privado; el extracto no se versiona. |
+
 ## Por qué hacen falta varios extractos
 
 Con **un solo extracto**, los conteos de comportamiento (`abandono.CONTEOS_SIN_FECHA`) y atributos como salario o
