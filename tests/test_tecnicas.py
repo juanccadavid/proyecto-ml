@@ -32,9 +32,10 @@ def test_imputadores_no_dejan_vacios(datos, estrategia):
 def test_indicador_de_vacios_agrega_una_columna_por_variable_con_vacios(datos):
     X, y = datos
     sin, con = _pre().fit(X, y), _pre(missing_indicator=True).fit(X, y)
-    assert con.transform(X).shape[1] - sin.transform(X).shape[1] == len(t.COLUMNAS_VACIOS)
+    con_vacios = [c for c in t.COLUMNAS_VACIOS if c in a.NUMERICAS and X[c].isna().any()]
+    assert con.transform(X).shape[1] - sin.transform(X).shape[1] == len(con_vacios)
     nombres = list(con.get_feature_names_out())
-    assert all(f"missingindicator_{c}" in nombres for c in t.COLUMNAS_VACIOS)
+    assert all(f"missingindicator_{c}" in nombres for c in con_vacios)
 
 
 @pytest.mark.parametrize("escalador", sorted(ESCALADORES))

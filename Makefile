@@ -31,7 +31,7 @@ ARGS ?=
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup setup-hf demo-data demo train train-hf abandono campeon fuera-de-tiempo tecnicas validacion regresion segmentos predecir pipeline pycaret afinar optuna mlflow-ui app \
+.PHONY: help setup setup-hf demo-data demo train train-hf abandono campeon tecnicas validacion regresion segmentos predecir pipeline pycaret afinar optuna mlflow-ui app \
         simulador ejemplo datos-desarrollo contrato contrato-ml anonimizar contrato-sql contrato-web supabase-subir supabase-bajar supabase-crear formulario \
         test test-fast cov lint tipos format check hooks secrets up docker-campeon down logs salt bundle clean clean-all
 
@@ -82,9 +82,6 @@ afinar: ## Busca los mejores hiperparámetros de Ridge y pycaret_lr (GridSearchC
 
 campeon: ## Elige el modelo campeón (PR-AUC en CV repetida), su umbral y zonas; lo registra en MLflow
 	$(PY) scripts/elegir_campeon.py $(if $(DATA),--datos $(DATA)) $(ARGS)
-
-fuera-de-tiempo: ## Validación fuera de tiempo con 3+ extractos de fechas distintas: EXTRACTOS="a.parquet:2026-04-30 ..."
-	$(PY) scripts/validacion_fuera_de_tiempo.py $(foreach e,$(EXTRACTOS),--extracto $(e)) $(ARGS)
 
 tecnicas: ## Compara técnicas de preprocesamiento (SMOTE/ADASYN, imputadores, encoders, escaladores, PCA, RFE...)
 	$(PY) scripts/tecnicas_preprocesamiento.py $(ARGS)

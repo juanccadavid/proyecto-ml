@@ -72,7 +72,7 @@ def _peticion(url: str, key: str, metodo: str, ruta: str, cuerpo) -> int:
         with urllib.request.urlopen(req, timeout=30) as r:
             return r.status
     except urllib.error.HTTPError as e:
-        if e.code == 409:  # cédula o IDASOCIADOS ya existen
+        if e.code == 409:  # NROIDENTIFICACION ya existe
             return 409
         sys.exit(f"Supabase respondió {e.code}: {e.read().decode('utf-8', 'replace')}")
 
@@ -97,7 +97,7 @@ def _subir(path: Path, contrato: k.Contrato, lote: int = 500) -> None:
         for fila in bloque:
             ok = insertar([fila]) != 409
             nuevos, repetidos = nuevos + ok, repetidos + (not ok)
-    print(f"{nuevos} registros nuevos en {contrato.tabla_db}; {repetidos} omitidos por cédula/IDASOCIADOS repetidos")
+    print(f"{nuevos} registros nuevos en {contrato.tabla_db}; {repetidos} omitidos por identificador repetido")
 
 
 def leer_tabla(url: str, key: str, tabla: str, pagina: int = 1000) -> list[dict]:

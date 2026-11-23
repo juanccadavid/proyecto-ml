@@ -96,7 +96,6 @@ def main() -> None:
     origen, experimental = origen_datos(), es_experimental()
 
     df, fuente = c.datos_eleccion(args.datos)
-    extracto = df  # completo, antes de la foto: lo usa la validación temporal (foto vieja -> foto reciente)
     h = args.horizonte or None
     if h:
         df = a.foto(df, h)
@@ -217,41 +216,8 @@ def main() -> None:
         with pd.option_context("display.width", 200, "display.max_columns", None):
             print(escenarios.round(2).to_string())
     else:
-        print("\nDatos reales: sin asociados nuevos ni escenarios del generador (serían de otro origen). La validación")
-        print("de afuera es la temporal (abajo).")
-
-    temporal = None  # foto vieja -> foto reciente: candidato y umbral elegidos solo con la vieja
-    if h:
-        try:
-            temporal = c.validacion_temporal(
-                {n: cand.modelo for n, cand in campeon.candidatos.items()},
-                extracto,
-                h,
-                folds=args.folds,
-                beta=args.beta,
-                precision_min=args.precision_min,
-                referencia=campeon.nombre,
-            )
-        except ValueError as error:
-            print(f"\nValidación temporal: no se pudo ({error}).")
-        else:
-            print(
-                "\n=== Prueba de estrés temporal (un solo extracto: las mismas personas en las dos fotos) ===\n"
-                f"Elige y entrena con la foto a {temporal['t0_entrenamiento']} "
-                f"({temporal['retiros_entrenamiento']} retiros) y mide en la de {temporal['t0_prueba']} "
-                f"({temporal['retiros_prueba']} retiros)\n"
-                f"Elegido con la foto vieja: {c.TITULOS.get(temporal['elegido'], temporal['elegido'])}\n"
-                f"PR-AUC {temporal['pr_auc']:.3f} (base {temporal['base_rate']:.3f}) · "
-                f"ROC-AUC {temporal['roc_auc']:.3f} · al umbral {temporal['umbral']:.3f} de la foto vieja: "
-                f"precisión {temporal['precision']:.2f}, recall {temporal['recall']:.2f}, MCC {temporal['mcc']:.2f}"
-            )
-            ref = temporal["referencia"]
-            print(
-                f"El campeón ({c.TITULOS[campeon.nombre]}), con el mismo procedimiento (su elección no es ciega): "
-                f"PR-AUC {ref['pr_auc']:.3f}, precisión {ref['precision']:.2f}, recall {ref['recall']:.2f}"
-            )
-            if not experimental and not temporalidad_confirmada():
-                print("OJO: con temporalidad sin confirmar, las dos fotos usan los mismos conteos (posible fuga).")
+        print("\nDatos reales: sin asociados nuevos ni escenarios del generador (serían de otro origen).")
+    print("\nValidación temporal: no disponible con un único corte y sin fecha de retiro.")
 
     print("\n=== KMeans (sin objetivo) en los mismos datos ===")
     print(pd.DataFrame({g: {k: d[k] for k in ("asociados", "tasa_retiro")} for g, d in campeon.grupos.items()}))
@@ -314,8 +280,6 @@ def main() -> None:
             "zonas_nuevos": por_zona.reset_index().to_dict(orient="records"),
             "escenarios": resultados.to_dict(orient="records"),
         }
-    if temporal is not None:
-        extra["validacion_temporal"] = temporal
     if explicaciones:
         extra["shap_nuevos"] = {k: float(val) for k, val in explicaciones[1].items()}
     rutas = c.guardar(campeon, MODELS_DIR, extra)
@@ -347,7 +311,6 @@ def main() -> None:
         {n: r.con_prefijo("cv", cand.metricas) for n, cand in campeon.candidatos.items()},
         {n: r.con_prefijo("nuevos", m) for n, m in en_nuevos.items()},
         por_escenario,
-        {campeon.nombre: r.con_prefijo("temporal", temporal)} if temporal else {},
     )
     artefactos = [rutas["info"], *figuras]
     with r.corrida("campeon", params, artefactos=artefactos, tags={"campeon": campeon.nombre}):

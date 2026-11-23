@@ -32,7 +32,8 @@ from proyecto_ml.config import MODELS_DIR, ORIGEN_REAL, ORIGEN_SINTETICO, aviso_
 
 ETIQUETAS = {
     "EDAD": "Edad (años)",
-    "ANTIGUEDAD": "Antigüedad en la empresa (años)",
+    "ANTIGUEDAD_F_MESES": "Antigüedad en el fondo (meses)",
+    "ANTIGUEDAD_LA_MESES": "Antigüedad laboral (meses)",
     "SALARIO": "Salario mensual",
     "ESTRATO": "Estrato",
     "#SOLICITUD_DISMINUCIONCUOTAS": "Solicitudes de disminución de cuotas",
@@ -40,22 +41,23 @@ ETIQUETAS = {
     "#SOLICITUD_RETIROPARCIALAHORROS": "Solicitudes de retiro parcial de ahorros",
     "#CANTIDAD_AHORROSALAVISTA": "Ahorros a la vista",
     "#CANTIDAD_AHORROSCONTRACTUALES": "Ahorros contractuales",
-    "CANCELACIONCREDITOS_ULT3MESES": "Créditos cancelados (últ. 3 meses)",
-    "#SOLICITUDCREDITOS_ULT3MESES": "Créditos solicitados (últ. 3 meses)",
+    "#SOLICITUDCREDITOS_ULT3MES": "Créditos solicitados (últ. 3 meses)",
     "#CANTIDAD_SERVICIOS": "Servicios que usa",
-    "#INTENCIONRETIROS_ULT3MESES": "Intenciones de retiro (últ. 3 meses)",
     "SEXO": "Sexo",
     "TIPOCONTRATO": "Tipo de contrato",
-    "TIPOPACTO": "Tipo de pacto",
-    "PERIODODEDUCE": "Periodo de deducción",
-    "TIPOCUENTA": "Tipo de cuenta",
     "CARGO": "Cargo",
-    "CODCIUDAD": "Código de ciudad",
-    "AGENCIA": "Agencia",
+    "CODCIUDADRESIDENCIA": "Ciudad de residencia",
+    "CODEMPRESA": "Empresa",
+    "CODDEPENDENCIA": "Dependencia",
 }
-CONTINUAS = {"EDAD": 1.0, "ANTIGUEDAD": 0.5, "SALARIO": 100_000.0}  # columna -> paso del control
-PERFIL = ["SALARIO", "ESTRATO", "SEXO", "TIPOCONTRATO", "TIPOPACTO", "PERIODODEDUCE", "TIPOCUENTA"]
-UBICACION = ["CARGO", "CODCIUDAD", "AGENCIA"]
+CONTINUAS = {
+    "EDAD": 1.0,
+    "ANTIGUEDAD_F_MESES": 1.0,
+    "ANTIGUEDAD_LA_MESES": 1.0,
+    "SALARIO": 100_000.0,
+}
+PERFIL = ["SALARIO", "ESTRATO", "SEXO", "TIPOCONTRATO", "CODEMPRESA", "CODDEPENDENCIA"]
+UBICACION = ["CARGO", "CODCIUDADRESIDENCIA"]
 ZONA = {  # emoji, tipo de mensaje, texto
     "se retira": ("😟", "error", "Se retira: el modelo está seguro. ¡Contáctalo pronto!"),
     "zona gris": ("😐", "warning", "Zona gris: hay señales de retiro, pero el modelo no está seguro. Haz seguimiento."),
@@ -253,7 +255,8 @@ izquierda, derecha = st.columns(2)
 with izquierda:
     valores["EDAD"] = control("EDAD", referencia)
 with derecha:
-    valores["ANTIGUEDAD"] = control("ANTIGUEDAD", referencia)
+    valores["ANTIGUEDAD_F_MESES"] = control("ANTIGUEDAD_F_MESES", referencia)
+valores["ANTIGUEDAD_LA_MESES"] = control("ANTIGUEDAD_LA_MESES", referencia)
 
 st.subheader("Comportamiento con el fondo")
 columnas = st.columns(2)
@@ -271,15 +274,6 @@ for col, columna in zip(columnas, UBICACION, strict=True):
     with col:
         valores[columna] = control(columna, referencia)
 
-# Regla mayor_de_edad_al_ingreso del contrato, con la tolerancia de los pasos de los controles (la edad va en años
-# enteros y la antigüedad en medios años: 26,9 años con 9 de antigüedad se ingresa como 26 y 9).
-edad, antiguedad = float(valores["EDAD"]), float(valores["ANTIGUEDAD"])  # number_input: siempre números
-if edad - antiguedad < 18 - CONTINUAS["EDAD"] - CONTINUAS["ANTIGUEDAD"]:
-    st.error(
-        f"Combinación imposible: con {valores['EDAD']} años y {valores['ANTIGUEDAD']} de antigüedad habría ingresado "
-        "antes de los 18 (el contrato lo exige). Baja la antigüedad o sube la edad."
-    )
-    st.stop()
 asociado = pd.DataFrame([valores])[a.NUMERICAS + a.CATEGORICAS]
 asociado[a.NUMERICAS] = asociado[a.NUMERICAS].astype(float)  # como en preparar: los conteos son float
 puntaje = float(a.puntaje(modelo, asociado)[0])
@@ -351,7 +345,7 @@ st.subheader("¿Y si cambia una sola variable?")
 variable = st.selectbox(
     "Variable",
     a.NUMERICAS,
-    index=a.NUMERICAS.index("#INTENCIONRETIROS_ULT3MESES"),
+    index=a.NUMERICAS.index("#SOLICITUD_CANCELACIONAHORROS"),
     format_func=lambda v: ETIQUETAS.get(v, v),  # sin etiqueta, el nombre de la columna (nunca "None")
 )
 assert variable is not None  # con index fijo, selectbox siempre devuelve una opción

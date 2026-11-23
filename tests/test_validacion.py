@@ -18,7 +18,7 @@ def test_fuerza_escala_la_diferencia_entre_retirados_y_activos():
     diferencia = {}
     for f in (1.0, 0.5, 0.0):
         df = GeneradorAsociados(n=4000, seed=5, fuerza_senal=f).generar()
-        medias = df.groupby(a.TARGET)["#INTENCIONRETIROS_ULT3MESES"].mean()
+        medias = df.groupby(a.TARGET)["#SOLICITUD_RETIROPARCIALAHORROS"].mean()
         diferencia[f] = medias[1] - medias[0]
     assert diferencia[1.0] == pytest.approx(1.3, abs=0.15)  # 1.5 - 0.2 en el generador
     assert diferencia[0.5] == pytest.approx(0.65, abs=0.15)
@@ -66,23 +66,15 @@ def test_particion_temporal_entrena_con_la_foto_vieja():
     entrenamiento, prueba = v.particion_temporal(df, horizonte_meses=3, meses_prueba=3)
     assert (entrenamiento[a.FECHA_OBSERVACION] == pd.Timestamp("2026-04-30")).all()
     assert (prueba[a.FECHA_OBSERVACION] == pd.Timestamp("2026-07-31")).all()
-    # En la foto vieja, quien se retira después de su horizonte (2026-07-31) cuenta como activo.
-    retiro = pd.to_datetime(entrenamiento["FECHARETIRO"])
-    tardios = retiro > pd.Timestamp("2026-07-31")
-    assert tardios.any() and (entrenamiento.loc[tardios, a.TARGET] == 0).all()
-    assert entrenamiento[a.TARGET].sum() > 0 and prueba[a.TARGET].sum() > 0
+    assert len(entrenamiento) == len(prueba) == len(df)
+    assert entrenamiento[a.TARGET].equals(prueba[a.TARGET])
     with pytest.raises(ValueError):
         v.particion_temporal(df, meses_prueba=0)
 
 
-def test_con_un_solo_extracto_las_dos_fotos_son_las_mismas_personas():
-    """Lo que documenta el README ("prueba de estrés, no validación fuera de tiempo"): con un solo extracto, los
-    retiros de la foto reciente son asociados que en la vieja cuentan como activos, con los mismos conteos."""
+def test_con_un_solo_extracto_no_se_inventa_una_validacion_fuera_de_tiempo():
     df = GeneradorAsociados(n=1500, seed=5, tasa_retiro=0.3).generar()
     vieja, reciente = v.particion_temporal(df, horizonte_meses=3, meses_prueba=3)
-    assert set(reciente["CEDULA"]) <= set(vieja["CEDULA"])
-    retiros = reciente.loc[reciente[a.TARGET] == 1, "CEDULA"]
-    en_vieja = vieja.set_index("CEDULA").loc[retiros]
-    assert len(retiros) and (en_vieja[a.TARGET] == 0).all()  # en la vieja, activos
-    conteos = reciente.set_index("CEDULA").loc[retiros, a.CONTEOS_SIN_FECHA]
-    assert conteos.equals(en_vieja[a.CONTEOS_SIN_FECHA])  # mismos números en las dos fotos
+    assert vieja["NROIDENTIFICACION"].equals(reciente["NROIDENTIFICACION"])
+    assert vieja[a.CONTEOS_SIN_FECHA].equals(reciente[a.CONTEOS_SIN_FECHA])
+    assert vieja[a.TARGET].equals(reciente[a.TARGET])

@@ -6,12 +6,12 @@
 
 | Nivel | En el contrato | Qué atrapa | Ejemplos | ¿También en la BD? |
 |---|---|---|---|---|
-| 1. Por fila | `grupos` → `pa.Column` + `Check.ge/le/isin/str_matches` | registros corruptos | `ESTRATO` en 1–6, `SEXO` en F/M | Sí (CHECK) |
+| 1. Por fila | `grupos` → `pa.Column` + `Check.ge/le/isin/str_matches` | registros corruptos | `EDAD` entre 0 y 120, conteos no negativos | Sí (CHECK) |
 | 2. Distribución | `distribucion` → check sobre el lote | problemas sistemáticos | `salario_en_pesos`, `volumen_minimo` | No: la BD ve fila a fila |
-| 3. Entre columnas | `reglas` → check con varias columnas | incoherencias | `retiro_coherente`, `nombreintegrado_coherente` | Sí (CHECK) |
+| 3. Entre columnas | `reglas` → check con varias columnas | incoherencias | ingresos posteriores al nacimiento | Sí (CHECK) |
 
 Cada check de nivel 2 tiene `severidad`: **`error`** (por defecto, bloquea) o **`advertencia`** (se informa con
-`contrato.advertencias` y no bloquea). `tasa_retiro_plausible` (5 %–50 % de `#RETIROS=1` en el lote) es
+`contrato.advertencias` y no bloquea). `tasa_retiro_plausible` (1 %–50 % de `#RETIROS=1` en el lote) es
 advertencia: el rango salió del diseño de los sintéticos (10 % de retiro), no de una regla del fondo, y un
 extracto real con otra prevalencia no es por eso un dato malo. **Pendiente: confirmar el rango con el fondo.** Si
 da una regla validada, se ajustan `min`/`max` en el YAML y se pasa a `severidad: error`.
@@ -58,7 +58,7 @@ formulario ──(correo y contraseña: Supabase Auth)──► asociados ──
   `public.es_del_equipo()` (el correo del token está en `equipo`). La clave pública sola, sin sesión, no
   inserta; y con sesión el equipo solo inserta (no lee, edita ni borra).
 - **Directo a la tabla.** Cada envío queda de una vez en `asociados`. La base aplica todas las restricciones del
-  contrato por fila y no deja repetir cédula ni IDASOCIADOS: si algo no cumple, el formulario muestra el motivo
+  contrato por fila y no deja repetir `NROIDENTIFICACION`: si algo no cumple, el formulario muestra el motivo
   y no se guarda.
 
 Activarlo en Supabase (una vez, en el panel):

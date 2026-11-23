@@ -221,7 +221,7 @@ def figura_mapa(
     etiquetas = {"KMeans": segmentacion.kmeans(df), "DBSCAN": segmentacion.dbscan(df)}
     detalle = np.column_stack(
         [
-            X["#INTENCIONRETIROS_ULT3MESES"].fillna(-1),
+            X["#SOLICITUD_RETIROPARCIALAHORROS"].fillna(-1),
             X["#SOLICITUD_CANCELACIONAHORROS"].fillna(-1),
             X["#SOLICITUD_DISMINUCIONCUOTAS"].fillna(-1),
             retiro if retiro is not None else np.full(len(X), np.nan),
@@ -264,7 +264,7 @@ def figura_mapa(
                 },
                 customdata=detalle[en] if detalle_individual else None,
                 hovertemplate=(
-                    f"<b>{nombre}</b>{tasa}<br>intenciones de retiro: %{{customdata[0]}}"
+                    f"<b>{nombre}</b>{tasa}<br>retiros parciales: %{{customdata[0]}}"
                     "<br>cancelaciones de ahorros: %{customdata[1]}<br>disminuciones de cuotas: %{customdata[2]}"
                     + ("<br>se retiró: %{customdata[3]}" if retiro is not None else "")
                     if detalle_individual

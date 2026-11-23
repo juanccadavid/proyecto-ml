@@ -73,7 +73,7 @@ def main() -> None:
         "--clip-outliers",
         choices=["iqr", "quantile"],
         default=a.CLIP_OUTLIERS,
-        help="Cómo recortar atípicos de SALARIO, EDAD y ANTIGUEDAD (aprendido en train). Por defecto: iqr",
+        help="Cómo recortar atípicos de las variables continuas (aprendido en train). Por defecto: iqr",
     )
     parser.add_argument(
         "--horizonte",

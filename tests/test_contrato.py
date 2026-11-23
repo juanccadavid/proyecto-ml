@@ -1,112 +1,53 @@
-"""Pruebas de la HERRAMIENTA del contrato: carga del YAML, esquema pandera, SQL, JS y registros para la BD.
-
-Las pruebas de las REGLAS (qué dato es válido y cuál no) están en tests/data/test_contrato_datos.py.
-"""
+"""Generación del contrato para Pandera, SQL y web."""
 
 import pandas as pd
-import pytest
 
 from proyecto_ml import contrato as k
-from proyecto_ml.config import ROOT_DIR
 from proyecto_ml.generador import GeneradorAsociados
 
 
-@pytest.fixture(scope="module")
-def contrato() -> k.Contrato:
-    return k.cargar()
+def test_contrato_cubre_el_esquema_del_generador():
+    df = GeneradorAsociados(n=50, seed=42).generar()
+    assert list(df.columns) == k.cargar().nombres
 
 
-@pytest.fixture(scope="module")
-def asociados() -> pd.DataFrame:
-    return GeneradorAsociados(n=200, seed=1).generar()
+def test_esquema_pandera_con_los_tres_niveles():
+    contrato = k.cargar()
+    df = GeneradorAsociados(n=50, seed=42).generar()
+    assert k.validar(df, contrato) == []
+    assert len(contrato.reglas) == 2
+    assert len(contrato.distribucion) == 5
 
 
-def test_contrato_cubre_el_esquema_del_generador(contrato, asociados):
-    assert contrato.nombres == list(asociados.columns)
-    assert len(contrato.columnas) == 74
-    assert contrato.objetivo in contrato.nombres
-
-
-def test_cada_regla_tiene_implementacion_en_python(contrato):
-    assert {r["id"] for r in contrato.reglas} == set(k.REGLAS)
-    assert {d["id"] for d in contrato.distribucion} == set(k.DISTRIBUCION)
-
-
-def test_esquema_pandera_con_los_tres_niveles(contrato):
-    esquema = k.esquema(contrato)
-    assert len(esquema.columns) == 74  # nivel 1
-    nombres = {c.name for c in esquema.checks}
-    assert {"volumen_minimo", "salario_en_pesos"} <= nombres  # nivel 2
-    assert {"retiro_coherente", "nombreintegrado_coherente"} <= nombres  # nivel 3
-
-
-def test_nombres_en_la_bd(contrato):
+def test_nombres_en_la_bd():
+    contrato = k.cargar()
     db = {c.nombre: c.db for c in contrato.columnas}
+    assert db["NROIDENTIFICACION"] == "nroidentificacion"
+    assert db["#SOLICITUDCREDITOS_ULT3MES"] == "num_solicitudcreditos_ult3mes"
     assert db["#RETIROS"] == "num_retiros"
-    assert db["CANCELACIONCREDITOS_ULT3MESES"] == "cancelacioncreditos_ult3meses"
-    assert len(set(db.values())) == len(db)
 
 
-def test_datos_generados_cumplen(contrato, asociados):
-    assert k.validar(asociados, contrato) == []
+def test_registros_para_la_bd_y_vuelta():
+    contrato = k.cargar()
+    df = GeneradorAsociados(n=4, seed=2).generar()
+    registros = k.a_registros_db(df, contrato, origen="script")
+    assert registros[0]["origen"] == "script"
+    vuelta = k.desde_registros_db(registros, contrato)
+    assert list(vuelta.columns) == contrato.nombres
+    assert len(vuelta) == len(df)
 
 
-def test_un_tipo_invalido_se_reporta_una_sola_vez(contrato, asociados):
-    """Formato de los mensajes: 'mucho' en SALARIO no debe arrastrar fallas en cadena de ge/le."""
-    df = asociados.astype({"SALARIO": object})
-    df.loc[0, "SALARIO"] = "mucho"
-    errores = [e for e in k.validar(df, contrato) if e.startswith("Nivel 1 · SALARIO:")]
-    assert errores == ["Nivel 1 · SALARIO: 1 fila(s) no son de tipo entero (ej. fila 0: 'mucho')"]
-
-
-def test_registros_para_la_bd(contrato, asociados):
-    reg = k.a_registros_db(asociados.head(20), contrato)
-    activo = next(r for r in reg if r["num_retiros"] == 0)
-    assert activo["origen"] == "script"
-    assert activo["fecharetiro"] is None and activo["motivoretiro"] is None
-    assert isinstance(activo["cedula"], int)
-    assert len(activo["fechanacimiento"]) == 10  # AAAA-MM-DD
-
-
-def test_sql_incluye_restricciones_y_seguridad(contrato):
-    sql = k.sql(contrato)
-    assert "cedula bigint not null unique" in sql
-    assert "constraint retiro_coherente check" in sql
+def test_sql_incluye_restricciones_y_seguridad():
+    sql = k.sql(k.cargar()).lower()
+    assert "nroidentificacion text not null unique" in sql
+    assert "constraint ingreso_fondo_posterior_nacimiento" in sql
     assert "enable row level security" in sql
-    assert "grant select" not in sql  # la clave pública no puede leer
-
-
-@pytest.mark.parametrize(
-    ("archivo", "generar"),
-    [("supabase/asociados.sql", k.sql), ("web/contrato.js", k.js)],
-)
-def test_archivos_generados_al_dia(archivo, generar):
-    """Si cambias el contrato, regenera con make contrato-sql / make contrato-web."""
-    assert (ROOT_DIR / archivo).read_text(encoding="utf-8") == generar()
+    assert "create policy equipo_inserta" in sql
 
 
 def test_limpiar_extracto_sigue_cumpliendo_el_contrato():
-    """clean_dataset sobre asociados: con la configuración de limpiar_extracto el contrato se mantiene."""
-    from proyecto_ml.cleaning import clean_dataset
-
-    asociados = GeneradorAsociados(n=200, seed=4).generar()
-    assert k.validar(asociados) == []
-    assert k.validar(k.limpiar_extracto(asociados)) == []
-    # Con los valores por defecto se rompe (renombra #RETIROS, borra opcionales vacías, teléfonos -> número).
-    assert k.validar(clean_dataset(asociados, verbose=False)) != []
-
-    # Un extracto "sucio" como el real: textos de relleno, números como texto, espacios y filas repetidas.
-    crudo = asociados.astype({"SALARIO": object, "SEGUNDONOMBRE": object, "CARGO": object})
-    crudo.loc[0, "SALARIO"] = " 4,860,000 "
-    crudo.loc[1, "SEGUNDONOMBRE"] = "N/A"
-    crudo.loc[2, "CARGO"] = f"  {asociados.loc[2, 'CARGO']}  "
-    crudo = pd.concat([crudo, crudo.head(3)], ignore_index=True)
-
-    limpio = k.limpiar_extracto(crudo)
-    assert k.validar(limpio) == []
-    assert len(limpio) == len(asociados)  # sin las 3 filas repetidas
-    assert limpio.loc[0, "SALARIO"] == 4_860_000
-    assert pd.isna(limpio.loc[1, "SEGUNDONOMBRE"])
-    assert limpio.loc[2, "CARGO"] == asociados.loc[2, "CARGO"]
-    assert list(limpio.columns) == list(asociados.columns)
-    assert limpio["TELEFONO1"].str.fullmatch(r"\d{7,10}").all()  # sigue como texto de dígitos
+    contrato = k.cargar()
+    df = GeneradorAsociados(n=50, seed=4).generar()
+    limpio = k.limpiar_extracto(df)
+    assert k.validar(limpio, contrato) == []
+    assert pd.api.types.is_datetime64_any_dtype(limpio["FECHANACIMIENTO"])

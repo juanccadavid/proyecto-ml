@@ -137,36 +137,12 @@ el equipo de desarrollo** (no tiene Docker): Docker Desktop en Windows y abrir e
 
 ## Resultados
 
-**Todas las cifras son de DATOS SINTÉTICOS** (5.000 de desarrollo, foto a 3 meses: 4.602 activos, 105 retiros,
-2,3 %). Validan que el método funciona, no el rendimiento con el fondo. Salen de `make campeon`
-(`models/campeon.json`, también en el resumen de cada corrida del CI).
+Las métricas versionadas anteriores correspondían al contrato de 74 columnas y dejaron de ser comparables. Tras
+la migración al esquema definitivo, `make campeon` vuelve a calcularlas con 5.000 asociados sintéticos. Esas cifras
+solo verifican el funcionamiento del pipeline; no describen al fondo ni sustituyen una evaluación temporal real.
 
-| Evaluación | Modelo | PR-AUC (base 0,023) | Precisión / recall de la alerta |
-|---|---|---|---|
-| Validación cruzada repetida 5 × 3 (la que elige el campeón) | logística sin balancear | 0,918 ± 0,038 | 0,86 / 0,85 (umbral elegido con esas mismas predicciones) |
-| Validación anidada de la regla de umbrales | logística sin balancear | — | 0,69 / 0,86 (umbral elegido sin ver la prueba) |
-| Prueba de estrés temporal, ciega: con la foto a 2026-04-30 se elige el candidato, su umbral y se entrena; se mide en la de 2026-07-31 | Random Forest (el que gana en la foto vieja) | 0,831 | 0,93 / 0,37 |
-| Prueba de estrés temporal, el campeón actual con el mismo procedimiento (su elección vio la foto reciente) | logística sin balancear | 0,848 | 0,51 / 0,87 |
-
-**Cómo leer la prueba temporal: es una prueba de estrés, no una estimación fuera de tiempo.** Con un solo
-extracto, las dos fotos son **las mismas personas con los mismos datos**: los 4.602 de la foto reciente están en
-la vieja, 19 de las 21 variables son idénticas (solo EDAD y ANTIGUEDAD se corren 0,25 años) y los 105 retiros
-de la foto reciente son exactamente 105 asociados que en la foto vieja cuentan como activos (se retiran después
-de su corte). El modelo se entrena viéndolos con etiqueta 0 y se mide con etiqueta 1 sobre sus mismos datos. Eso
-castiga a propósito: mide qué pasa si la etiqueta y los conteos no están alineados en el tiempo, que es justo el
-riesgo de los conteos sin fecha (ver Limitaciones).
-
-- **El ranking de modelos no es estable.** En la foto vieja todos los candidatos quedan entre 0,46 y 0,54 de
-  PR-AUC fuera de partición y gana Random Forest por 0,004 sobre Ridge. En la foto reciente la logística gana con
-  claridad (0,918 contra 0,859 de Random Forest). Los dos ordenan bien en la prueba (0,83-0,85 frente a una base
-  de 0,023).
-- **El umbral no se traslada.** El de la foto vieja da precisión 0,51 con la logística (umbral 0,05) y recall
-  0,37 con Random Forest (0,12): los 105 "activos" de la foto vieja traen el comportamiento de retiro (1,69
-  intenciones de retiro en promedio, como los positivos, 1,72, contra 0,19 de los activos) y corren el umbral.
-- **Una validación fuera de tiempo de verdad** necesita extractos de fechas distintas, con cada conteo medido a
-  su t0. Con un solo extracto (sintético o real) no existe; esta prueba no la reemplaza.
-- **Límite de la elección ciega:** la lista de candidatos (y, con `--optuna`, sus hiperparámetros) se armó
-  mirando datos que incluyen la foto reciente; eso no se repite.
+Solo habrá un corte real y `#RETIROS` llega como objetivo en el archivo. Por ello el proyecto no presenta una
+validación fuera de tiempo con datos reales.
 
 ## Arquitectura
 
@@ -192,7 +168,6 @@ riesgo de los conteos sin fecha (ver Limitaciones).
 │   ├── campeon.py        Modelo campeón: PR-AUC en CV repetida, umbrales, zonas, guardar/cargar (make campeon)
 │   ├── campeon_figuras.py  Figuras del campeón: umbrales, matriz de confusión, ROC, calibración
 │   ├── datos_campeon.py  Datos de entrada del campeón y de los exploratorios, según el origen y el contrato
-│   ├── extractos.py      Varios extractos de fechas distintas: la foto para la validación fuera de tiempo
 │   ├── explicar.py       SHAP: por qué el modelo le dio a cada asociado su puntaje
 │   ├── validacion.py     Escenarios, partición temporal y KFold / Stratified / TimeSeriesSplit
 │   ├── regresion.py      Regresión de ejemplo: el salario con MAE, MSE, RMSE y R² (make regresion)
@@ -222,7 +197,7 @@ que lo hace.
 ```mermaid
 flowchart TD
     subgraph datos["Paso 1: Datos"]
-        EXT["Extracto del fondo"] -->|"scripts/anonimizar.py"| RAW["data/raw: anonimizado"]
+        EXT["Extracto anonimizado del fondo"] --> RAW["data/raw: solo local"]
         FORM["Formulario web del equipo"] --> SUPA[("Supabase: asociados")]
         RAW -->|"make supabase-subir"| SUPA
         SUPA -->|"make supabase-bajar"| RAW
@@ -230,9 +205,8 @@ flowchart TD
     end
     RAW --> CONTRATO
     DEV --> CONTRATO
-    CONTRATO{"Paso 2: Contrato de datos<br/>make contrato"} -->|cumple| FOTO["Paso 3: Foto del asociado<br/>a.foto: t0 = corte − 3 meses"]
-    FOTO --> SUP["Paso 4a: Supervisado: candidatos<br/>preparar → preprocesar → modelo"]
-    FOTO --> NOSUP["Paso 4b: No supervisado<br/>make segmentos: KMeans y DBSCAN"]
+    CONTRATO{"Paso 2: Contrato de datos<br/>make contrato-ml"} -->|cumple| SUP["Paso 3a: Supervisado: candidatos<br/>preparar → preprocesar → modelo"]
+    CONTRATO --> NOSUP["Paso 3b: No supervisado<br/>make segmentos: KMeans y DBSCAN"]
     SUP --> CAMP["Paso 5: Campeón: make campeon<br/>PR-AUC en CV repetida, empates,<br/>umbrales anidados, zonas"]
     CAMP --> MOD[("models/ + MLflow<br/>abandono@campeon")]
     MOD --> PRED["Paso 6: make predecir<br/>zona, alerta, grupo"]
@@ -243,13 +217,13 @@ flowchart TD
 
 | Paso | Qué pasa | Comando | Dónde |
 |---|---|---|---|
-| **1. Datos** | Tres fuentes con el mismo esquema. El extracto real se anonimiza **antes** de compartirlo. El equipo carga asociados desde el formulario a Supabase. Mientras llega el extracto, se trabaja con 5.000 asociados sintéticos. | `scripts/anonimizar.py`, `make supabase-bajar`, `make datos-desarrollo` | `anonymize.py`, `contrato.py`, `generador.py` |
+| **1. Datos** | Tres fuentes con el mismo esquema de 44 columnas. El extracto real ya llega anonimizado, se guarda solo en `data/raw/` y no se versiona. | `make supabase-bajar`, `make datos-desarrollo` | `contrato.py`, `generador.py` |
 | **2. Contrato** | Columnas, tipos, rangos y reglas del negocio. Un lote que no cumple no sigue. | `make contrato DATA=...` (o `scripts/ingesta.py --contrato contratos/asociados.yaml`) | `contratos/asociados.yaml`, `contrato.py` |
-| **3. Foto** | Cada asociado activo en t0 (corte − 3 meses): ¿se retira antes del corte? EDAD y ANTIGUEDAD se calculan a t0, sin fuga. | por defecto en `make campeon`, `tecnicas`, `validacion` y `segmentos` (`--horizonte 0` la apaga); `make abandono` solo con `--horizonte`; `afinar`, `optuna` y `pycaret` nunca | `abandono.foto`, `abandono.preparar` |
+| **3. Preparación** | Selecciona los predictores permitidos. Usa `EDAD`, `ANTIGUEDAD_F_MESES` y `ANTIGUEDAD_LA_MESES`; excluye identificadores, contacto, fechas crudas y estado. | incluido en todos los pipelines | `abandono.preparar` |
 | **4a. Supervisado** | Un solo pipeline para todos los modelos: preparar → preprocesar (imputar, codificar, escalar, recortar) → modelo. Los candidatos son una lista fija (`campeon.lista_candidatos`): los 4 supervisados y la logística sin balancear y con TargetEncoder, que ganaron de forma concluyente en un `make tecnicas` anterior. | `make tecnicas`, `make validacion` | `abandono.armar_pipeline`, `features.py`, `tecnicas.py` |
 | **4b. No supervisado** | Segmentos por comportamiento, sin ver el retiro. Los atípicos de DBSCAN concentran el retiro. | `make segmentos` | `segmentacion.py` |
 | **5. Campeón** | Gana la mejor PR-AUC en validación cruzada repetida (5 × 3), con su incertidumbre: ± entre particiones, intervalo bootstrap y empates. Los umbrales (F2 y precisión ≥ 0,8) se miden también en validación anidada. Se valida además en el tiempo (entrena con la foto vieja, mide en la reciente con el umbral de la vieja) y, con sintéticos, con asociados nuevos y escenarios de señal débil. | `make campeon` | `campeon.py`, `validacion.py`, `explicar.py` (SHAP) |
-| **6. Uso** | El campeón guardado recibe la fila cruda de cada asociado **activo** (los que ya se retiraron no se puntúan) y devuelve la zona: se retira, zona gris o se queda. | `make predecir DATA=...`, `make simulador` | `predict.py`, `app_abandono.py` |
+| **6. Uso** | El campeón guardado recibe una fila con las variables requeridas y devuelve puntaje, zona, alerta y grupo sin copiar identificadores. | `make predecir DATA=...`, `make simulador` | `predict.py`, `app_abandono.py` |
 | **7. CI** | En cada push: lint, pruebas y el flujo completo, con el resumen del campeón y los resultados como artefacto. | `make pipeline` (lo mismo en local) | `.github/workflows/ci.yml`, `scripts/resumen_campeon.py` |
 
 ## Datos sintéticos y datos reales
@@ -266,7 +240,7 @@ ORIGEN_DATOS=real_anonimizado     # y luego: make campeon DATA=data/raw/extracto
 | | `sintetico` | `real_anonimizado` |
 |---|---|---|
 | De dónde salen los datos | `--datos`, o `data/processed/asociados_desarrollo.parquet`, o el generador en memoria | **solo** `--datos` (sin él, falla: nunca cae en los generados) |
-| Contrato de datos | el **de origen**, a todo archivo | el **del dataset anonimizado para ML** (`contrato.para_ml`: sin PII, con seudónimos); el error dice cuántas filas y qué columnas, **sin valores** (`contrato.sin_valores`). Ver [docs/privacidad.md](docs/privacidad.md#privacidad-dos-contratos-y-la-anonimización) |
+| Contrato de datos | contrato v2 de 44 columnas | el mismo contrato v2 como lista blanca; el error dice cantidades y columnas, **sin valores** (`contrato.sin_valores`). Ver [docs/privacidad.md](docs/privacidad.md) |
 | Asociados nuevos y escenarios del generador | sí (validación sobre datos que el modelo no vio) | no: serían de otro origen. La validación de afuera es la temporal (`validacion.particion_temporal`) |
 | MLflow | experimentos `abandono`, `salario`; modelo `abandono` | experimentos `abandono_real`, `salario_real`; modelo `abandono_real` |
 | Etiqueta en consola, `campeon.json`, resumen del CI y simulador | **MODO SINTÉTICO: resultados experimentales** | DATOS REALES ANONIMIZADOS |
@@ -283,23 +257,19 @@ categorías, el contrato lo detiene antes de entrenar, y se ajusta el contrato c
 
 ## Limitaciones
 
-- **Sin datos reales.** El generador fija la señal: el modelo aprende la regla del generador. Los "escenarios"
-  de `make campeon` miden cuánto se degrada si la señal real es más débil; no la reemplazan.
-- **Temporalidad sin confirmar.** Los conteos (`abandono.CONTEOS_SIN_FECHA`) y atributos como salario, cargo y
-  agencia (`abandono.ATRIBUTOS_SIN_FECHA`) llegan sin fecha de medición. Si son a la extracción y no a t0, hay
-  fuga. Con datos reales, la evaluación queda marcada como no válida hasta que el fondo lo confirme
-  (`TEMPORALIDAD_CONFIRMADA`).
-- **Un solo extracto: no hay validación fuera de tiempo.** Las dos fotos de la prueba temporal son las mismas
-  personas con los mismos datos (ver Resultados). La infraestructura para la de verdad ya está
-  (`make fuera-de-tiempo`, `extractos.py`): necesita 3 o más extractos reales de fechas distintas, con requisitos
-  en [`docs/datos_reales.md`](docs/datos_reales.md).
+- **Resultados actuales sintéticos.** El generador fija la señal: el modelo aprende la regla del generador. Los
+  escenarios miden degradación, no rendimiento real.
+- **Temporalidad limitada.** Los conteos corresponden al corte y a sus tres meses anteriores, pero no traen fecha
+  propia. Solo hay un corte, así que no puede construirse una evaluación fuera de tiempo.
+- **Objetivo pendiente de confirmación.** El archivo real contiene valores de `#RETIROS` que deben validarse como
+  etiqueta binaria antes de entrenar.
 - **No está validado para producción.** Hasta tener esa validación con datos reales, ninguna cifra de este README
   dice cómo le irá al modelo con el fondo.
 - **SHAP explica el modelo, no la causa** del retiro: dice qué variables mueven el puntaje, no qué haría que
   alguien se quede.
 
-**Pendiente** (necesita al fondo o datos reales): el extracto anonimizado, la confirmación de la temporalidad,
-el rango de la tasa de retiro del contrato (hoy es solo una advertencia) y la licencia (propuesta MIT pendiente
+**Pendiente** (necesita al fondo): la definición binaria de `#RETIROS`, el rango de la tasa de retiro del contrato
+(hoy es solo una advertencia) y la licencia (propuesta MIT pendiente
 de aprobación: [`docs/licencia.md`](docs/licencia.md)).
 
 ## Documentación
@@ -308,9 +278,9 @@ de aprobación: [`docs/licencia.md`](docs/licencia.md)).
 |---|---|
 | [`docs/metodologia.md`](docs/metodologia.md) | Modelos de abandono: la foto del asociado y la fuga de información, el pipeline, el campeón y sus umbrales, la incertidumbre, la validación temporal, SHAP, segmentación (KMeans, DBSCAN), validación cruzada, regresión, técnicas, afinamiento, Optuna y PyCaret, y qué métrica usamos y por qué |
 | [`docs/contrato_y_supabase.md`](docs/contrato_y_supabase.md) | Los tres niveles del contrato de datos, la tabla de Supabase y el formulario web |
-| [`docs/privacidad.md`](docs/privacidad.md) | Datos personales: los dos contratos, la anonimización, la detección de PII, las predicciones sin PII y la fecha de corte y la temporalidad |
+| [`docs/privacidad.md`](docs/privacidad.md) | Custodia del archivo anonimizado, lista blanca de 44 columnas, exclusión de identificadores y salida sin datos individuales |
 | [`docs/mlflow.md`](docs/mlflow.md) | Experimentos y modelo registrado en MLflow, la versión liviana de los datos |
-| [`docs/datos_reales.md`](docs/datos_reales.md) | Requisitos de los extractos reales y el procedimiento de la validación fuera de tiempo (`make fuera-de-tiempo`) |
+| [`docs/datos_reales.md`](docs/datos_reales.md) | Estado del extracto local, respuestas del fondo, validación y límites del corte único |
 | [`docs/licencia.md`](docs/licencia.md) | Propuesta de licencia (MIT, pendiente de aprobación), qué cubre y las licencias de las dependencias |
 | [`docs/guia_comandos.txt`](docs/guia_comandos.txt) | Guía para empezar: Git, uv, Make, imports, contratos y cada comando del proyecto |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Ramas, commits y Pull Requests |

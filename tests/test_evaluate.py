@@ -123,7 +123,7 @@ def test_importancia_de_variables_por_modelo():
     # La intención de retiro es de lo que más pesa en el generador: tiene que salir arriba.
     for nombre in modelos:
         top = imp[imp["modelo"] == nombre].nlargest(5, "importancia")["variable"]
-        assert "#INTENCIONRETIROS_ULT3MESES" in set(top) or "#SOLICITUD_DISMINUCIONCUOTAS" in set(top)
+        assert "#SOLICITUD_RETIROPARCIALAHORROS" in set(top) or "#SOLICITUD_DISMINUCIONCUOTAS" in set(top)
     tabla = top_importancia(imp, top=3)
     assert list(tabla.columns) == ["ridge", "hist_gb"] and list(tabla.index) == [1, 2, 3]
     ejes = figura_importancia(imp, top=4, titulos=a.TITULOS).get_axes()

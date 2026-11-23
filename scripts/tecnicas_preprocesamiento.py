@@ -10,7 +10,7 @@ respecto a la base y se mide con PR-AUC en validación cruzada repetida (ver ``t
 - Feature engineering: variables nuevas (agregaciones, interacción, log) y binning; PCA; RFE.
 
 Los datos generados no traen vacíos: para que los imputadores se distingan, se ponen --vacios (10 %) al azar
-en SALARIO, ESTRATO, EDAD, ANTIGUEDAD y #CANTIDAD_SERVICIOS (0 = sin vacíos).
+en SALARIO, ESTRATO, EDAD, ANTIGUEDAD_LA_MESES y #CANTIDAD_SERVICIOS (0 = sin vacíos).
 
 Correlación (en los mismos datos, con las variables nuevas): Spearman entre numéricas, pares redundantes
 (|r| >= 0,8) y la relación de cada variable con el retiro (Spearman o V de Cramér).

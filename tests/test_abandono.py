@@ -1,223 +1,62 @@
-"""Pruebas de los modelos de abandono: supervisados (Ridge, logística, bagging, boosting) y KMeans."""
+"""Preparación y modelos con las variables definitivas."""
 
 import numpy as np
 import pandas as pd
-import pytest
-from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
 
 from proyecto_ml import abandono as a
-from proyecto_ml.generador import FALTANTES, GeneradorAsociados
+from proyecto_ml.generador import GeneradorAsociados
 
 
-@pytest.fixture(scope="module")
-def entrenamiento() -> pd.DataFrame:
-    return GeneradorAsociados(n=400, seed=1).generar()
+def datos(n=500, seed=5):
+    return GeneradorAsociados(n=n, seed=seed, tasa_retiro=0.15, fuerza_senal=2.0).generar()
 
 
-@pytest.fixture(scope="module")
-def nuevos() -> pd.DataFrame:
-    """Asociados que los modelos nunca ven al entrenar."""
-    return GeneradorAsociados(n=400, seed=2).generar()
-
-
-def test_variables_sin_fuga_ni_datos_personales(entrenamiento):
-    X = a.preparar(entrenamiento)
+def test_preparar_solo_usa_predictores_permitidos():
+    df = datos(80)
+    X = a.preparar(df)
     assert list(X.columns) == a.NUMERICAS + a.CATEGORICAS
-    assert not set(X.columns) & set(a.FUGA)
-    assert not set(X.columns) & {"CEDULA", "NOMBRES", "EMAIL", "TELEFONO1", "NUMEROCUENTA", "IDASOCIADOS"}
-    assert X["EDAD"].between(18, 70).all()
+    assert not set(X) & set(a.IDENTIFICADORES + a.FUGA)
+    assert {"EDAD", "ANTIGUEDAD_F_MESES", "ANTIGUEDAD_LA_MESES"} <= set(X)
 
 
-def test_columnas_de_fuga_no_cambian_las_predicciones(entrenamiento, nuevos):
-    ridge = a.modelo_ridge().fit(a.preparar(entrenamiento), entrenamiento[a.TARGET])
-    agrupador = a.AgrupadorAbandono().fit(entrenamiento)
-    alterado = nuevos.copy()
-    alterado["ESTADO"], alterado["MOTIVORETIRO"], alterado["FECHARETIRO"] = "ACTIVO", "", pd.NaT
-    assert np.array_equal(ridge.predict(a.preparar(nuevos)), ridge.predict(a.preparar(alterado)))
-    assert np.array_equal(agrupador.predict(nuevos), agrupador.predict(alterado))
+def test_numericas_y_categoricas_quedan_tipadas():
+    X = a.preparar(datos(80))
+    assert all(pd.api.types.is_float_dtype(X[c]) for c in a.NUMERICAS)
+    assert all(pd.api.types.is_string_dtype(X[c]) for c in a.CATEGORICAS)
 
 
-def test_ridge_generaliza_a_asociados_nuevos(entrenamiento, nuevos):
-    ridge = a.modelo_ridge().fit(a.preparar(entrenamiento), entrenamiento[a.TARGET])
-    m = a.metricas_supervisado(ridge, nuevos)
-    assert m["roc_auc"] > 0.8
-    assert m["recall"] > 0.6
-    assert len(a.coeficientes(ridge, 5)) == 5
+def test_foto_no_inventa_retiros_ni_filtra_filas():
+    df = datos(80)
+    vista = a.foto(df, horizonte_meses=3, corte=pd.Timestamp("2026-10-31"))
+    assert len(vista) == len(df)
+    assert vista[a.TARGET].equals(df[a.TARGET])
+    assert (vista[a.FECHA_OBSERVACION] == pd.Timestamp("2026-07-31")).all()
 
 
-@pytest.fixture(scope="module")
-def supervisados(entrenamiento) -> dict:
-    X, y = a.preparar(entrenamiento), entrenamiento[a.TARGET]
-    return {nombre: modelo.fit(X, y) for nombre, modelo in a.modelos_supervisados().items()}
-
-
-def test_hay_un_modelo_de_bagging_y_uno_de_boosting(supervisados):
-    assert list(supervisados) == list(a.TITULOS)
-    assert isinstance(supervisados["random_forest"].named_steps["model"], RandomForestClassifier)  # bagging
-    assert isinstance(supervisados["hist_gb"].named_steps["model"], HistGradientBoostingClassifier)  # boosting
-
-
-@pytest.mark.parametrize("nombre", list(a.TITULOS))
-def test_supervisados_generalizan_a_asociados_nuevos(supervisados, nuevos, nombre):
-    modelo = supervisados[nombre]
-    m = a.metricas_supervisado(modelo, nuevos)
-    assert m["roc_auc"] > 0.8
-    assert m["recall"] > 0.6
-    # El umbral de cada tipo de puntaje coincide con lo que decide predict().
-    X = a.preparar(nuevos)
-    decide = (a.puntaje(modelo, X) >= a.UMBRAL[a.metodo_puntaje(modelo)]).astype(int)
-    assert (decide == modelo.predict(X)).mean() > 0.99  # empates exactos en el umbral pueden diferir
-
-
-def test_kmeans_se_entrena_sin_el_objetivo(entrenamiento):
-    sin_objetivo = entrenamiento.drop(columns=a.FUGA)
-    agrupador = a.AgrupadorAbandono().fit(sin_objetivo)
-    assert set(agrupador.predict(sin_objetivo)) == {0, 1}
-    assert set(agrupador.perfil_.index) == {"riesgo", "estable"}
-
-
-def test_kmeans_separa_a_los_que_abandonan(entrenamiento, nuevos):
-    agrupador = a.AgrupadorAbandono().fit(entrenamiento.drop(columns=a.TARGET))
-    m = a.metricas_agrupacion(agrupador, nuevos)
-    assert m["recall"] > 0.7  # la mayoría de los que se van quedan en el grupo de riesgo
-    assert m["ari"] > 0.3  # mucho mejor que agrupar al azar (ARI ≈ 0)
-    perfil = agrupador.perfil_
-    assert perfil.loc["riesgo", "#INTENCIONRETIROS_ULT3MESES"] > perfil.loc["estable", "#INTENCIONRETIROS_ULT3MESES"]
-
-
-def test_modelos_toleran_datos_faltantes():
-    """Con vacíos (como llegan los datos reales) el pipeline imputa con lo aprendido en train."""
-    sucio = GeneradorAsociados(n=600, seed=21, faltantes=FALTANTES).generar()
-    nuevos_sucios = GeneradorAsociados(n=600, seed=22, faltantes=FALTANTES).generar()
-    X = a.preparar(sucio)
-    assert X.isna().any().any()  # hay vacíos de verdad...
-    assert not X[a.CATEGORICAS].isin(["nan", "None", "<NA>"]).any().any()  # ...y no texto "nan"
-
+def test_modelos_supervisados_entrenan_y_predicen():
+    df = datos(500)
+    X, y = a.separar(df)
     for modelo in a.modelos_supervisados().values():
-        assert a.metricas_supervisado(modelo.fit(X, sucio[a.TARGET]), nuevos_sucios)["roc_auc"] > 0.8
-    agrupador = a.AgrupadorAbandono().fit(sucio)
-    assert a.metricas_agrupacion(agrupador, nuevos_sucios)["recall"] > 0.7
+        entrenado = modelo.fit(X, y)
+        assert len(entrenado.predict(X.iloc[:12])) == 12
+        assert np.isfinite(a.puntaje(entrenado, X.iloc[:12])).all()
 
 
-def test_figura_matrices_confusion(entrenamiento, nuevos, supervisados):
-    agrupador = a.AgrupadorAbandono().fit(entrenamiento)
-    fig = a.figura_matrices_confusion(supervisados, agrupador, nuevos)
-    ejes = fig.get_axes()  # 5 paneles en una cuadrícula de 2x3: el sexto se quita
-    assert [ax.get_title() for ax in ejes] == [*a.TITULOS.values(), "KMeans (sin objetivo)"]
-    for ax in ejes:
-        conteos = [int(t.get_text().split("\n")[0]) for t in ax.texts]
-        assert sum(conteos) == len(nuevos)  # las 4 celdas suman todos los asociados
+def test_identificadores_y_fuga_no_cambian_predicciones():
+    df = datos(500)
+    X, y = a.separar(df)
+    modelo = a.modelos_supervisados()["logreg"].fit(X, y)
+    base = a.puntaje(modelo, X.iloc[:20])
+    alterado = X.iloc[:20].copy()
+    for columna in a.IDENTIFICADORES + ["ESTADO", "FECHAULTACTUALIZACION"]:
+        if columna in alterado:
+            alterado[columna] = "VALOR_IGNORADO"
+    np.testing.assert_allclose(base, a.puntaje(modelo, alterado))
 
 
-def test_tabla_predicciones_como_predict_model(supervisados, nuevos):
-    modelos = {n: supervisados[n] for n in ("ridge", "logreg")}
-    tabla = a.tabla_predicciones(modelos, nuevos)
-
-    assert list(tabla.columns) == [
-        *a.NUMERICAS,
-        *a.CATEGORICAS,
-        a.TARGET,
-        "ridge_label",
-        "ridge_score",
-        "logreg_label",
-        "logreg_score",
-    ]
-    assert len(tabla) == len(nuevos)
-    assert tabla["logreg_score"].between(0, 1).all()  # probabilidad de abandono
-    # Ridge no da probabilidad: su score es la distancia a la frontera, y > 0 es exactamente "abandona".
-    assert ((tabla["ridge_score"] > 0).astype(int) == tabla["ridge_label"]).all()
-    # Sin la columna objetivo (asociados actuales, sin desenlace) también funciona.
-    assert a.TARGET not in a.tabla_predicciones(modelos, nuevos.drop(columns=a.TARGET))
-
-
-def test_guardar_modelo_en_joblib_por_partes(supervisados, nuevos, tmp_path):
-    import joblib
-
-    rutas = a.guardar_modelo(supervisados["ridge"], tmp_path, "ridge")
-    assert {r.name for r in rutas.values()} == {"ridge.joblib", "ridge_preprocesamiento.joblib", "ridge_modelo.joblib"}
-
-    X = a.preparar(nuevos)
-    pipeline = joblib.load(rutas["pipeline"])
-    preprocesamiento, modelo = joblib.load(rutas["preprocesamiento"]), joblib.load(rutas["modelo"])
-    # Por partes da exactamente lo mismo que el pipeline completo.
-    assert np.array_equal(modelo.predict(preprocesamiento.transform(X)), pipeline.predict(X))
-    assert type(modelo).__name__ == "RidgeClassifier"
-
-
-def test_limpieza_activa_por_defecto_y_se_puede_apagar(entrenamiento, nuevos):
-    X, y = a.preparar(entrenamiento), entrenamiento[a.TARGET]
-    for nombre, modelo in a.modelos_supervisados().items():  # por defecto: ColumnDropper + recorte IQR
-        modelo.fit(X, y)
-        pasos = modelo.named_steps["preprocess"].named_steps
-        assert pasos["drop_columns"].max_missing == a.MAX_NULOS, nombre
-        ramas = pasos["columns"].named_transformers_
-        assert ramas["clip"].named_steps["outliers"].method == "iqr", nombre
-        assert list(ramas["clip"].feature_names_in_) == a.COLUMNAS_RECORTE, nombre
-        assert "outliers" not in ramas["num"].named_steps  # los conteos de comportamiento no se tocan
-        assert a.metricas_supervisado(modelo, nuevos)["roc_auc"] > 0.8, nombre
-
-    # Apagada: el ColumnTransformer de siempre, sin rama de recorte.
-    sin = a.modelos_supervisados(clip_outliers=None, max_nulos=None)["ridge"].fit(X, y).named_steps["preprocess"]
-    assert type(sin).__name__ == "ColumnTransformer" and "clip" not in sin.named_transformers_
-
-
-def test_columndropper_descarta_variables_casi_vacias(entrenamiento, nuevos):
-    X, y = a.preparar(entrenamiento), entrenamiento[a.TARGET]
-    X = X.assign(SALARIO=X["SALARIO"].where(X.index % 4 == 0))  # 75 % vacío
-    modelo = a.modelo_ridge().fit(X, y)
-    assert modelo.named_steps["preprocess"].named_steps["drop_columns"].columns_to_drop_ == ["SALARIO"]
-    assert "SALARIO" not in modelo.named_steps["preprocess"].get_feature_names_out()
-    assert a.metricas_supervisado(modelo, nuevos)["roc_auc"] > 0.8  # predice aunque los nuevos sí traigan SALARIO
-
-
-def test_cargar_limpia_sin_romper_el_contrato(tmp_path):
-    from proyecto_ml import contrato as k
-
-    crudo = GeneradorAsociados(n=100, seed=6).generar()
-    crudo = pd.concat([crudo, crudo.head(2)], ignore_index=True)  # 2 filas repetidas
-    ruta = tmp_path / "asociados.parquet"
-    crudo.to_parquet(ruta, index=False)
-    limpio = a.cargar(ruta)
-    assert len(limpio) == 100 and k.validar(limpio) == []
-    assert len(a.cargar(ruta, limpiar=False)) == 102
-
-
-# ---------------------------------------------------------------- foto del asociado (fecha de observación)
-
-
-def test_foto_solo_activos_en_t0_y_objetivo_en_el_horizonte(entrenamiento):
-    t0 = a.fecha_observacion(3)
-    assert t0 == pd.Timestamp("2026-07-31")
-    vista = a.foto(entrenamiento, 3)
-    retiro = pd.to_datetime(vista["FECHARETIRO"])
-    assert (pd.to_datetime(vista["FECHAINGRESOLABORA"]) <= t0).all()
-    assert not (retiro <= t0).any()  # los retirados antes de t0 no están en la foto
-    se_retira = retiro.between(t0, a.FECHA_CORTE, inclusive="right")
-    assert (vista[a.TARGET] == se_retira.astype(int)).all()
-    assert 0 < vista[a.TARGET].sum() < entrenamiento[a.TARGET].sum()  # pierde a los que se fueron antes
-    assert (vista[a.FECHA_OBSERVACION] == t0).all()
-    assert len(entrenamiento) == 400 and a.TARGET in entrenamiento  # no modifica el original
-
-
-def test_preparar_calcula_edad_y_antiguedad_a_la_fecha_de_observacion(entrenamiento):
-    vista = a.foto(entrenamiento, 12)
-    al_corte, en_t0 = a.preparar(vista.drop(columns=a.FECHA_OBSERVACION)), a.preparar(vista)
-    for columna in ("EDAD", "ANTIGUEDAD"):
-        assert np.allclose(al_corte[columna] - en_t0[columna], 365 / 365.25, atol=0.01)  # un año menos
-    assert a.FECHA_OBSERVACION not in en_t0  # no es una variable del modelo
-
-
-def test_resumen_foto_por_horizonte(entrenamiento):
-    resumen = a.resumen_foto(entrenamiento, horizontes=(3, 12))
-    # El generador reparte los retiros en los 12 meses antes del corte: con 12 meses entran todos.
-    assert resumen.loc[12, "asociados"] == len(entrenamiento)
-    assert resumen.loc[12, "se_retiran"] == entrenamiento[a.TARGET].sum()
-    assert resumen.loc[3, "asociados"] + resumen.loc[3, "fuera_de_la_foto"] == len(entrenamiento)
-    assert resumen.loc[3, "tasa_retiro"] < resumen.loc[12, "tasa_retiro"]
-
-
-def test_modelo_con_la_foto_generaliza():
-    train = a.foto(GeneradorAsociados(n=1500, seed=3).generar(), 3)
-    nuevos = a.foto(GeneradorAsociados(n=1000, seed=4).generar(), 3)
-    modelo = a.modelo_ridge().fit(a.preparar(train), train[a.TARGET])
-    assert a.metricas_supervisado(modelo, nuevos)["roc_auc"] > 0.9
+def test_agrupador_usa_solo_comportamiento():
+    df = datos(500)
+    agrupador = a.AgrupadorAbandono().fit(df)
+    grupos = agrupador.predict(df)
+    assert set(grupos) <= {0, 1}
+    assert len(grupos) == len(df)

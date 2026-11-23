@@ -3,14 +3,8 @@
 Del mismo contrato salen la validación de DataFrames en tres niveles (pandera), el SQL de
 Supabase (tabla + CHECK + RLS), los registros listos para la API y la configuración del formulario web.
 
-Dos contratos, según la etapa:
-
-- **De origen** (``cargar()``): el extracto completo, con sus datos personales. Lo usa quien custodia los datos
-  (antes de anonimizar), los datos sintéticos (que imitan ese extracto) y Supabase.
-- **Del dataset anonimizado para ML** (``para_ml()``): el mismo contrato sin las columnas ``pii: eliminar``, con
-  las ``pii: seudonimizar`` como ``<COLUMNA>_SEUDO`` (HMAC de 64 caracteres hex) y sin las reglas que usan
-  columnas eliminadas. Exige igual todas las variables del modelo y del objetivo, y como es estricto, rechaza
-  cualquier columna personal que haya quedado en el archivo. Lo usa el modo ``real_anonimizado``.
+El contrato v2 describe directamente el extracto anonimizado definitivo. ``para_ml()`` se mantiene compatible
+con contratos que usen marcas ``pii``, pero para v2 devuelve el mismo esquema de 44 columnas.
 """
 
 from __future__ import annotations
@@ -28,7 +22,7 @@ import yaml
 from pandera.errors import SchemaErrors
 
 from proyecto_ml.cleaning import clean_dataset
-from proyecto_ml.config import ROOT_DIR, fecha_corte
+from proyecto_ml.config import ROOT_DIR
 
 CONTRATO_ASOCIADOS = ROOT_DIR / "contratos" / "asociados.yaml"
 PII = ("eliminar", "seudonimizar")
@@ -103,7 +97,7 @@ def columnas_de_regla(regla: dict, contrato: Contrato) -> list[str]:
 
 
 def para_ml(contrato: Contrato | None = None) -> Contrato:
-    """El contrato del dataset anonimizado para ML (ver el docstring del módulo).
+    """Contrato del dataset anonimizado para ML.
 
     No relaja nada de lo que usa el modelo: las variables, el objetivo, sus tipos, rangos, la distribución y las
     reglas que no tocan PII siguen exigidas. Lo único que cambia son las columnas personales.
@@ -143,7 +137,7 @@ def para_ml(contrato: Contrato | None = None) -> Contrato:
 # ---------------------------------------------------------------------------- validación (pandera)
 #
 # Nivel 1 (por fila): pa.Column con Check.ge/le/isin/str_matches, generado desde 'grupos' del YAML.
-#   Es lo mismo que escribir pa.Field(ge=..., le=...) en un DataFrameModel, sin repetir 74 columnas a mano.
+#   Es lo mismo que escribir pa.Field(ge=..., le=...) en un DataFrameModel, sin repetir 44 columnas a mano.
 # Nivel 2 (distribución) y nivel 3 (entre columnas): checks sobre el DataFrame completo, el equivalente
 #   de @pa.dataframe_check. La lógica vive en DISTRIBUCION y REGLAS; los parámetros, en el YAML.
 
@@ -176,43 +170,13 @@ DISTRIBUCION: dict[str, tuple[Callable[[pd.DataFrame, dict], float], Callable[[f
         lambda d, p: (d["SALARIO"] > p["factor"] * d["SALARIO"].median()).mean(),
         lambda v, p: v <= p["max_fraccion"],
     ),
-    "edad_mediana_plausible": (
-        # Edad a FECHA_CORTE (config.fecha_corte): la misma fecha que usan la foto y EDAD en abandono.preparar.
-        lambda d, p: ((pd.Timestamp(fecha_corte()) - _fecha(d["FECHANACIMIENTO"])).dt.days / 365.25).median(),
-        lambda v, p: p["min"] <= v <= p["max"],
-    ),
+    "edad_mediana_plausible": (lambda d, p: d["EDAD"].median(), lambda v, p: p["min"] <= v <= p["max"]),
 }
 
 # Nivel 3: versión pandas de las reglas del YAML (mismo id). True en las filas que cumplen.
 REGLAS: dict[str, Callable[[pd.DataFrame], pd.Series]] = {
-    "retiro_posterior_ingreso": lambda d: _o_vacio(
-        _fecha(d["FECHARETIRO"]) > _fecha(d["FECHAINGRESOLABORA"]), d["FECHARETIRO"], d["FECHAINGRESOLABORA"]
-    ),
-    "nombreintegrado_coherente": lambda d: (
-        d["NOMBREINTEGRADO"].astype("string").str.strip()
-        == _texto(d["PRIMERAPELLIDO"], d["SEGUNDOAPELLIDO"], d["NOMBRES"], d["SEGUNDONOMBRE"])
-    ),
-    "retiro_coherente": lambda d: (
-        ((d["#RETIROS"] == 1) == ~_vacio(d["FECHARETIRO"]))
-        & ((d["#RETIROS"] == 1) == (d["ESTADO"] == "RETIRADO"))
-        & ((d["#RETIROS"] == 1) == ~_vacio(d["MOTIVORETIRO"]))
-    ),
-    "estado_laboral_coherente": lambda d: (d["ESTADO"] == "RETIRADO") == (d["ESTADO_LABORAL"] == "RETIRADO"),
-    "contrato_fijo_con_fecha_fin": lambda d: (d["TIPOCONTRATO"] == "FIJO") == ~_vacio(d["FECHATERMINACONTRATO"]),
-    "fin_contrato_posterior_ingreso": lambda d: _o_vacio(
-        _fecha(d["FECHATERMINACONTRATO"]) > _fecha(d["FECHAINGRESOLABORA"]),
-        d["FECHATERMINACONTRATO"],
-        d["FECHAINGRESOLABORA"],
-    ),
-    "mayor_de_edad_al_ingreso": lambda d: _o_vacio(
-        _fecha(d["FECHAINGRESOLABORA"]) >= _fecha(d["FECHANACIMIENTO"]) + pd.DateOffset(years=18),
-        d["FECHAINGRESOLABORA"],
-        d["FECHANACIMIENTO"],
-    ),
-    "pacto_integral_coherente": lambda d: (
-        ((d["TIPOPACTO"] == "INTEGRAL") == (d["MODALIDADSALARIAL"] == "INTEGRAL"))
-        & ((d["TIPOPACTO"] == "INTEGRAL") == (d["IDTIPOSALARIO"] == 2))
-    ),
+    "ingreso_fondo_posterior_nacimiento": lambda d: _fecha(d["FECHAINGRESO"]) > _fecha(d["FECHANACIMIENTO"]),
+    "ingreso_laboral_posterior_nacimiento": lambda d: _fecha(d["FECHAINGRESOLABORA"]) > _fecha(d["FECHANACIMIENTO"]),
 }
 
 
@@ -422,7 +386,7 @@ def sql_formulario(contrato: Contrato | None = None) -> str:
 
     - La clave pública (anon) sola no puede insertar: hay que iniciar sesión (Supabase Auth, correo y
       contraseña) con un correo de ``public.equipo``. Lo enviado queda de una vez en ``<tabla>``, con
-      todas las restricciones del contrato (y sin repetir cédula ni IDASOCIADOS).
+      todas las restricciones del contrato (y sin repetir NROIDENTIFICACION).
     """
     contrato = contrato or cargar()
     t = f"public.{contrato.tabla_db}"

@@ -91,14 +91,14 @@ def test_variantes_de_preprocesamiento_y_rama_de_recorte():
     assert pre.named_transformers_["num"].named_steps["imputer"].strategy == "mean"
     assert pre.transform(X).shape[1] == len(a.NUMERICAS) + len(a.CATEGORICAS)  # ordinal: una columna por categórica
 
-    # Recortar TODAS las numéricas aplasta los conteos (IQR [0, 0]); con clip_columns se conservan.
+    # El recorte selectivo conserva los valores observados de los conteos.
     def valores_distintos(**kwargs) -> int:
         p = build_preprocessor(a.NUMERICAS, [], scale=False, **kwargs).fit(X)
         salida = pd.DataFrame(p.transform(X), columns=p.get_feature_names_out())
-        return salida["CANCELACIONCREDITOS_ULT3MESES"].nunique()
+        return salida["#SOLICITUD_CANCELACIONAHORROS"].nunique()
 
-    assert valores_distintos(clip_outliers="iqr") == 1
-    assert valores_distintos(clip_outliers="iqr", clip_columns=a.COLUMNAS_RECORTE) > 1
+    observados = X["#SOLICITUD_CANCELACIONAHORROS"].nunique()
+    assert valores_distintos(clip_outliers="iqr", clip_columns=a.COLUMNAS_RECORTE) == observados
 
     with pytest.raises(ValueError, match="numéricas"):
         build_preprocessor(a.NUMERICAS, a.CATEGORICAS, clip_outliers="iqr", clip_columns=["SEXO"])

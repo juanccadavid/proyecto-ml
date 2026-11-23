@@ -32,7 +32,7 @@ make abandono ARGS="--sin-limpieza"                  # sin la limpieza de cleani
 |---|---|---|
 | `contrato.limpiar_extracto` | al cargar (`a.cargar`), antes de partir | espacios, textos tipo 'N/A' → vacío, números como texto, filas repetidas |
 | `ColumnDropper(max_missing=0.5)` | dentro del pipeline (aprende en train) | descarta variables con más de 50 % vacías o con un solo valor |
-| `OutlierClipper("iqr")` | rama `clip` del pipeline | recorta atípicos de `SALARIO`, `EDAD` y `ANTIGUEDAD` (no los conteos) |
+| `OutlierClipper("iqr")` | rama `clip` del pipeline | recorta atípicos de `SALARIO`, `EDAD` y las dos antigüedades en meses (no los conteos) |
 
 **Qué variables aportan a cada modelo.** `make abandono` calcula la *permutation importance* sobre los
 asociados nuevos: desordena una variable a la vez y mide cuánto cae el AUC. Sirve igual para los cuatro
@@ -58,7 +58,7 @@ En un notebook: `resaltar(tabla_comparativa(modelos, X, y))` de `proyecto_ml.eva
 preparar → [crear variables] → preprocess → [SMOTE/ADASYN] → model
 ```
 
-El primer paso (`PrepararVariables`) calcula EDAD y ANTIGUEDAD y elige las columnas. Por eso el modelo recibe la
+El primer paso (`PrepararVariables`) tipa EDAD y las antigüedades en meses y elige las columnas. Por eso el modelo recibe la
 **fila tal como llega** (extracto, Supabase, formulario): `modelo.predict(df)`, sin llamar a `preparar()` antes.
 Eso vale también para el campeón guardado y para `models:/abandono@campeon` en MLflow. Si la fila ya viene
 preparada, la deja igual; así siguen funcionando el simulador y la importancia por permutación.
@@ -83,7 +83,7 @@ fechas de actualización...): con ellas cualquier modelo acierta el 100 % pero n
 
 ## La foto del asociado: fecha de observación y horizonte
 
-Sin la foto, el modelo mira a todos los asociados **al corte** (31-oct-2026): EDAD y ANTIGUEDAD se miden
+Sin una fecha de retiro, el modelo usa el lote tal como llega al corte: EDAD y las antigüedades se miden
 después de que los retirados se fueron, y como el generador reparte los retiros en los 12 meses anteriores,
 en la práctica predice "¿se retiró en el último año?". Así corren por defecto los comandos **exploratorios**
 (`make abandono`, `afinar`, `optuna`, `pycaret`; solo `abandono` acepta `--horizonte`): sus métricas no se
@@ -92,12 +92,12 @@ campeon`, `tecnicas`, `validacion` y `segmentos` usan la foto por defecto (`--ho
 diseño correcto es una **foto** en t0 = corte − H:
 
 - **Población:** asociados activos en t0 (los que se retiraron antes ya no eran asociados en la foto).
-- **Objetivo:** `#RETIROS` = 1 si se retira entre t0 y el corte (usa `FECHARETIRO`).
-- **Variables:** EDAD y ANTIGUEDAD a t0 (`preparar` lee la columna `FECHA_OBSERVACION` que agrega `foto`).
+- **Objetivo:** `#RETIROS`, entregado por el fondo y pendiente de confirmar como variable binaria.
+- **Variables:** `EDAD`, `ANTIGUEDAD_F_MESES` y `ANTIGUEDAD_LA_MESES` vienen calculadas en el archivo.
 
 ```python
 vista = a.foto(df, horizonte_meses=3)  # t0 = 2026-07-31
-X, y = a.separar(vista)  # el pipeline calcula EDAD y ANTIGUEDAD a t0
+X, y = a.separar(vista)  # el pipeline selecciona y tipa los predictores permitidos
 a.resumen_foto(df)  # por horizonte: asociados, retiros y tasa en la foto
 ```
 
@@ -300,9 +300,9 @@ Cada punto se verificó en el código y tiene una prueba que impide que vuelva a
 |---|---|---|
 | Imputación, codificación, escalado, recortes, PCA, RFE y TargetEncoder | dentro del Pipeline: se ajustan solo con el entrenamiento de cada partición | `armar_pipeline` · `test_el_preprocesamiento_aprende_solo_del_entrenamiento` |
 | SMOTE / ADASYN | solo en el `fit` (pipeline de imblearn), una vez por partición y con sus filas de entrenamiento; predecir no re-muestrea | `test_smote_solo_en_el_entrenamiento_de_cada_particion` |
-| Columnas de fuga e identificadores (cédula, nombres, correo, cuenta, `FECHARETIRO`, `ESTADO`…) | no entran a los modelos | `preparar` · `test_identificadores_y_fuga_no_son_predictores`, `test_columnas_de_fuga_no_cambian_las_predicciones` |
+| Identificadores, contacto, fechas crudas, `ESTADO` y objetivo | no entran a los modelos | `preparar` · `test_identificadores_y_fuga_no_son_predictores` |
 | Selección del campeón, umbrales e hiperparámetros | con validación cruzada sobre los datos de elección; los asociados nuevos no participan; los umbrales se miden además en validación anidada | `campeon.elegir`, `umbrales_honestos` |
-| Tiempo | foto en t0 (corte − 3 meses): EDAD y ANTIGUEDAD a t0; solo activos en t0 | `abandono.foto` |
+| Tiempo | un solo corte; no se afirma validación fuera de tiempo | `docs/datos_reales.md` |
 | Reproducibilidad | misma semilla, mismos candidatos y métricas | `test_reproducible` |
 
 **Riesgos que dependen de los datos reales (por confirmar con el fondo):**
@@ -366,7 +366,7 @@ make validacion ARGS="--modelo random_forest --folds 10"
 El abandono es una clasificación. [`regresion.py`](../src/proyecto_ml/regresion.py) es la contraparte de
 regresión, con un uso real: **estimar el salario** de quien no lo reporta (el 5 % en el generador). Se entrena
 con quienes sí lo reportan y se valida con **KFold**, porque en regresión no hay clases que estratificar.
-TIPOPACTO no entra: el pacto integral se define por el salario y sería fuga.
+SALARIO no entra como predictor en la regresión cuyo objetivo es estimar el salario.
 
 | Métrica | Qué dice | Referencia (promedio) | Ridge | Random Forest | HistGB |
 |---|---|---|---|---|---|
@@ -478,7 +478,7 @@ mejores hiperparámetros de los dos mejores de la tabla comparativa, con las mis
 El preprocesamiento entra a la búsqueda con `features.Preprocesador` (parámetros `numeric_strategy`,
 `encoding`, `clip_outliers`). `pycaret_lr` usa la LogisticRegression de PyCaret con su preprocesamiento
 (media + ordinal) reproducido con `build_preprocessor`: predice igual, y así también se puede cambiar.
-El recorte solo toca `SALARIO`, `EDAD` y `ANTIGUEDAD` (`a.COLUMNAS_RECORTE`): en los conteos de
+El recorte solo toca `SALARIO`, `EDAD`, `ANTIGUEDAD_F_MESES` y `ANTIGUEDAD_LA_MESES` (`a.COLUMNAS_RECORTE`): en los conteos de
 comportamiento el IQR vale [0, 0] y recortarlos borraría la señal.
 
 **Tabla por partición** (`pipeline | fold | Accuracy | AUC`): para cada preprocesamiento de cada modelo
@@ -557,7 +557,7 @@ partición de entrenamiento: SMOTE y ADASYN solo re-muestrean en `fit`, y Target
 interna. Así nada se filtra de la validación.
 
 Los datos generados no traen vacíos, así que para comparar imputadores el script pone un 10 % de vacíos al azar
-(`--vacios`) en SALARIO, ESTRATO, EDAD, ANTIGUEDAD y #CANTIDAD_SERVICIOS.
+(`--vacios`) en SALARIO, ESTRATO, EDAD, ANTIGUEDAD_LA_MESES y #CANTIDAD_SERVICIOS.
 
 | Técnica | Dónde | PR-AUC | Dif. con la base | IC 95 % de la diferencia |
 |---|---|---|---|---|
@@ -606,7 +606,7 @@ partición (`tecnicas.comparar`, la misma prueba t corregida del campeón). Con 
   vista + contractuales + servicios).
 - **Creación por interacción:** `SALIDA_POR_PRODUCTO = SENALES_SALIDA / (1 + PRODUCTOS)`, es decir, pedir salir
   teniendo poco que perder.
-- **Transformación logarítmica:** `SALARIO_LOG = log(1 + SALARIO)`. Antes estaban EDAD y ANTIGUEDAD, que se
+- **Transformación logarítmica:** `SALARIO_LOG = log(1 + SALARIO)`. EDAD y las antigüedades se
   calculan desde las fechas.
 
 **Correlación de variables** (`correlacion.py`):
