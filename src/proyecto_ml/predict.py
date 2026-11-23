@@ -4,13 +4,8 @@ Es el paso de "producción" de la plantilla: ``train`` (aquí, ``make campeon``)
 módulo lo usa con asociados nuevos, sin reentrenar. Las filas pueden venir tal como salen del extracto, de
 Supabase o del formulario: el pipeline del campeón prepara las variables (``abandono.PrepararVariables``).
 
-Privacidad: la salida NUNCA copia cédulas ni otros datos personales. Para cruzar las predicciones con los
-registros quedan ``fila`` (la posición en el archivo de entrada) y, si el archivo viene anonimizado, sus seudónimos
-``*_SEUDO`` (HMAC de 64 caracteres hex; se rechaza uno que no tenga esa forma, p. ej. una cédula cruda renombrada).
-Con ``ORIGEN_DATOS=real_anonimizado`` se rechaza además un archivo con columnas personales, con columnas que el
-contrato para ML no conoce o sin ningún seudónimo (``revisar_real``).
-Volver del seudónimo a la persona es una tabla de correspondencia que guarda el custodio, fuera de este pipeline
-y de MLflow.
+Privacidad: la salida nunca copia identificadores ni campos personales, aunque el archivo de entrada ya esté
+anonimizado. Para cruzar resultados conserva únicamente ``fila`` (la posición en el archivo de entrada).
 
 Uso:
     uv run python -m proyecto_ml.predict --datos data/raw/supabase_asociados.parquet
@@ -20,7 +15,6 @@ Uso:
 from __future__ import annotations
 
 import argparse
-import re
 from pathlib import Path
 
 import numpy as np
@@ -39,17 +33,6 @@ class DatosPersonales(ValueError):
     """El archivo o la salida tendrían datos personales: no se predice ni se escribe."""
 
 
-def seudonimos(df: pd.DataFrame) -> list[str]:
-    """Las columnas ``*_SEUDO`` de ``df``, verificadas: todas sus filas deben ser un HMAC de 64 caracteres hex."""
-    columnas = [col for col in df.columns if str(col).endswith(k.SUFIJO_SEUDONIMO)]
-    patron = re.compile(k.PATRON_SEUDONIMO)
-    for col in columnas:
-        malos = int((~df[col].astype("string").fillna("").map(lambda v: bool(patron.fullmatch(v)))).sum())
-        if malos:
-            raise DatosPersonales(f"{col}: {malos} valor(es) no son un seudónimo (¿una cédula sin seudonimizar?)")
-    return columnas
-
-
 def cargar(carpeta: Path = MODELS_DIR):
     """(modelo con zonas, KMeans, info) del campeón guardado; si no hay, pide correr ``make campeon``."""
     guardado = c.cargar(carpeta)
@@ -59,61 +42,45 @@ def cargar(carpeta: Path = MODELS_DIR):
 
 
 def revisar_real(df: pd.DataFrame) -> None:
-    """Modo ``real_anonimizado``: el archivo solo puede traer columnas del contrato para ML (lista blanca: una
-    columna que el contrato no conoce podría ser personal) y al menos un seudónimo que el contrato reconoce
-    (``CEDULA_SEUDO``, ``IDASOCIADOS_SEUDO``) para cruzar las predicciones. Los errores dicen columnas, no valores.
+    """Modo ``real_anonimizado``: solo columnas del contrato definitivo y todos los predictores requeridos.
 
     No exige el contrato completo: un lote para predecir puede ser chico (``volumen_minimo``) o traer solo
     asociados activos; lo que sí se exige es que no traiga nada que no deba salir.
     """
-    if personales := [col for col in k.columnas_pii() if col in df]:
-        raise DatosPersonales(f"El archivo trae columnas personales {personales}: anonimízalo antes (make anonimizar).")
     contrato_ml = k.para_ml()
     if desconocidas := [str(col) for col in df.columns if col not in contrato_ml.nombres]:
         raise DatosPersonales(
             f"Columnas que el contrato del dataset anonimizado no conoce {desconocidas}: podrían ser personales. "
             "Quítalas o agrégalas al contrato (con revisión del equipo)."
         )
-    if not [col for col in contrato_ml.nombres if col.endswith(k.SUFIJO_SEUDONIMO) and col in df]:
-        raise DatosPersonales(
-            "El archivo no trae ningún seudónimo (CEDULA_SEUDO / IDASOCIADOS_SEUDO): sin él, las predicciones no se "
-            "pueden cruzar con los asociados. Usa el archivo que deja make anonimizar."
-        )
+    if faltan := sorted(set(a.NUMERICAS + a.CATEGORICAS) - set(df.columns)):
+        raise DatosPersonales(f"Faltan variables requeridas por el modelo: {faltan}")
 
 
 def activos(df: pd.DataFrame) -> pd.Series:
-    """True en los asociados que siguen activos (sin FECHARETIRO). Si el archivo no trae la columna, todos."""
-    if "FECHARETIRO" not in df:
-        return pd.Series(True, index=df.index)
-    return df["FECHARETIRO"].isna() | df["FECHARETIRO"].astype("string").str.strip().eq("")
+    """El esquema definitivo no trae fecha de retiro; todas las filas recibidas se pueden puntuar."""
+    return pd.Series(True, index=df.index)
 
 
 def predecir(
     df: pd.DataFrame, carpeta: Path = MODELS_DIR, origen: str | None = None, solo_activos: bool = True
 ) -> pd.DataFrame:
-    """Una fila por asociado ACTIVO de ``df``: ``fila`` (su posición en ``df``), los seudónimos que traiga,
-    puntaje del campeón, zona, alerta (0/1) y grupo de KMeans. Sin datos personales (ver el docstring del módulo).
+    """Una fila por registro: posición, puntaje, zona, alerta y grupo. Nunca copia identificadores.
 
-    El modelo responde "¿se retira en los próximos meses?" para quien hoy está activo (así se entrenó: la foto
-    solo tiene activos en t0). Quien ya se retiró (trae FECHARETIRO) no tiene nada que predecir y queda fuera
-    (``solo_activos=False`` lo incluye, p. ej. para revisar el puntaje que tenían).
-
-    - ``sintetico``: cualquier archivo; la salida solo copia ``fila`` y los ``*_SEUDO`` válidos.
-    - ``real_anonimizado``: además, ``revisar_real`` (sin PII, solo columnas del contrato para ML, con seudónimo).
+    En modo ``real_anonimizado`` también aplica la lista blanca del contrato definitivo. ``solo_activos`` se
+    conserva por compatibilidad; el esquema ya no trae fecha de retiro y por tanto no filtra filas.
     """
     if origen_datos(origen) == ORIGEN_REAL:
         revisar_real(df)
-    ids = seudonimos(df)
     modelo, agrupador, _ = cargar(carpeta)
     filas = np.arange(len(df))  # posición en el archivo de entrada, también para los que quedan fuera
     if solo_activos:
         vigentes = activos(df).to_numpy()
         df, filas = df[vigentes], filas[vigentes]
     if df.empty:  # todos ya se retiraron (o el archivo viene vacío): nada que predecir
-        return pd.DataFrame(columns=["fila", *ids, *COLUMNAS])
+        return pd.DataFrame(columns=["fila", *COLUMNAS])
     X = df.drop(columns=a.TARGET, errors="ignore")
-    salida = df[ids].copy()
-    salida.insert(0, "fila", filas)
+    salida = pd.DataFrame({"fila": filas}, index=df.index)
     salida["puntaje"] = a.puntaje(modelo, X)
     salida["zona"] = modelo.predict(X)
     salida["alerta"] = modelo.alerta(X)
@@ -134,7 +101,7 @@ def main(argv: list[str] | None = None) -> None:
     predicciones.to_csv(args.salida, index=False)
     conteo = predicciones["zona"].value_counts().reindex(list(c.ZONAS), fill_value=0)
     fuera = len(df) - len(predicciones)
-    print(f"{len(predicciones)} asociados activos de {args.datos.name} ({fuera} ya retirados, sin predicción):")
+    print(f"{len(predicciones)} registros de {args.datos.name} ({fuera} excluidos):")
     print(conteo.to_string())
     print(f"Predicciones -> {args.salida}")
 

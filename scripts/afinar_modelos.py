@@ -16,7 +16,7 @@ Hiperparámetros:
 - Logística: C (inverso de la regularización, más alto = menos), l1_ratio (0 = L2, 1 = L1:
              L1 puede dejar variables en 0) y class_weight. Solver liblinear: admite L1 y L2.
 - Preprocesamiento (los dos): vacíos numéricos con mediana o media, categóricas en OneHot u ordinal,
-             y con o sin recorte IQR de SALARIO, EDAD y ANTIGUEDAD (a.COLUMNAS_RECORTE).
+             y con o sin recorte IQR de las variables continuas (a.COLUMNAS_RECORTE).
 
 La tabla por partición (pipeline | fold | Accuracy) muestra, para cada preprocesamiento, su mejor
 combinación del resto de hiperparámetros en cada una de las particiones de la validación cruzada.
@@ -81,7 +81,7 @@ GRILLAS = {
 EJE_X = {"ridge": "alpha", "pycaret_lr": "C"}  # el hiperparámetro de regularización de cada uno
 NOMBRE_FOLD = {"ridge": "Ridge", "pycaret_lr": "LogisticRegression"}  # prefijo en la tabla por partición
 # Variables que se muestran en la terminal (el CSV lleva todas).
-COLUMNAS_MUESTRA = ["EDAD", "SEXO", "TIPOCONTRATO", "#INTENCIONRETIROS_ULT3MESES", "#SOLICITUD_CANCELACIONAHORROS"]
+COLUMNAS_MUESTRA = ["EDAD", "SEXO", "TIPOCONTRATO", "#SOLICITUD_RETIROPARCIALAHORROS", "#SOLICITUD_CANCELACIONAHORROS"]
 
 
 def modelos_base(train: pd.DataFrame, folds: int = 5) -> dict[str, Pipeline]:

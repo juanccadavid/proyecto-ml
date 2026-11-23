@@ -102,7 +102,7 @@ def test_regresion_sin_fuga_y_referencia(datos):
     assert y.notna().all() and len(X) < len(nuevos)  # quien no reporta salario no entra a entrenar
     modelo = g.modelos()["ridge"].fit(X, y)
     columnas = modelo.named_steps["preprocess"].get_feature_names_out()
-    assert not any(n.startswith(("SALARIO", "TIPOPACTO")) for n in columnas)  # ni el objetivo ni su fuga
+    assert not any(n.startswith("SALARIO") for n in columnas)  # la variable objetivo de la regresión no entra
     tabla = g.comparar(g.modelos(), X, y, folds=3)
     assert set(tabla.index) == set(g.TITULOS) and tabla.loc["media", "R2"] <= 0.01
     assert (tabla[g.ERRORES] > 0).all().all()  # errores en positivo (sklearn los da negativos)
@@ -142,11 +142,11 @@ def test_shap_suma_el_puntaje(datos, explicador):
 
 def test_shap_con_vacios_y_categorias_nuevas(datos, explicador):
     fila = a.preparar(datos[1]).head(1).copy()
-    fila["CODCIUDAD"], fila["SEXO"], fila["SALARIO"] = "99999", np.nan, np.nan
+    fila["CODCIUDADRESIDENCIA"], fila["SEXO"], fila["SALARIO"] = "99999", np.nan, np.nan
     tabla = explicador.explicar(fila)
     assert explicador.base + tabla["contribucion"].sum() == pytest.approx(a.puntaje(explicador.modelo, fila)[0])
     assert tabla["contribucion"].abs().is_monotonic_decreasing
-    assert tabla.set_index("variable").loc["CODCIUDAD", "valor"] == "99999"
+    assert tabla.set_index("variable").loc["CODCIUDADRESIDENCIA", "valor"] == "99999"
 
 
 def test_shap_ridge_y_figuras(datos):

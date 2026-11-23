@@ -32,7 +32,7 @@ las columnas personales DE ESTE extracto, no "cualquier número" (eso daría fal
 
 Límites (no es una garantía de anonimización): un nombre o apellido suelto solo se busca exacto (buscarlo dentro
 de textos marcaría "Santa María" o "Calle Gómez"); los valores cortos (menos de ``largo_min_valor`` caracteres,
-p. ej. una extensión o un IDASOCIADOS de 4 dígitos) no se buscan; tampoco un dato personal transformado (con
+p. ej. una extensión o un identificador de 4 dígitos) no se buscan; tampoco un dato personal transformado (con
 errores, abreviado, en otro orden) ni uno que no esté en las columnas personales del extracto. Los
 cuasi-identificadores (edad, barrio, cargo) siguen en la salida: ver docs/privacidad.md.
 """

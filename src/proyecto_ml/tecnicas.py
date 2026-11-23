@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 CLASIFICADORES = ("logreg", "random_forest", "hist_gb")
 # Para que comparar imputadores tenga sentido: vacíos al azar en estas columnas (los datos generados no traen).
-COLUMNAS_VACIOS = ["SALARIO", "ESTRATO", "EDAD", "ANTIGUEDAD", "#CANTIDAD_SERVICIOS"]
+COLUMNAS_VACIOS = ["SALARIO", "ESTRATO", "EDAD", "ANTIGUEDAD_LA_MESES", "#CANTIDAD_SERVICIOS"]
 SCORING = {"pr_auc": "average_precision", "roc_auc": "roc_auc"}
 
 
@@ -69,7 +69,7 @@ TECNICAS = [
     Tecnica(
         "Feature engineering",
         "binning",
-        "EDAD, ANTIGUEDAD y SALARIO en 5 rangos (KBinsDiscretizer)",
+        "EDAD, antigüedades y SALARIO en 5 rangos (KBinsDiscretizer)",
         {"bins": 5, "bin_columns": a.COLUMNAS_RECORTE},
     ),
     Tecnica("Extracción", "PCA 95 %", "Componentes que guardan el 95 % de la varianza", {"pca": 0.95}),

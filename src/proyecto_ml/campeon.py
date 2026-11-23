@@ -258,7 +258,7 @@ def validacion_temporal(
        etiquetas.
 
     Con UN solo extracto es una **prueba de estrés, no una estimación fuera de tiempo**: las dos fotos son las
-    mismas personas con los mismos datos (solo EDAD y ANTIGUEDAD se corren ``meses_prueba``), y los retiros de la
+    mismas personas con los mismos datos; con el esquema definitivo la edad y las antigüedades tampoco se recalculan,
     foto reciente son asociados que en la vieja cuentan como activos. Mide qué pasa si la etiqueta y los conteos
     sin fecha (``a.CONTEOS_SIN_FECHA``) no están alineados en el tiempo (ver ``config.temporalidad_confirmada``).
     Una validación fuera de tiempo de verdad necesita extractos de fechas distintas. Además:

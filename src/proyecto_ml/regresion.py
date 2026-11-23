@@ -12,8 +12,7 @@ Las métricas, en pesos:
 - **R²**: fracción de la variación del salario que explica el modelo. 0 = igual que predecir el promedio
   (``DummyRegressor``, la referencia), 1 = perfecto, negativo = peor que el promedio.
 
-Las variables son las del abandono (``abandono.preparar``) sin SALARIO y sin TIPOPACTO: el pacto integral se
-define por el salario (>= 10 SMMLV), así que delataría el objetivo (fuga).
+Las variables son las del abandono (``abandono.preparar``) sin SALARIO.
 """
 
 from __future__ import annotations
@@ -32,7 +31,7 @@ from proyecto_ml import abandono as a
 from proyecto_ml.features import build_preprocessor
 
 OBJETIVO = "SALARIO"
-FUGA = ["TIPOPACTO"]
+FUGA: list[str] = []
 NUMERICAS = [c for c in a.NUMERICAS if c != OBJETIVO]
 CATEGORICAS = [c for c in a.CATEGORICAS if c not in FUGA]
 RECORTE = [c for c in a.COLUMNAS_RECORTE if c != OBJETIVO]
@@ -61,7 +60,7 @@ def modelos(random_state: int = 42) -> dict[str, Pipeline]:
         ),
         "hist_gb": HistGradientBoostingRegressor(random_state=random_state),
     }
-    # PrepararVariables entrega también SALARIO y TIPOPACTO; el ColumnTransformer los descarta (remainder="drop").
+    # PrepararVariables entrega también SALARIO; el ColumnTransformer lo descarta (remainder="drop").
     return {
         nombre: Pipeline(
             [

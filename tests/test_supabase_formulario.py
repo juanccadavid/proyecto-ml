@@ -20,7 +20,7 @@ def test_sql_solo_el_equipo_inserta_directo_en_la_tabla():
 
 def test_la_tabla_mantiene_las_columnas_unicas():
     tabla = k.sql().split("comment on table")[0]
-    assert "cedula bigint not null unique check" in tabla and "idasociados bigint not null unique check" in tabla
+    assert "nroidentificacion text not null unique check" in tabla
 
 
 def test_contrato_web_sin_tabla_de_entrada():

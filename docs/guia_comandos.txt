@@ -119,7 +119,7 @@
      make abandono         Ridge, logística, Random Forest (bagging), HistGB (boosting) y KMeans,
                            validados con 1000 asociados NUEVOS. Tabla comparativa con tiempo (TT):
                            Limpieza de cleaning.py activa: limpiar_extracto + ColumnDropper + recorte IQR
-                           de SALARIO, EDAD y ANTIGUEDAD (ARGS="--sin-limpieza" la apaga para comparar).
+                           de SALARIO, EDAD y las antigüedades en meses (ARGS="--sin-limpieza" la apaga).
                            Variables que más aportan a cada modelo: reports/figures/abandono_importancia.png
                            Random Forest interactivo (Plotly): reports/figures/abandono_importancia_rf.html
                            reports/figures/abandono_comparativa.html. ej.: ARGS="--ordenar Recall"
@@ -142,9 +142,6 @@
                            Con el extracto real: ORIGEN_DATOS=real_anonimizado en el .env y
                            make campeon DATA=data/raw/extracto_anon.parquet (exige el contrato, sin nuevos ni
                            escenarios del generador; MLflow aparte: experimento y modelo abandono_real)
-     make fuera-de-tiempo EXTRACTOS="a.parquet:2026-04-30 b.parquet:2026-07-31 c.parquet:2026-10-31"
-                           validación fuera de tiempo de verdad: 3+ extractos reales de fechas distintas
-                           (variables del viejo, etiqueta del siguiente). Requisitos: docs/datos_reales.md
      make tecnicas         compara técnicas de preprocesamiento: SMOTE/ADASYN, imputadores (KNN, iterativo,
                            indicador), encoders (ordinal, target), escaladores, variables nuevas, binning,
                            PCA y RFE (PR-AUC en CV) + correlación de variables. ej.: ARGS="--clasificador hist_gb"
@@ -159,7 +156,7 @@
                            Mapa interactivo: reports/figures/segmentos.html. ej.: ARGS="--k 4"
      make predecir         predice con el campeón guardado (zona, alerta, grupo) y escribe
                            data/processed/predicciones.csv. ej.: make predecir DATA=data/raw/extracto.parquet
-                           Solo puntúa a los activos (sin FECHARETIRO): a quien ya se retiró no hay qué predecirle.
+                           Puntúa todas las filas: el esquema definitivo no trae fecha de retiro.
      make pipeline         todo el flujo en orden: campeon, predecir, segmentos, validacion, regresion
                            (es lo que corre el CI en cada push; los resultados quedan como artefacto)
      make datos-desarrollo los 5.000 asociados de desarrollo (semilla 7, 10 % de retiro) en data/processed/
@@ -310,7 +307,7 @@
      tests/test_pipeline.py               prueba que el pipeline aprende SOLO de train
 
  Bonus (abandono.py): además del pipeline se excluyen las columnas que delatan el resultado
- (FECHARETIRO, MOTIVORETIRO, ESTADO...). Con ellas cualquier modelo "acierta" el 100 % pero no
+ (identificadores, contacto, fechas crudas y ESTADO). Con ellas un modelo podría memorizar o tener fuga y no
  sirve para anticipar un retiro.
 
  Ejemplo mínimo:
@@ -330,7 +327,7 @@
 ===============================================================================================
 
  src/proyecto_ml/generador.py -> clase GeneradorAsociados(n, seed, tasa_retiro)
- Mismo esquema que los datos reales (74 columnas, 4 grupos), cumple el contrato, y los que se
+ Mismo esquema que los datos reales (44 columnas, 4 grupos), cumple el contrato, y los que se
  retiran se comportan distinto (más solicitudes de cancelación, más intención de retiro).
  Nombres, cédulas, correos, etc. son inventados.
 
@@ -355,7 +352,7 @@
 
  7.4 Datos faltantes (como llegan los datos reales)
      generador.FALTANTES define qué probabilidad tiene cada columna de venir vacía (SALARIO 5 %,
-     #INTENCIONRETIROS_ULT3MESES 8 %...). Nunca se vacían CEDULA, IDASOCIADOS ni #RETIROS.
+     ANTIGUEDAD_LA_MESES 5 %...). Nunca se vacían NROIDENTIFICACION ni #RETIROS.
 
      uv run python scripts/generar_asociados_ejemplo.py --faltantes \
          --output-dir data/processed --nombre sucios

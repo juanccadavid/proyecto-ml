@@ -38,60 +38,75 @@ if TYPE_CHECKING:
 
 TARGET = "#RETIROS"
 FECHA_CORTE = pd.Timestamp(fecha_corte())  # FECHA_CORTE del .env; por defecto la de los sintéticos
-# Foto del asociado: se observa en t0 = FECHA_CORTE - HORIZONTE_MESES y se predice si se retira entre t0 y el
-# corte. La columna FECHA_OBSERVACION (la agrega ``foto``) le dice a ``preparar`` a qué fecha calcular.
+# Fecha de referencia usada para documentar el horizonte del lote.
 HORIZONTE_MESES = 3
 FECHA_OBSERVACION = "FECHA_OBSERVACION"
 
-# Columnas que delatan el resultado (fuga de información): nunca entran a los modelos.
-FUGA = [
-    TARGET,
-    "FECHARETIRO",
-    "MOTIVORETIRO",
-    "ESTADO",
-    "ESTADO_LABORAL",
-    "FECHAULTACTUALIZACION",
-    "ULTIMAACTUALIZACION",
-    "FECHATERMINACONTRATO",
+# Columnas de identificación, contacto, fechas crudas o estado: pertenecen al contrato, pero nunca al modelo.
+IDENTIFICADORES = [
+    "NROIDENTIFICACION",
+    "PRIMERAPELLIDO",
+    "SEGUNDOAPELLIDO",
+    "NOMBRES",
+    "SEGUNDONOMBRE",
+    "NOMBREINTEGRADO",
+    "DIRECCION",
+    "EMAIL",
+    "CELULAR",
 ]
+FUGA = [TARGET, "ESTADO", "FECHAULTACTUALIZACION"]
 
 # Comportamiento con el fondo en los últimos meses: la señal principal de abandono.
 COMPORTAMIENTO = [
-    "#SOLICITUD_DISMINUCIONCUOTAS",
+    "#SOLICITUDCREDITOS_ULT3MES",
     "#SOLICITUD_CANCELACIONAHORROS",
     "#SOLICITUD_RETIROPARCIALAHORROS",
     "#CANTIDAD_AHORROSALAVISTA",
     "#CANTIDAD_AHORROSCONTRACTUALES",
-    "CANCELACIONCREDITOS_ULT3MESES",
-    "#SOLICITUDCREDITOS_ULT3MESES",
     "#CANTIDAD_SERVICIOS",
-    "#INTENCIONRETIROS_ULT3MESES",
 ]
-# Temporalidad: EDAD y ANTIGUEDAD se calculan a t0 desde fechas (sin fuga). Los conteos de COMPORTAMIENTO, en
-# cambio, llegan como números sin fecha de medición: el código no puede saber si son a t0 o a la fecha de
+# Temporalidad: EDAD y las antigüedades ya llegan calculadas. Los conteos de COMPORTAMIENTO llegan sin fecha
+# propia: el código no puede saber si son a t0 o a la fecha de
 # extracción. Si son a la extracción, para los retirados incluyen lo que pasó después de t0 (fuga). Lo confirma
 # el fondo; mientras tanto, una evaluación con datos reales queda marcada (config.temporalidad_confirmada).
 CONTEOS_SIN_FECHA = COMPORTAMIENTO
-NUMERICAS = [*COMPORTAMIENTO, "SALARIO", "ESTRATO", "EDAD", "ANTIGUEDAD"]
-CATEGORICAS = ["SEXO", "TIPOCONTRATO", "TIPOPACTO", "PERIODODEDUCE", "TIPOCUENTA", "CARGO", "CODCIUDAD", "AGENCIA"]
+NUMERICAS = [*COMPORTAMIENTO, "SALARIO", "EDAD", "ANTIGUEDAD_F_MESES", "ANTIGUEDAD_LA_MESES"]
+CATEGORICAS = [
+    "#SOLICITUD_DISMINUCIONCUOTAS",
+    "TIPOIDENTIFICACION",
+    "CODPAISCEDULA",
+    "CODPAISRESIDENCIA",
+    "CODDEPARTAMENTORESIDENCIA",
+    "CODCIUDADRESIDENCIA",
+    "RELACION",
+    "SEXO",
+    "PAISNACE",
+    "DPTONACE",
+    "CIUDADNACE",
+    "ESTRATO",
+    "ESTUDIOS",
+    "CODPROFESION",
+    "ESTADOCIVIL",
+    "CODEMPRESA",
+    "CODDEPENDENCIA",
+    "TIPOCONTRATO",
+    "CARGO",
+]
 # Lo mismo, con menos riesgo, para los atributos: el extracto trae su valor a la extracción (o al retiro), no a t0.
 # Un ascenso o un cambio de agencia entre t0 y el retiro se vería "antes" de tiempo. Se confirma con el fondo junto
 # con los conteos (TEMPORALIDAD_CONFIRMADA); SEXO no cambia.
-ATRIBUTOS_SIN_FECHA = [c for c in ["SALARIO", "ESTRATO", *CATEGORICAS] if c != "SEXO"]
+ATRIBUTOS_SIN_FECHA = [c for c in ["SALARIO", *CATEGORICAS] if c != "SEXO"]
 # Las únicas que tiene sentido recortar (clip_outliers): continuas. Los conteos de COMPORTAMIENTO casi
 # siempre valen 0, su IQR queda en [0, 0] y recortarlos borraría a quienes sí tienen solicitudes.
-COLUMNAS_RECORTE = ["SALARIO", "EDAD", "ANTIGUEDAD"]
+COLUMNAS_RECORTE = ["SALARIO", "EDAD", "ANTIGUEDAD_F_MESES", "ANTIGUEDAD_LA_MESES"]
 
 # Señales que, sin mirar el objetivo, indican intención de irse (+) o de quedarse (-).
 # Se usan para decidir cuál de los dos grupos de KMeans es el de "riesgo".
 SENAL_RIESGO = {
-    "#SOLICITUD_DISMINUCIONCUOTAS": 1,
     "#SOLICITUD_CANCELACIONAHORROS": 1,
     "#SOLICITUD_RETIROPARCIALAHORROS": 1,
-    "CANCELACIONCREDITOS_ULT3MESES": 1,
-    "#INTENCIONRETIROS_ULT3MESES": 1,
     "#CANTIDAD_AHORROSCONTRACTUALES": -1,
-    "#SOLICITUDCREDITOS_ULT3MESES": -1,
+    "#SOLICITUDCREDITOS_ULT3MES": -1,
 }
 
 
@@ -101,23 +116,14 @@ def fecha_observacion(horizonte_meses: int = HORIZONTE_MESES, corte: pd.Timestam
 
 
 def foto(df: pd.DataFrame, horizonte_meses: int = HORIZONTE_MESES, corte: pd.Timestamp = FECHA_CORTE) -> pd.DataFrame:
-    """La foto del asociado en t0 = corte - horizonte: quién estaba activo y quién se retiró después.
+    """Conserva el lote y anota t0 = corte - horizonte.
 
-    - Población: asociados activos en t0 (ingresaron a laborar antes de t0 y no se habían retirado).
-      Los que se retiraron antes de t0 salen: en la foto ya no eran asociados.
-    - Objetivo (#RETIROS): 1 si se retira entre t0 y el corte, 0 si sigue activo.
-    - Agrega FECHA_OBSERVACION = t0, para que ``preparar`` calcule EDAD y ANTIGUEDAD a esa fecha.
-
-    Usa FECHARETIRO, que el contrato exige si y solo si #RETIROS = 1 (regla retiro_coherente).
-    Ojo: los conteos de solicitudes (ULT3MESES...) se toman como vienen. Si el extracto los mide a la
-    fecha de extracción y no a t0, para los retirados incluyen lo que pasó después: fuga de información.
+    El esquema definitivo ya trae ``#RETIROS`` y no incluye fecha de retiro; por eso no se puede reconstruir el
+    objetivo ni filtrar activos. La temporalidad de los conteos debe estar documentada antes de interpretar una
+    evaluación real.
     """
-    t0 = fecha_observacion(horizonte_meses, corte)
-    retiro = pd.to_datetime(df["FECHARETIRO"])
-    activos = (pd.to_datetime(df["FECHAINGRESOLABORA"]) <= t0) & (retiro.isna() | (retiro > t0))
-    vista = df[activos].copy()
-    vista[TARGET] = (retiro[activos] <= pd.Timestamp(corte)).astype(int)  # NaT <= corte es False: activo
-    vista[FECHA_OBSERVACION] = t0
+    vista = df.copy()
+    vista[FECHA_OBSERVACION] = fecha_observacion(horizonte_meses, corte)
     return vista
 
 
@@ -140,17 +146,10 @@ def resumen_foto(df: pd.DataFrame, horizontes=(1, 3, 6, 12), corte: pd.Timestamp
 
 
 def preparar(df: pd.DataFrame) -> pd.DataFrame:
-    """Variables del modelo: edad y antigüedad (años a la fecha de observación) + columnas elegidas. Sin fuga ni PII.
-
-    La fecha de observación es FECHA_OBSERVACION si ``df`` viene de ``foto``; si no, FECHA_CORTE.
-    """
+    """Selecciona y tipa las variables definitivas del modelo, sin identificadores ni columnas de fuga."""
     X = pd.DataFrame(index=df.index)
-    t0 = pd.to_datetime(df[FECHA_OBSERVACION]) if FECHA_OBSERVACION in df else FECHA_CORTE
-    X["EDAD"] = (t0 - pd.to_datetime(df["FECHANACIMIENTO"])).dt.days / 365.25
-    X["ANTIGUEDAD"] = (t0 - pd.to_datetime(df["FECHAINGRESOLABORA"])).dt.days / 365.25
     for c in NUMERICAS:
-        if c not in X:
-            X[c] = pd.to_numeric(df[c]).astype(float)  # Int64 con vacíos -> float con NaN (lo imputa el pipeline)
+        X[c] = pd.to_numeric(df[c]).astype(float)
     for c in CATEGORICAS:
         # Los códigos (ciudad, agencia) son categorías, no cantidades. El vacío sigue vacío (no el texto "nan").
         X[c] = df[c].map(lambda v: np.nan if pd.isna(v) else str(v))
@@ -163,18 +162,13 @@ def separar(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
 
 
 class PrepararVariables(TransformerMixin, BaseEstimator):
-    """``preparar`` como primer paso del pipeline: el modelo recibe la fila tal como llega (extracto, Supabase,
-    formulario) y calcula él mismo EDAD y ANTIGUEDAD. Sin estado: no aprende nada de train.
-
-    Si ``X`` ya viene preparada (no trae FECHANACIMIENTO), solo ordena sus columnas: así el mismo modelo
-    sirve con ``preparar(df)`` (importancia por permutación, simulador, vacíos simulados).
-    """
+    """``preparar`` como primer paso del pipeline; selecciona y tipa predictores sin aprender estado."""
 
     def fit(self, X, y=None):
         return self
 
     def transform(self, X):
-        return preparar(X) if "FECHANACIMIENTO" in X else X[NUMERICAS + CATEGORICAS]
+        return preparar(X)
 
     def get_feature_names_out(self, input_features=None):
         return np.array(NUMERICAS + CATEGORICAS, dtype=object)
