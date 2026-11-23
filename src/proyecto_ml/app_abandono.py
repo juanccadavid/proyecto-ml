@@ -333,12 +333,12 @@ st.plotly_chart(
     key="mapa",
 )
 atipicos = segmentacion.dbscan(datos_mapa) == sg.ATIPICO
-tasa_atipicos = datos_mapa.loc[atipicos, a.TARGET].mean()
+tasa_atipicos = a.objetivo_binario(datos_mapa).loc[atipicos].mean()
 st.caption(
     f"La estrella es este asociado. Con el botón se cambia entre KMeans (k = {segmentacion.k_}, por silueta) y "
-    f"DBSCAN, que deja aparte a los **atípicos** (✕): en los datos de referencia se retira el {tasa_atipicos:.0%} "
-    f"de ellos. Según DBSCAN, este asociado **{'es atípico' if atipico else 'no es atípico'}**. Ninguno de los dos "
-    "vio quién se retiró (no supervisados): agrupan solo por comportamiento."
+    f"DBSCAN, que deja aparte a los **atípicos** (✕): en los datos de referencia, el {tasa_atipicos:.0%} "
+    f"tiene al menos un retiro. Según DBSCAN, este asociado **{'es atípico' if atipico else 'no es atípico'}**. "
+    "Ninguno de los dos vio el evento de retiro (no supervisados): agrupan solo por comportamiento."
 )
 
 st.subheader("¿Y si cambia una sola variable?")

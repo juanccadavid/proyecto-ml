@@ -65,7 +65,7 @@ def main() -> None:
     h = args.horizonte or None
     if h:
         df = a.foto(df, h)
-    X, y = a.preparar(df), df[a.TARGET]
+    X, y = a.preparar(df), a.objetivo_binario(df)
     if args.vacios:
         X = t.con_vacios(X, args.vacios, seed=args.semilla)
     print(f"Datos: {fuente} · foto a {h or 0} meses · {len(X)} asociados, {int(y.sum())} se retiran ({y.mean():.1%})")

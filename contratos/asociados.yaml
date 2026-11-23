@@ -56,14 +56,14 @@ grupos:
     - {nombre: "#SOLICITUD_DISMINUCIONCUOTAS", tipo: texto, requerido: true}
     - {nombre: "#CANTIDAD_SERVICIOS", tipo: entero, requerido: true, min: 0}
   RETIRO:
-    - {nombre: "#RETIROS", tipo: entero, requerido: true, valores: [0, 1], descripcion: Objetivo definido por el fondo}
+    - {nombre: "#RETIROS", tipo: entero, requerido: true, min: 0, descripcion: Conteo de retiros; el modelo deriva el evento al menos uno}
 
 distribucion:
   - id: volumen_minimo
     descripcion: El lote trae al menos min_filas asociados
     min_filas: 30
   - id: tasa_retiro_plausible
-    descripcion: "La fracción con #RETIROS=1 está entre min y max; es una heurística, no una regla confirmada"
+    descripcion: "La fracción con #RETIROS mayor que cero está entre min y max; es una heurística, no una regla confirmada"
     severidad: advertencia
     min: 0.01
     max: 0.50

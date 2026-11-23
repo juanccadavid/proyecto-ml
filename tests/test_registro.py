@@ -29,7 +29,7 @@ def test_corridas_y_alias_del_campeon(tmp_path, monkeypatch):
 
     monkeypatch.setenv("MLFLOW_TRACKING_URI", f"sqlite:///{(tmp_path / 'mlflow.db').as_posix()}")
     df = GeneradorAsociados(n=200, seed=1).generar()
-    X, y = a.preparar(df), df[a.TARGET]
+    X, y = a.preparar(df), a.objetivo_binario(df)
     modelo = a.modelos_supervisados()["logreg"].fit(X, y)
     agrupador = a.AgrupadorAbandono().fit(df)
 

@@ -132,13 +132,14 @@ def resumen_foto(df: pd.DataFrame, horizontes=(1, 3, 6, 12), corte: pd.Timestamp
     filas = []
     for h in horizontes:
         vista = foto(df, h, corte)
+        y = objetivo_binario(vista)
         filas.append(
             {
                 "horizonte_meses": h,
                 "fecha_observacion": fecha_observacion(h, corte).date(),
                 "asociados": len(vista),
-                "se_retiran": int(vista[TARGET].sum()),
-                "tasa_retiro": float(vista[TARGET].mean()) if len(vista) else float("nan"),
+                "se_retiran": int(y.sum()),
+                "tasa_retiro": float(y.mean()) if len(vista) else float("nan"),
                 "fuera_de_la_foto": len(df) - len(vista),  # retirados antes de t0 o ingresados después
             }
         )
@@ -156,9 +157,19 @@ def preparar(df: pd.DataFrame) -> pd.DataFrame:
     return X[NUMERICAS + CATEGORICAS]
 
 
+def objetivo_binario(datos: pd.DataFrame | pd.Series) -> pd.Series:
+    """Evento de clasificación: 1 si el conteo ``#RETIROS`` es mayor que cero; 0 si es cero.
+
+    El conteo original se conserva en el dataset y en el contrato. Esta transformación existe solo para responder
+    la pregunta binaria del modelo y no modifica el archivo de entrada.
+    """
+    conteo = datos[TARGET] if isinstance(datos, pd.DataFrame) else datos
+    return (pd.to_numeric(conteo, errors="raise") > 0).astype(int).rename(TARGET)
+
+
 def separar(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
-    """X (las filas sin el objetivo, tal cual: el pipeline las prepara) e y (#RETIROS)."""
-    return df.drop(columns=TARGET), df[TARGET]
+    """X sin el conteo e y = 1 cuando hubo al menos un retiro."""
+    return df.drop(columns=TARGET), objetivo_binario(df)
 
 
 class PrepararVariables(TransformerMixin, BaseEstimator):
@@ -350,7 +361,7 @@ def puntaje(modelo: Pipeline, X: pd.DataFrame) -> np.ndarray:
 
 def metricas_supervisado(modelo: Pipeline, df: pd.DataFrame) -> dict[str, float]:
     metodo = metodo_puntaje(modelo)
-    return compute_metrics(df[TARGET], puntaje(modelo, df), threshold=UMBRAL[metodo], metodo=metodo)
+    return compute_metrics(objetivo_binario(df), puntaje(modelo, df), threshold=UMBRAL[metodo], metodo=metodo)
 
 
 def guardar_modelo(pipeline: Pipeline, carpeta: Path, nombre: str) -> dict[str, Path]:
@@ -383,7 +394,7 @@ def tabla_predicciones(modelos: dict[str, Pipeline], df: pd.DataFrame) -> pd.Dat
     más alto = más riesgo, así sirve para ordenar a quién contactar primero.
     """
     X = preparar(df)
-    tabla = X.assign(**{TARGET: df[TARGET].to_numpy()}) if TARGET in df else X.copy()
+    tabla = X.assign(**{TARGET: objetivo_binario(df).to_numpy()}) if TARGET in df else X.copy()
     for nombre, modelo in modelos.items():
         tabla[f"{nombre}_label"] = modelo.predict(X)
         tabla[f"{nombre}_score"] = puntaje(modelo, X)
@@ -442,7 +453,7 @@ class AgrupadorAbandono:
 
 def metricas_agrupacion(agrupador: AgrupadorAbandono, df: pd.DataFrame) -> dict[str, float]:
     """Compara los grupos con el abandono real (que el modelo nunca vio)."""
-    y, grupo = df[TARGET].to_numpy(), agrupador.predict(df)
+    y, grupo = objetivo_binario(df).to_numpy(), agrupador.predict(df)
     X = agrupador.pipeline[:-1].transform(df)  # preparado, imputado y escalado, sin KMeans
     tn, fp, fn, tp = confusion_matrix(y, grupo, labels=[0, 1]).ravel()
     return {
@@ -470,7 +481,7 @@ def figura_matrices_confusion(
     from matplotlib import colormaps
     from matplotlib.figure import Figure  # sin pyplot: no abre ventanas ni depende del backend
 
-    y, X = df[TARGET].to_numpy(), preparar(df)
+    y, X = objetivo_binario(df).to_numpy(), preparar(df)
     reales = ["0\nse queda", "1\nabandona"]
     paneles = {TITULOS.get(nombre, nombre): (modelo.predict(X), reales) for nombre, modelo in supervisados.items()}
     paneles["KMeans (sin objetivo)"] = (agrupador.predict(df), ["0\nestable", "1\nriesgo"])

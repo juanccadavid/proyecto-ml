@@ -30,4 +30,4 @@ def test_pycaret_compara_y_devuelve_pipelines_que_generalizan():
         assert type(pipeline.steps[-1][1]).__name__.startswith(clases[nombre])  # el nombre es el modelo correcto
         assert not set(pipeline.feature_names_in_) & set(a.FUGA)
         puntaje = pipeline.predict_proba(a.preparar(nuevos))[:, 1]
-        assert cli.compute_metrics(nuevos[a.TARGET], puntaje)["roc_auc"] > 0.8
+        assert cli.compute_metrics(a.objetivo_binario(nuevos), puntaje)["roc_auc"] > 0.8

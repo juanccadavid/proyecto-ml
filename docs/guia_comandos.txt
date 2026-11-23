@@ -261,8 +261,9 @@
      Nivel 2  Distribución     problemas del lote completo   salario_en_pesos, volumen_minimo
               (severidad: error bloquea; advertencia se informa: tasa_retiro_plausible, rango por
               confirmar con el fondo)
-     Nivel 3  Entre columnas   incoherencias                 retiro_coherente (#RETIROS=1 exige
-                                                             fecha y motivo de retiro)
+     Nivel 3  Entre columnas   incoherencias                 ingreso_posterior_nacimiento
+                                                             (las fechas de ingreso deben ser
+                                                             posteriores al nacimiento)
 
  5.3 Dónde se exige (la "frontera": donde el dato ENTRA, no donde se usa)
      uv run python scripts/ingesta.py --input <archivo> --target "#RETIROS" \

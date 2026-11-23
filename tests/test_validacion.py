@@ -18,7 +18,7 @@ def test_fuerza_escala_la_diferencia_entre_retirados_y_activos():
     diferencia = {}
     for f in (1.0, 0.5, 0.0):
         df = GeneradorAsociados(n=4000, seed=5, fuerza_senal=f).generar()
-        medias = df.groupby(a.TARGET)["#SOLICITUD_RETIROPARCIALAHORROS"].mean()
+        medias = df.groupby(a.objetivo_binario(df))["#SOLICITUD_RETIROPARCIALAHORROS"].mean()
         diferencia[f] = medias[1] - medias[0]
     assert diferencia[1.0] == pytest.approx(1.3, abs=0.15)  # 1.5 - 0.2 en el generador
     assert diferencia[0.5] == pytest.approx(0.65, abs=0.15)
@@ -33,13 +33,13 @@ def test_fuerza_negativa_no_se_acepta():
 def test_datos_desarrollo():
     df = datos_desarrollo()
     assert len(df) == DESARROLLO["n"]
-    assert df[a.TARGET].mean() == pytest.approx(DESARROLLO["tasa_retiro"], abs=0.02)
+    assert a.objetivo_binario(df).mean() == pytest.approx(DESARROLLO["tasa_retiro"], abs=0.02)
 
 
 @pytest.fixture(scope="module")
 def logistica():
     df = GeneradorAsociados(n=800, seed=1).generar()
-    return a.modelos_supervisados()["logreg"].fit(a.preparar(df), df[a.TARGET])
+    return a.modelos_supervisados()["logreg"].fit(a.preparar(df), a.objetivo_binario(df))
 
 
 def test_escenarios_degradan_al_bajar_la_senal(logistica):

@@ -164,7 +164,10 @@ def _texto(*cols: pd.Series) -> pd.Series:
 # Nivel 2: (medida del lote, condición sobre la medida). Los parámetros p vienen del YAML.
 DISTRIBUCION: dict[str, tuple[Callable[[pd.DataFrame, dict], float], Callable[[float, dict], bool]]] = {
     "volumen_minimo": (lambda d, p: len(d), lambda v, p: v >= p["min_filas"]),
-    "tasa_retiro_plausible": (lambda d, p: d["#RETIROS"].mean(), lambda v, p: p["min"] <= v <= p["max"]),
+    "tasa_retiro_plausible": (
+        lambda d, p: (pd.to_numeric(d["#RETIROS"], errors="coerce") > 0).mean(),
+        lambda v, p: p["min"] <= v <= p["max"],
+    ),
     "salario_en_pesos": (lambda d, p: d["SALARIO"].median(), lambda v, p: p["min"] <= v <= p["max"]),
     "salarios_atipicos_marginales": (
         lambda d, p: (d["SALARIO"] > p["factor"] * d["SALARIO"].median()).mean(),
@@ -514,7 +517,7 @@ def js(contrato: Contrato | None = None) -> str:
     contrato = contrato or cargar()
     grupos: dict[str, list] = {}
     for c in contrato.columnas:
-        campo = {k: v for k, v in vars(c).items() if v not in (None, False) and k not in ("grupo", "pii")}
+        campo = {k: v for k, v in vars(c).items() if v is not None and v is not False and k not in ("grupo", "pii")}
         grupos.setdefault(c.grupo, []).append({**campo, "db": c.db})
     data: dict[str, object] = {"nombre": contrato.nombre, "version": contrato.version, "tabla_db": contrato.tabla_db}
     data |= {"grupos": grupos}

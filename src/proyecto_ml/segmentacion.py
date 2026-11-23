@@ -144,7 +144,7 @@ def perfil(df: pd.DataFrame, segmento: np.ndarray) -> pd.DataFrame:
     """Por segmento: asociados, % del total, tasa de retiro real (que el algoritmo no vio) y comportamiento medio."""
     X = a.preparar(df) if "FECHANACIMIENTO" in df else df
     tabla = X[VARIABLES].groupby(segmento).mean()
-    tabla.insert(0, "tasa_retiro", df[a.TARGET].groupby(segmento).mean() if a.TARGET in df else np.nan)
+    tabla.insert(0, "tasa_retiro", a.objetivo_binario(df).groupby(segmento).mean() if a.TARGET in df else np.nan)
     tabla.insert(0, "pct", pd.Series(segmento).value_counts(normalize=True))
     tabla.insert(0, "asociados", pd.Series(segmento).value_counts())
     return tabla.rename_axis("segmento")
@@ -153,7 +153,7 @@ def perfil(df: pd.DataFrame, segmento: np.ndarray) -> pd.DataFrame:
 def comparar_con_retiro(df: pd.DataFrame, segmentacion: Segmentacion) -> pd.DataFrame:
     """No supervisado vs. retiro real: si marcar "en riesgo" al segmento 1 de KMeans o a los atípicos de DBSCAN
     encuentra a los que se van (recall), cuántas alertas aciertan (precisión) y el ARI con el retiro."""
-    y = df[a.TARGET].to_numpy()
+    y = a.objetivo_binario(df).to_numpy()
     marcas = {
         "KMeans: segmento 1": segmentacion.kmeans(df) == 1,
         "DBSCAN: atípicos": segmentacion.dbscan(df) == ATIPICO,
@@ -217,7 +217,7 @@ def figura_mapa(
     # Los conteos dejan a muchos asociados en el mismo punto: se separan un poco solo para dibujarlos.
     plano = segmentacion.plano(df) + np.random.default_rng(0).normal(0, 0.03, (len(df), 2))
     X = a.preparar(df) if "FECHANACIMIENTO" in df else df
-    retiro = df[a.TARGET].to_numpy() if a.TARGET in df else None
+    retiro = a.objetivo_binario(df).to_numpy() if a.TARGET in df else None
     etiquetas = {"KMeans": segmentacion.kmeans(df), "DBSCAN": segmentacion.dbscan(df)}
     detalle = np.column_stack(
         [

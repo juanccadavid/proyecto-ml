@@ -50,7 +50,10 @@ def main() -> None:
     h = args.horizonte or None
     if h:
         df = a.foto(df, h)
-    print(f"Datos: {fuente} · foto a {h or 0} meses · {len(df)} asociados, {int(df[a.TARGET].sum())} se retiran")
+    print(
+        f"Datos: {fuente} · foto a {h or 0} meses · {len(df)} asociados, "
+        f"{int(a.objetivo_binario(df).sum())} con al menos un retiro"
+    )
     print(aviso_origen())
     print(f"Modelo: {a.TITULOS[args.modelo]} · {args.folds} particiones · TimeSeriesSplit por {v.ORDEN_TEMPORAL}\n")
 

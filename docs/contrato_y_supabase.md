@@ -11,7 +11,7 @@
 | 3. Entre columnas | `reglas` → check con varias columnas | incoherencias | ingresos posteriores al nacimiento | Sí (CHECK) |
 
 Cada check de nivel 2 tiene `severidad`: **`error`** (por defecto, bloquea) o **`advertencia`** (se informa con
-`contrato.advertencias` y no bloquea). `tasa_retiro_plausible` (1 %–50 % de `#RETIROS=1` en el lote) es
+`contrato.advertencias` y no bloquea). `tasa_retiro_plausible` (1 %–50 % con `#RETIROS > 0` en el lote) es
 advertencia: el rango salió del diseño de los sintéticos (10 % de retiro), no de una regla del fondo, y un
 extracto real con otra prevalencia no es por eso un dato malo. **Pendiente: confirmar el rango con el fondo.** Si
 da una regla validada, se ajustan `min`/`max` en el YAML y se pasa a `severidad: error`.

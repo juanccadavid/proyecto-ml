@@ -33,7 +33,7 @@ def test_grillas_validas_y_el_afinado_generaliza():
 
     # Grilla reducida (L1 y L2) para que la prueba sea rápida.
     grilla = {**cli.GRILLAS["pycaret_lr"], "model__C": [0.01, 1.0]}
-    busqueda = afinar(base["pycaret_lr"], grilla, a.preparar(train), train[a.TARGET], folds=3)
+    busqueda = afinar(base["pycaret_lr"], grilla, a.preparar(train), a.objetivo_binario(train), folds=3)
     assert a.metricas_supervisado(busqueda.best_estimator_, nuevos)["roc_auc"] > 0.8
 
 
@@ -44,7 +44,7 @@ def test_pycaret_lr_reproducido_predice_igual_que_el_de_pycaret():
 
     train = GeneradorAsociados(n=300, seed=1).generar()
     nuevos = GeneradorAsociados(n=300, seed=2).generar()
-    X, y = a.preparar(train), train[a.TARGET]
+    X, y = a.preparar(train), a.objetivo_binario(train)
 
     exp = ClassificationExperiment(target=a.TARGET, session_id=42, fold=3, normalize=True).fit(X, y)
     original = clone(exp.create_model("lr").pipeline).fit(X, y)  # preprocesamiento de PyCaret

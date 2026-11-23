@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from proyecto_ml.abandono import objetivo_binario
 from proyecto_ml.config import PROCESSED_DIR
 from proyecto_ml.generador import (
     CARPETA_EJEMPLO,
@@ -59,8 +60,8 @@ def main() -> None:
     parquet, xlsx = generador.guardar(args.output_dir, args.nombre)
     for columna, vacias in generador.reporte_faltantes_.items():
         print(f"  {vacias:5d} vacíos en {columna} ({vacias / args.rows:.1%}; esperado {FALTANTES[columna]:.0%})")
-    retiros = pd.read_parquet(parquet)["#RETIROS"].mean()
-    print(f"{args.rows} filas (retiros {retiros:.0%}) -> {parquet}, {xlsx}")
+    retiros = objetivo_binario(pd.read_parquet(parquet)).mean()
+    print(f"{args.rows} filas (asociados con al menos un retiro {retiros:.0%}) -> {parquet}, {xlsx}")
 
 
 if __name__ == "__main__":

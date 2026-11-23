@@ -99,13 +99,14 @@ def main() -> None:
     h = args.horizonte or None
     if h:
         df = a.foto(df, h)
-    minimo = int(df[a.TARGET].value_counts().reindex([0, 1], fill_value=0).min())
+    y_evento = a.objetivo_binario(df)
+    minimo = int(y_evento.value_counts().reindex([0, 1], fill_value=0).min())
     if minimo < args.folds:
         raise SystemExit(f"La clase minoritaria tiene {minimo} asociados (mínimo {args.folds}): usa más filas.")
     t0 = a.fecha_observacion(h).date() if h else a.FECHA_CORTE.date()
     print(
         f"Datos ({origen}): {fuente} · foto a {h or 0} meses (t0 = {t0}) · {len(df)} asociados, "
-        f"{df[a.TARGET].mean():.1%} retiro"
+        f"{y_evento.mean():.1%} con al menos un retiro"
     )
     print(f"Validación cruzada: {args.folds} particiones x {args.repeticiones} repeticiones · criterio {c.CRITERIO}")
     if experimental:
@@ -205,7 +206,7 @@ def main() -> None:
         print(pd.DataFrame(en_nuevos).T.round(3).to_string())
 
         zonas = pd.Series(campeon.zona(Xn), index=nuevos.index, name="zona")
-        por_zona = nuevos.groupby(zonas)[a.TARGET].agg(asociados="size", se_retiran="sum", tasa_retiro="mean")
+        por_zona = a.objetivo_binario(nuevos).groupby(zonas).agg(asociados="size", se_retiran="sum", tasa_retiro="mean")
         por_zona = por_zona.reindex([z for z in c.ZONAS if z in por_zona.index])
         print("\n=== Zonas del campeón sobre los nuevos ===")
         print(por_zona.round(3).to_string())

@@ -103,6 +103,7 @@ def _generar(n: int, seed: int, tasa_retiro: float, fuerza_senal: float = 1.0) -
     idx = np.arange(1, n + 1)
     pick = lambda opciones, **kw: rng.choice(opciones, n, **kw)  # noqa: E731
     retirado = rng.random(n) < tasa_retiro
+    retiros = np.where(retirado, 1 + rng.poisson(0.3, n), 0)
     sexo = pick(["F", "M"])
     nombres = np.where(sexo == "F", pick(NOMBRES_F), pick(NOMBRES_M))
     segundo = np.where(rng.random(n) < 0.5, np.where(sexo == "F", pick(NOMBRES_F), pick(NOMBRES_M)), "SIN_DATO")
@@ -167,7 +168,7 @@ def _generar(n: int, seed: int, tasa_retiro: float, fuerza_senal: float = 1.0) -
         "#SOLICITUD_CANCELACIONAHORROS": solicitudes_cancelacion,
         "#SOLICITUD_DISMINUCIONCUOTAS": (rng.poisson(0.2 + 1.0 * senal)).astype(str),
         "#CANTIDAD_SERVICIOS": servicios,
-        "#RETIROS": retirado.astype(int),
+        "#RETIROS": retiros.astype(int),
     }
     columnas = [col for grupo in GRUPOS.values() for col in grupo]
     return pd.DataFrame(data)[columnas]

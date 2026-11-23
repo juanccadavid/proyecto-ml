@@ -589,12 +589,13 @@ class Campeon:
 def perfil_grupos(agrupador: a.AgrupadorAbandono, df: pd.DataFrame) -> dict:
     """Por grupo (riesgo/estable): tamaño, tasa de retiro real (que KMeans nunca vio) y perfil promedio."""
     grupo = pd.Series(agrupador.predict(df), index=df.index).map({1: "riesgo", 0: "estable"})
+    evento = a.objetivo_binario(df)
     salida = {}
     for nombre in ("riesgo", "estable"):
         en_grupo = grupo == nombre
         salida[nombre] = {
             "asociados": int(en_grupo.sum()),
-            "tasa_retiro": float(df.loc[en_grupo, a.TARGET].mean()) if en_grupo.any() else float("nan"),
+            "tasa_retiro": float(evento.loc[en_grupo].mean()) if en_grupo.any() else float("nan"),
             "perfil": {c: float(v) for c, v in agrupador.perfil_.loc[nombre].items()},
         }
     return salida

@@ -261,14 +261,14 @@ categorías, el contrato lo detiene antes de entrenar, y se ajusta el contrato c
   escenarios miden degradación, no rendimiento real.
 - **Temporalidad limitada.** Los conteos corresponden al corte y a sus tres meses anteriores, pero no traen fecha
   propia. Solo hay un corte, así que no puede construirse una evaluación fuera de tiempo.
-- **Objetivo pendiente de confirmación.** El archivo real contiene valores de `#RETIROS` que deben validarse como
-  etiqueta binaria antes de entrenar.
+- **Objetivo de conteo.** `#RETIROS` se conserva como entero no negativo; la clasificación usa el evento derivado
+  `#RETIROS > 0`. Sigue pendiente confirmar el período que cubre el conteo.
 - **No está validado para producción.** Hasta tener esa validación con datos reales, ninguna cifra de este README
   dice cómo le irá al modelo con el fondo.
 - **SHAP explica el modelo, no la causa** del retiro: dice qué variables mueven el puntaje, no qué haría que
   alguien se quede.
 
-**Pendiente** (necesita al fondo): la definición binaria de `#RETIROS`, el rango de la tasa de retiro del contrato
+**Pendiente** (necesita al fondo): el período cubierto por `#RETIROS`, el rango de la tasa de retiro del contrato
 (hoy es solo una advertencia) y la licencia (propuesta MIT pendiente
 de aprobación: [`docs/licencia.md`](docs/licencia.md)).
 

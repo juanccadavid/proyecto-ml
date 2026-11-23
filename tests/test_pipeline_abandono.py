@@ -23,7 +23,9 @@ def test_predice_igual_con_la_fila_cruda_o_preparada(datos):
     crudo = modelo.predict_proba(nuevos.drop(columns=a.TARGET))[:, 1]
     assert np.allclose(crudo, modelo.predict_proba(a.preparar(nuevos))[:, 1])
     # y es lo mismo que entrenar con preparar() a mano
-    a_mano = a.armar_pipeline(LogisticRegression(max_iter=2000)).fit(a.preparar(entrenamiento), entrenamiento[a.TARGET])
+    a_mano = a.armar_pipeline(LogisticRegression(max_iter=2000)).fit(
+        a.preparar(entrenamiento), a.objetivo_binario(entrenamiento)
+    )
     assert np.allclose(crudo, a_mano.predict_proba(nuevos)[:, 1])
 
 

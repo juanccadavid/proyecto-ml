@@ -92,7 +92,8 @@ campeon`, `tecnicas`, `validacion` y `segmentos` usan la foto por defecto (`--ho
 diseño correcto es una **foto** en t0 = corte − H:
 
 - **Población:** asociados activos en t0 (los que se retiraron antes ya no eran asociados en la foto).
-- **Objetivo:** `#RETIROS`, entregado por el fondo y pendiente de confirmar como variable binaria.
+- **Objetivo de origen:** `#RETIROS`, conteo entero no negativo. La clasificación deriva `1` cuando el conteo es
+  mayor que cero y `0` cuando es cero; el archivo original no se reescribe.
 - **Variables:** `EDAD`, `ANTIGUEDAD_F_MESES` y `ANTIGUEDAD_LA_MESES` vienen calculadas en el archivo.
 
 ```python

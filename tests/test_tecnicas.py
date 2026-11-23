@@ -15,7 +15,7 @@ from proyecto_ml.generador import GeneradorAsociados
 @pytest.fixture(scope="module")
 def datos():
     df = GeneradorAsociados(n=400, seed=3, tasa_retiro=0.25).generar()
-    return t.con_vacios(a.preparar(df), 0.15, seed=1), df[a.TARGET]
+    return t.con_vacios(a.preparar(df), 0.15, seed=1), a.objetivo_binario(df)
 
 
 def _pre(**kw):
