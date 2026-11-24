@@ -170,7 +170,7 @@ def main() -> None:
         "entrenamiento": a.metricas_agrupacion(agrupador, train),
         **{nombre: a.metricas_agrupacion(agrupador, df) for nombre, df in validaciones.items()},
     }
-    print("\n=== KMeans (2 grupos, sin ver #RETIROS) vs. abandono real ===")
+    print("\n=== KMeans (2 grupos, sin ver la etiqueta sintética) vs. evento futuro sintético ===")
     print(_tabla(m_kmeans))
     print("\nPerfil promedio de cada grupo:")
     print(agrupador.perfil_.T.round(2).to_string())

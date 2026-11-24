@@ -1,7 +1,7 @@
 """Segmentación de asociados (no supervisada): KMeans y DBSCAN sobre el comportamiento, y su mapa interactivo.
 
 Aprendizaje **no supervisado**: los algoritmos nunca ven ``#RETIROS``; agrupan a los asociados por cómo usan el
-fondo (``abandono.COMPORTAMIENTO``: solicitudes, ahorros, créditos, intención de retiro). El retiro real solo se
+fondo (``abandono.COMPORTAMIENTO``: solicitudes, ahorros, créditos, intención de retiro). La etiqueta sintética solo se
 mira después, para validar si los segmentos sirven. Los supervisados (``abandono.modelos_supervisados``, el
 campeón) aprenden directamente del retiro.
 
@@ -78,7 +78,7 @@ class Segmentacion:
     """KMeans y DBSCAN sobre el mismo comportamiento escalado, más los dos ejes del mapa.
 
     Los segmentos de KMeans se numeran por su señal de salida (``abandono.SENAL_RIESGO`` en el centro): el
-    segmento 1 es el de más solicitudes de cancelación e intención de retiro. Sin mirar el retiro real.
+    segmento 1 es el de más solicitudes de cancelación e intención de retiro. Sin mirar la etiqueta sintética.
     """
 
     def __init__(
@@ -141,7 +141,7 @@ class Segmentacion:
 
 
 def perfil(df: pd.DataFrame, segmento: np.ndarray) -> pd.DataFrame:
-    """Por segmento: asociados, % del total, tasa de retiro real (que el algoritmo no vio) y comportamiento medio."""
+    """Por segmento: asociados, %, tasa del evento sintético (que el algoritmo no vio) y comportamiento medio."""
     X = a.preparar(df) if "FECHANACIMIENTO" in df else df
     tabla = X[VARIABLES].groupby(segmento).mean()
     tabla.insert(0, "tasa_retiro", a.objetivo_binario(df).groupby(segmento).mean() if a.TARGET in df else np.nan)
@@ -151,7 +151,7 @@ def perfil(df: pd.DataFrame, segmento: np.ndarray) -> pd.DataFrame:
 
 
 def comparar_con_retiro(df: pd.DataFrame, segmentacion: Segmentacion) -> pd.DataFrame:
-    """No supervisado vs. retiro real: si marcar "en riesgo" al segmento 1 de KMeans o a los atípicos de DBSCAN
+    """No supervisado vs. evento futuro sintético: si marcar "en riesgo" al segmento 1 o a los atípicos de DBSCAN
     encuentra a los que se van (recall), cuántas alertas aciertan (precisión) y el ARI con el retiro."""
     y = a.objetivo_binario(df).to_numpy()
     marcas = {
@@ -206,7 +206,7 @@ def figura_mapa(
 ) -> go.Figure:
     """Mapa interactivo (señales de salida x vínculo) con un botón para ver KMeans o DBSCAN.
 
-    Cada segmento es un color con su contorno; al pasar el mouse sale el segmento, su tasa de retiro real y el
+    Cada segmento es un color con su contorno; al pasar el mouse sale el segmento, su tasa del evento sintético y el
     comportamiento del asociado. Con ``asociado`` (una fila) se marca dónde cae, con una estrella.
 
     ``detalle_individual=False`` (datos reales): el mouse muestra solo el segmento y su tasa (agregados), no los

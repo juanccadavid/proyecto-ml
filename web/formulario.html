@@ -281,7 +281,7 @@ const hex = (n) => Array.from({ length: n }, () => "0123456789abcdef"[entre(0, 1
 const mesesDesde = (d, corte) => Math.max(0, Math.round((corte - d) / (1000 * 60 * 60 * 24 * 30.4375)));
 
 function asociadoAleatorio() {
-  const retirado = prob(0.3);
+  const perfilRiesgo = prob(0.3);
   const fijo = prob(0.35);
   const sexo = una(["F", "M"]);
   const [ap1, ap2, nom] = [una(APELLIDOS), una(APELLIDOS), una(NOMBRES[sexo])];
@@ -298,7 +298,7 @@ function asociadoAleatorio() {
 
   const z = Math.sqrt(-2 * Math.log(1 - rnd())) * Math.cos(2 * Math.PI * rnd());
   const salario = Math.max(Math.round(Math.exp(15 + 0.45 * z) / 10000) * 10000, 1423500);
-  const p = (activo, ret) => poisson(retirado ? ret : activo);
+  const p = (estable, riesgo) => poisson(perfilRiesgo ? riesgo : estable);
 
   return {
     TIPOIDENTIFICACION: prob(0.95) ? "CC" : "CE", NROIDENTIFICACION: hex(64), CODPAISCEDULA: 169,
@@ -319,7 +319,7 @@ function asociadoAleatorio() {
     "#SOLICITUDCREDITOS_ULT3MES": p(0.9, 0.2), "#CANTIDAD_AHORROSALAVISTA": entre(1, 3),
     "#CANTIDAD_AHORROSCONTRACTUALES": p(1.0, 0.3), "#SOLICITUD_RETIROPARCIALAHORROS": p(0.6, 2.0),
     "#SOLICITUD_CANCELACIONAHORROS": p(0.1, 1.2), "#SOLICITUD_DISMINUCIONCUOTAS": String(p(0.3, 1.5)),
-    "#CANTIDAD_SERVICIOS": Math.max(entre(1, 6) - (retirado ? 1 : 0), 1), "#RETIROS": retirado ? entre(1, 3) : 0,
+    "#CANTIDAD_SERVICIOS": Math.max(entre(1, 6) - (perfilRiesgo ? 1 : 0), 1), "#RETIROS": p(0.25, 0.65),
   };
 }
 
@@ -341,7 +341,7 @@ function resumen() {
   $("r-salario").textContent = pesos.format(Number(v("SALARIO")));
   $("r-contrato").textContent = `Contrato ${v("TIPOCONTRATO").toLowerCase()}`;
   const ret = Number(v("#RETIROS")) > 0;
-  $("r-estado").textContent = ret ? "Retiro marcado" : "Sin retiro";
+  $("r-estado").textContent = ret ? "Con retiros históricos" : "Sin retiros históricos";
   $("r-estado").className = `chip estado ${ret ? "retirado" : "activo"}`;
 }
 

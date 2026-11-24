@@ -3,7 +3,7 @@
 Usa solo el modelo campeón (``make campeon``: models/abandono_campeon.joblib + campeon.json) y sus tres
 zonas: **se retira** (puntaje >= umbral_alto: al menos 8 de cada 10 alertas así son retiros reales),
 **zona gris** (entre el umbral de alerta y el alto) y **se queda**. Muestra también en qué grupo de KMeans
-(entrenado sin el objetivo) cae el asociado y la tasa de retiro real de ese grupo, y con SHAP, qué variables de
+(entrenado sin el objetivo) cae el asociado y la tasa del evento sintético de ese grupo, y con SHAP, qué variables de
 este asociado suben o bajan su puntaje. Un mapa interactivo ubica al asociado entre los segmentos de KMeans y
 DBSCAN (no supervisados).
 
@@ -303,7 +303,7 @@ grupo = "riesgo" if agrupador.grupos(asociado)[0] == 1 else "estable"
 otro = "estable" if grupo == "riesgo" else "riesgo"
 st.subheader(f"Grupo de comportamiento: {grupo}")
 st.caption(
-    f"KMeans agrupó a los asociados por su comportamiento sin ver quién se retiró. En el grupo **{grupo}** "
+    f"KMeans agrupó a los asociados por su comportamiento sin ver la etiqueta sintética. En el grupo **{grupo}** "
     f"({info['grupos'][grupo]['asociados']} asociados) se retiró el **{info['grupos'][grupo]['tasa_retiro']:.1%}**; "
     f"en el grupo {otro}, el {info['grupos'][otro]['tasa_retiro']:.1%}. El grupo describe el comportamiento: "
     "no es una probabilidad de retiro (esa es la del modelo, arriba)."

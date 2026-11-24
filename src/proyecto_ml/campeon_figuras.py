@@ -196,7 +196,7 @@ CORTES_CALIBRACION = (0, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 0.9, 1)  # f
 
 
 def tabla_calibracion(y, puntaje, cortes=CORTES_CALIBRACION) -> pd.DataFrame:
-    """Por grupo de probabilidad: asociados, probabilidad media del modelo y retiro real (sin grupos vacíos).
+    """Por grupo: asociados, probabilidad media del modelo y evento futuro sintético (sin grupos vacíos).
 
     Con un 2 % de retiro casi todas las probabilidades están cerca de 0: los deciles quedarían todos ahí y la
     curva tendría dos puntos. Por eso los cortes son fijos y más finos abajo.
@@ -236,7 +236,7 @@ def figura_calibracion(campeon: c.Campeon):
         # punto más grande = más asociados en el grupo: los grupos chicos (los del medio) son los más ruidosos
         marker={"size": 8 + 16 * np.sqrt(tabla["asociados"] / tabla["asociados"].max()), "line": {"color": "#fcfcfb"}},
         hovertemplate="grupo %{customdata[1]} · %{customdata[0]} asociados<br>probabilidad media del modelo=%{x:.1%}"
-        "<br>retiro real del grupo=%{y:.1%}<extra></extra>",
+        "<br>evento sintético del grupo=%{y:.1%}<extra></extra>",
     )
     fig.update_layout(
         title="Calibración del campeón (fuera de partición)",

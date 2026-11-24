@@ -1,4 +1,4 @@
--- Generado desde contratos/asociados.yaml v2.0.0. No editar a mano: make contrato-sql
+-- Generado desde contratos/asociados.yaml v2.1.0. No editar a mano: make contrato-sql
 -- Pegar en Supabase > SQL Editor > Run. Para aplicar un contrato nuevo en desarrollo: drop table public.asociados;
 
 create table if not exists public.asociados (
@@ -53,7 +53,7 @@ create table if not exists public.asociados (
   constraint ingreso_laboral_posterior_nacimiento check (fechaingresolabora > fechanacimiento)
 );
 
-comment on table public.asociados is 'Contrato asociados v2.0.0';
+comment on table public.asociados is 'Contrato asociados v2.1.0';
 comment on column public.asociados.tipoidentificacion is 'TIPOIDENTIFICACION';
 comment on column public.asociados.nroidentificacion is 'NROIDENTIFICACION — Identificador anonimizado; no entra al modelo';
 comment on column public.asociados.codpaiscedula is 'CODPAISCEDULA';
@@ -97,7 +97,7 @@ comment on column public.asociados.num_solicitud_retiroparcialahorros is '#SOLIC
 comment on column public.asociados.num_solicitud_cancelacionahorros is '#SOLICITUD_CANCELACIONAHORROS';
 comment on column public.asociados.num_solicitud_disminucioncuotas is '#SOLICITUD_DISMINUCIONCUOTAS';
 comment on column public.asociados.num_cantidad_servicios is '#CANTIDAD_SERVICIOS';
-comment on column public.asociados.num_retiros is '#RETIROS — Conteo de retiros; el modelo deriva el evento al menos uno';
+comment on column public.asociados.num_retiros is '#RETIROS — Conteo histórico acumulado durante la permanencia; es predictor, no etiqueta futura';
 
 -- Seguridad: con RLS, la clave pública sola no lee, inserta, edita ni borra public.asociados. Inserta solo el equipo con
 -- sesión (abajo); leer, la clave secreta (scripts subir/bajar, nunca en el HTML ni en Git) y el panel de Supabase.

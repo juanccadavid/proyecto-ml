@@ -110,7 +110,9 @@ def test_misma_huella_en_memoria_y_en_archivo(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "PROCESSED_DIR", tmp_path)
     memoria, fuente = c.datos_eleccion()
     assert fuente == "datos_desarrollo() en memoria"
-    GeneradorAsociados(**generador.DESARROLLO).guardar(tmp_path, generador.NOMBRE_DESARROLLO)  # make datos-desarrollo
+    GeneradorAsociados(**generador.DESARROLLO).guardar(
+        tmp_path, generador.NOMBRE_DESARROLLO, incluir_objetivo_sintetico=True
+    )  # make datos-desarrollo
     archivo, fuente = c.datos_eleccion()
     assert fuente == f"{generador.NOMBRE_DESARROLLO}.parquet"
     assert r.huella(archivo) == r.huella(memoria)

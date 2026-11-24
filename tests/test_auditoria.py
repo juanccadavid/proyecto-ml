@@ -6,7 +6,7 @@ from proyecto_ml.generador import GeneradorAsociados
 
 
 def test_el_contrato_es_obligatorio():
-    df = GeneradorAsociados(n=80, seed=3).generar().drop(columns="EDAD")
+    df = GeneradorAsociados(n=80, seed=3).generar_extracto().drop(columns="EDAD")
     errores = k.validar(df, k.cargar())
     assert errores and any("EDAD" in error for error in errores)
 

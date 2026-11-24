@@ -29,6 +29,7 @@ from proyecto_ml.contrato import limpiar_extracto
 from proyecto_ml.data import load_dataset
 from proyecto_ml.evaluate import compute_metrics
 from proyecto_ml.features import Preprocesador, build_preprocessor
+from proyecto_ml.generador import TARGET_SINTETICO
 from proyecto_ml.models import get_models
 
 if TYPE_CHECKING:
@@ -36,7 +37,8 @@ if TYPE_CHECKING:
 
     from matplotlib.figure import Figure
 
-TARGET = "#RETIROS"
+TARGET = TARGET_SINTETICO
+RETIROS_HISTORICOS = "#RETIROS"
 FECHA_CORTE = pd.Timestamp(fecha_corte())  # FECHA_CORTE del .env; por defecto la de los sintéticos
 # Fecha de referencia usada para documentar el horizonte del lote.
 HORIZONTE_MESES = 3
@@ -70,7 +72,14 @@ COMPORTAMIENTO = [
 # extracción. Si son a la extracción, para los retirados incluyen lo que pasó después de t0 (fuga). Lo confirma
 # el fondo; mientras tanto, una evaluación con datos reales queda marcada (config.temporalidad_confirmada).
 CONTEOS_SIN_FECHA = COMPORTAMIENTO
-NUMERICAS = [*COMPORTAMIENTO, "SALARIO", "EDAD", "ANTIGUEDAD_F_MESES", "ANTIGUEDAD_LA_MESES"]
+NUMERICAS = [
+    *COMPORTAMIENTO,
+    RETIROS_HISTORICOS,
+    "SALARIO",
+    "EDAD",
+    "ANTIGUEDAD_F_MESES",
+    "ANTIGUEDAD_LA_MESES",
+]
 CATEGORICAS = [
     "#SOLICITUD_DISMINUCIONCUOTAS",
     "TIPOIDENTIFICACION",
@@ -118,9 +127,9 @@ def fecha_observacion(horizonte_meses: int = HORIZONTE_MESES, corte: pd.Timestam
 def foto(df: pd.DataFrame, horizonte_meses: int = HORIZONTE_MESES, corte: pd.Timestamp = FECHA_CORTE) -> pd.DataFrame:
     """Conserva el lote y anota t0 = corte - horizonte.
 
-    El esquema definitivo ya trae ``#RETIROS`` y no incluye fecha de retiro; por eso no se puede reconstruir el
-    objetivo ni filtrar activos. La temporalidad de los conteos debe estar documentada antes de interpretar una
-    evaluación real.
+    El esquema real trae ``#RETIROS`` como historia acumulada y no incluye una etiqueta futura. Solo los datos
+    sintéticos llevan ``EVENTO_RETIRO_3M_SINTETICO``; por eso un único extracto real no permite entrenar ni evaluar
+    la pregunta de retiro en los próximos tres meses.
     """
     vista = df.copy()
     vista[FECHA_OBSERVACION] = fecha_observacion(horizonte_meses, corte)
@@ -158,17 +167,21 @@ def preparar(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def objetivo_binario(datos: pd.DataFrame | pd.Series) -> pd.Series:
-    """Evento de clasificación: 1 si el conteo ``#RETIROS`` es mayor que cero; 0 si es cero.
-
-    El conteo original se conserva en el dataset y en el contrato. Esta transformación existe solo para responder
-    la pregunta binaria del modelo y no modifica el archivo de entrada.
-    """
+    """Etiqueta futura binaria creada por el generador; nunca se deriva de ``#RETIROS``."""
     conteo = datos[TARGET] if isinstance(datos, pd.DataFrame) else datos
-    return (pd.to_numeric(conteo, errors="raise") > 0).astype(int).rename(TARGET)
+    y = pd.to_numeric(conteo, errors="raise").astype(int).rename(TARGET)
+    if not set(y.dropna().unique()) <= {0, 1}:
+        raise ValueError(f"{TARGET} debe ser binaria")
+    return y
 
 
 def separar(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
-    """X sin el conteo e y = 1 cuando hubo al menos un retiro."""
+    """X incluye el historial ``#RETIROS``; y es la etiqueta futura disponible solo en sintéticos."""
+    if TARGET not in df:
+        raise ValueError(
+            f"Falta {TARGET}: #RETIROS es un conteo histórico y no puede sustituir la etiqueta de los próximos "
+            "tres meses. El extracto real sirve para predecir con un modelo ya entrenado, no para supervisarlo."
+        )
     return df.drop(columns=TARGET), objetivo_binario(df)
 
 
@@ -386,7 +399,7 @@ def guardar_modelo(pipeline: Pipeline, carpeta: Path, nombre: str) -> dict[str, 
 
 
 def tabla_predicciones(modelos: dict[str, Pipeline], df: pd.DataFrame) -> pd.DataFrame:
-    """Como ``predict_model`` de PyCaret: las variables, el abandono real (si está) y lo que predice cada modelo.
+    """Como ``predict_model`` de PyCaret: variables, etiqueta futura sintética (si está) y predicciones.
 
     Por modelo, ``<nombre>_label`` (1 = abandona) y ``<nombre>_score``: la probabilidad de abandono si el
     modelo la da (0 a 1) o, si no (Ridge), la distancia a la frontera (> 0 = abandona). A diferencia de
@@ -452,7 +465,7 @@ class AgrupadorAbandono:
 
 
 def metricas_agrupacion(agrupador: AgrupadorAbandono, df: pd.DataFrame) -> dict[str, float]:
-    """Compara los grupos con el abandono real (que el modelo nunca vio)."""
+    """Compara los grupos con la etiqueta futura sintética (que el agrupador nunca vio)."""
     y, grupo = objetivo_binario(df).to_numpy(), agrupador.predict(df)
     X = agrupador.pipeline[:-1].transform(df)  # preparado, imputado y escalado, sin KMeans
     tn, fp, fn, tp = confusion_matrix(y, grupo, labels=[0, 1]).ravel()
@@ -462,7 +475,7 @@ def metricas_agrupacion(agrupador: AgrupadorAbandono, df: pd.DataFrame) -> dict[
         "precision": float(tp / (tp + fp)) if tp + fp else 0.0,  # de los marcados en riesgo, cuántos se fueron
         "recall": float(tp / (tp + fn)) if tp + fn else 0.0,  # de los que se fueron, cuántos quedaron en riesgo
         "accuracy": float((tp + tn) / len(y)),
-        "ari": float(adjusted_rand_score(y, grupo)),  # 0 = azar, 1 = grupos idénticos al abandono real
+        "ari": float(adjusted_rand_score(y, grupo)),  # 0 = azar, 1 = grupos idénticos al evento sintético
         "silhouette": float(silhouette_score(X, grupo)) if len(set(grupo)) > 1 else float("nan"),
     }
 

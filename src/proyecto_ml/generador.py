@@ -1,4 +1,4 @@
-"""Generador reproducible de asociados ficticios con el esquema anonimizado definitivo de 44 columnas."""
+"""Generador reproducible del extracto ficticio y de una etiqueta futura exclusivamente sintética."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from proyecto_ml.config import DATA_DIR
 
 CARPETA_EJEMPLO = DATA_DIR / "ejemplo"
 FECHA_CORTE = pd.Timestamp("2026-10-31")
+TARGET_SINTETICO = "EVENTO_RETIRO_3M_SINTETICO"
 
 
 class Desarrollo(TypedDict):
@@ -103,7 +104,7 @@ def _generar(n: int, seed: int, tasa_retiro: float, fuerza_senal: float = 1.0) -
     idx = np.arange(1, n + 1)
     pick = lambda opciones, **kw: rng.choice(opciones, n, **kw)  # noqa: E731
     retirado = rng.random(n) < tasa_retiro
-    retiros = np.where(retirado, 1 + rng.poisson(0.3, n), 0)
+    retiros_historicos = rng.poisson(0.35 + 0.8 * retirado, n)
     sexo = pick(["F", "M"])
     nombres = np.where(sexo == "F", pick(NOMBRES_F), pick(NOMBRES_M))
     segundo = np.where(rng.random(n) < 0.5, np.where(sexo == "F", pick(NOMBRES_F), pick(NOMBRES_M)), "SIN_DATO")
@@ -168,14 +169,18 @@ def _generar(n: int, seed: int, tasa_retiro: float, fuerza_senal: float = 1.0) -
         "#SOLICITUD_CANCELACIONAHORROS": solicitudes_cancelacion,
         "#SOLICITUD_DISMINUCIONCUOTAS": (rng.poisson(0.2 + 1.0 * senal)).astype(str),
         "#CANTIDAD_SERVICIOS": servicios,
-        "#RETIROS": retiros.astype(int),
+        "#RETIROS": retiros_historicos.astype(int),
+        TARGET_SINTETICO: retirado.astype(int),
     }
     columnas = [col for grupo in GRUPOS.values() for col in grupo]
-    return pd.DataFrame(data)[columnas]
+    return pd.DataFrame(data)[[*columnas, TARGET_SINTETICO]]
 
 
-def diccionario() -> pd.DataFrame:
-    return pd.DataFrame([(col, grupo) for grupo, cols in GRUPOS.items() for col in cols], columns=["COLUMNA", "GRUPO"])
+def diccionario(incluir_objetivo_sintetico: bool = False) -> pd.DataFrame:
+    filas = [(col, grupo) for grupo, cols in GRUPOS.items() for col in cols]
+    if incluir_objetivo_sintetico:
+        filas.append((TARGET_SINTETICO, "SOLO_SINTETICO"))
+    return pd.DataFrame(filas, columns=["COLUMNA", "GRUPO"])
 
 
 FALTANTES = {
@@ -207,8 +212,13 @@ class GeneradorAsociados:
         self.reporte_faltantes_: dict[str, int] = {}
 
     def generar(self) -> pd.DataFrame:
+        """44 columnas del extracto más la etiqueta futura creada por el generador."""
         df = _generar(self.n, self.seed, self.tasa_retiro, self.fuerza_senal)
         return self.agregar_faltantes(df) if self.faltantes else df
+
+    def generar_extracto(self) -> pd.DataFrame:
+        """Solo las 44 columnas que existen en el extracto real; no inventa una etiqueta futura."""
+        return self.generar().drop(columns=TARGET_SINTETICO)
 
     def agregar_faltantes(self, df: pd.DataFrame) -> pd.DataFrame:
         rng = np.random.default_rng(self.seed + 1)
@@ -224,14 +234,19 @@ class GeneradorAsociados:
             self.reporte_faltantes_[columna] = int(vacias.sum())
         return df
 
-    def guardar(self, carpeta: Path = CARPETA_EJEMPLO, nombre: str = "asociados_ejemplo") -> tuple[Path, Path]:
-        df = self.generar()
+    def guardar(
+        self,
+        carpeta: Path = CARPETA_EJEMPLO,
+        nombre: str = "asociados_ejemplo",
+        incluir_objetivo_sintetico: bool = False,
+    ) -> tuple[Path, Path]:
+        df = self.generar() if incluir_objetivo_sintetico else self.generar_extracto()
         carpeta.mkdir(parents=True, exist_ok=True)
         parquet, xlsx = carpeta / f"{nombre}.parquet", carpeta / f"{nombre}.xlsx"
         df.to_parquet(parquet, index=False)
         with pd.ExcelWriter(xlsx, engine="openpyxl", datetime_format="YYYY-MM-DD", date_format="YYYY-MM-DD") as writer:
             df.to_excel(writer, sheet_name="DATOS", index=False)
-            diccionario().to_excel(writer, sheet_name="DICCIONARIO", index=False)
+            diccionario(incluir_objetivo_sintetico).to_excel(writer, sheet_name="DICCIONARIO", index=False)
         return parquet, xlsx
 
 

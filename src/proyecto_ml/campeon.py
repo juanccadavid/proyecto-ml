@@ -15,7 +15,7 @@ Los afinados, Optuna y PyCaret son evidencia de experimentos (van a MLflow); el 
 
   Tres zonas: **se retira** (>= umbral_alto), **zona gris** (entre los dos) y **se queda** (< umbral).
 - **KMeans** (sin objetivo) se entrena con los mismos datos: el simulador muestra en qué grupo cae el
-  asociado y la tasa de retiro real de ese grupo.
+  asociado y la tasa del evento futuro sintético de ese grupo.
 
 **Incertidumbre** (para no sobrevender una cifra):
 
@@ -547,7 +547,7 @@ class Campeon:
     metodo: str  # predict_proba o decision_function
     candidatos: dict[str, Candidato]
     agrupador: a.AgrupadorAbandono
-    grupos: dict  # perfil y tasa de retiro real de cada grupo de KMeans
+    grupos: dict  # perfil y tasa del evento futuro sintético de cada grupo de KMeans
     info: dict = field(default_factory=dict)  # datos, filas, horizonte, fecha...
     y: np.ndarray | None = None  # objetivo de los datos de elección (para la figura de umbrales)
     honestos: dict | None = None  # umbrales_honestos del campeón (validación anidada)
@@ -587,7 +587,7 @@ class Campeon:
 
 
 def perfil_grupos(agrupador: a.AgrupadorAbandono, df: pd.DataFrame) -> dict:
-    """Por grupo (riesgo/estable): tamaño, tasa de retiro real (que KMeans nunca vio) y perfil promedio."""
+    """Por grupo: tamaño, tasa del evento futuro sintético (que KMeans nunca vio) y perfil promedio."""
     grupo = pd.Series(agrupador.predict(df), index=df.index).map({1: "riesgo", 0: "estable"})
     evento = a.objetivo_binario(df)
     salida = {}

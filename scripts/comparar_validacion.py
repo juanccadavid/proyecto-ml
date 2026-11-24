@@ -52,7 +52,7 @@ def main() -> None:
         df = a.foto(df, h)
     print(
         f"Datos: {fuente} · foto a {h or 0} meses · {len(df)} asociados, "
-        f"{int(a.objetivo_binario(df).sum())} con al menos un retiro"
+        f"{int(a.objetivo_binario(df).sum())} eventos futuros sintéticos"
     )
     print(aviso_origen())
     print(f"Modelo: {a.TITULOS[args.modelo]} · {args.folds} particiones · TimeSeriesSplit por {v.ORDEN_TEMPORAL}\n")

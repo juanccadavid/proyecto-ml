@@ -6,8 +6,8 @@ funciona en el fondo real (validación circular). Mientras llega el extracto, do
 - **Escenarios** (``evaluar_escenarios``): validar con asociados nuevos con otra tasa de retiro y una señal
   más débil (``GeneradorAsociados(fuerza_senal=...)``). En vez de una cifra perfecta, muestra cuánto se
   degrada el modelo si el fondo real no se parece al generador.
-- **Partición temporal** (``particion_temporal``): con el extracto real, entrenar con una foto vieja y
-  probar con la más reciente. Es la validación honesta; aquí queda lista y probada con datos generados.
+- **Partición temporal sintética** (``particion_temporal``): prueba el mecanismo con la etiqueta creada por el
+  generador. No convierte el único extracto real en una serie temporal ni fabrica seguimiento futuro.
 - **Estrategias de validación cruzada** (``comparar_validaciones``): KFold, StratifiedKFold y TimeSeriesSplit
   sobre los mismos datos, para ver por qué el campeón usa la estratificada.
 """

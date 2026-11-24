@@ -17,14 +17,14 @@ def contrato():
 
 @pytest.fixture
 def lote():
-    return GeneradorAsociados(n=80, seed=9, tasa_retiro=0.1).generar()
+    return GeneradorAsociados(n=80, seed=9, tasa_retiro=0.1).generar_extracto()
 
 
 def test_esquema_definitivo_tiene_44_columnas_en_orden(contrato):
     esperadas = [columna for columnas in GRUPOS.values() for columna in columnas]
     assert len(esperadas) == 44
     assert contrato.nombres == esperadas
-    assert contrato.version == "2.0.0"
+    assert contrato.version == "2.1.0"
 
 
 def test_lote_sintetico_cumple_los_tres_niveles(lote, contrato):
@@ -58,7 +58,7 @@ def test_retiros_admite_conteos_mayores_que_uno(lote, contrato):
     alterado = lote.copy()
     alterado.loc[0, "#RETIROS"] = 3
     assert k.validar(alterado, contrato) == []
-    assert a.objetivo_binario(alterado).iloc[0] == 1
+    assert a.preparar(alterado).loc[0, "#RETIROS"] == 3
 
 
 @pytest.mark.parametrize("columna", ["FECHAINGRESO", "FECHAINGRESOLABORA"])

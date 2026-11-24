@@ -1,7 +1,7 @@
 // Generado desde contratos/asociados.yaml. No editar a mano: make contrato-web
 window.CONTRATO = {
   "nombre": "asociados",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "tabla_db": "asociados",
   "grupos": {
     "SOCIODEMOGRAFICO": [
@@ -307,7 +307,7 @@ window.CONTRATO = {
         "tipo": "entero",
         "requerido": true,
         "min": 0,
-        "descripcion": "Conteo de retiros; el modelo deriva el evento al menos uno",
+        "descripcion": "Conteo histórico acumulado durante la permanencia; es predictor, no etiqueta futura",
         "db": "num_retiros"
       }
     ]

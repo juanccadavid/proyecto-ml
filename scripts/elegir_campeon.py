@@ -10,9 +10,9 @@ Incertidumbre: PR-AUC ± desviación entre particiones e intervalo bootstrap; el
 partición a partición (si el intervalo de la diferencia toca el 0, la elección no es concluyente); y la regla
 de umbrales medida en validación anidada (sin el optimismo de elegir y medir sobre lo mismo). Después:
 
-- asociados nuevos (misma tasa de retiro) y escenarios menos favorables (tasa 10 %, señal al 50 % y 25 %):
+- asociados nuevos (misma tasa del evento sintético) y escenarios menos favorables (10 %, señal al 50 % y 25 %):
   cuánto se degrada cada candidato con su umbral, en vez de una cifra perfecta;
-- KMeans con los mismos datos: perfil y tasa de retiro real de cada grupo;
+- KMeans con los mismos datos: perfil y tasa del evento futuro sintético de cada grupo;
 - curva ROC y matriz de confusión del campeón con sus umbrales (fuera de partición);
 - SHAP: qué variables mueven el puntaje de cada asociado nuevo (importancia global y la explicación del de
   mayor riesgo).
@@ -22,19 +22,17 @@ Guarda en models/ solo el campeón (abandono_campeon.joblib, abandono_kmeans.job
 campeón en el registro de modelos con el alias ``campeon`` (models:/abandono@campeon).
 
 Datos: --datos, o data/processed/asociados_desarrollo.parquet (make datos-desarrollo), o los mismos 5.000
-generados en memoria (semilla 7, 10 % de retiro).
+generados en memoria (semilla 7, 10 % de evento futuro sintético).
 
 Origen de los datos (``ORIGEN_DATOS`` del .env o --origen): con **sintetico** (por defecto) los resultados son
-EXPERIMENTALES y se validan además con asociados nuevos y escenarios del generador. Con **real_anonimizado** hay
-que dar --datos; el archivo debe cumplir el contrato, los nuevos y los escenarios (sintéticos) se omiten para no
-mezclar orígenes, y MLflow usa el experimento ``abandono_real`` y el modelo ``abandono_real``.
+EXPERIMENTALES. Con **real_anonimizado**, el archivo se valida pero el entrenamiento se detiene: ``#RETIROS`` es
+historia acumulada y no existe la etiqueta futura de tres meses.
 
 Uso:
     uv run python scripts/elegir_campeon.py                    # foto a 3 meses
     uv run python scripts/elegir_campeon.py --horizonte 12 --precision-min 0.9
     uv run python scripts/elegir_campeon.py --optuna 30         # + Random Forest y HistGB afinados
-    uv run python scripts/elegir_campeon.py --origen real_anonimizado --datos data/raw/extracto_anon.parquet
-    uv run python scripts/elegir_campeon.py --datos data/raw/supabase_asociados.parquet --sin-mlflow
+    uv run python scripts/elegir_campeon.py --datos data/processed/asociados_desarrollo.parquet --sin-mlflow
 """
 
 from __future__ import annotations
@@ -106,7 +104,7 @@ def main() -> None:
     t0 = a.fecha_observacion(h).date() if h else a.FECHA_CORTE.date()
     print(
         f"Datos ({origen}): {fuente} · foto a {h or 0} meses (t0 = {t0}) · {len(df)} asociados, "
-        f"{y_evento.mean():.1%} con al menos un retiro"
+        f"{y_evento.mean():.1%} de evento futuro sintético"
     )
     print(f"Validación cruzada: {args.folds} particiones x {args.repeticiones} repeticiones · criterio {c.CRITERIO}")
     if experimental:
@@ -202,7 +200,10 @@ def main() -> None:
             n: compute_metrics(yn, a.puntaje(m, Xn), threshold=umbrales[n], metodo=a.metodo_puntaje(m))
             for n, m in entrenados.items()
         }
-        print(f"\n=== Asociados nuevos ({len(nuevos)}, {yn.mean():.1%} retiro), cada uno con su umbral ===")
+        print(
+            f"\n=== Asociados nuevos ({len(nuevos)}, {yn.mean():.1%} de evento futuro sintético), "
+            "cada uno con su umbral ==="
+        )
         print(pd.DataFrame(en_nuevos).T.round(3).to_string())
 
         zonas = pd.Series(campeon.zona(Xn), index=nuevos.index, name="zona")

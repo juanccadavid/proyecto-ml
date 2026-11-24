@@ -40,9 +40,9 @@ def datos_eleccion(ruta: Path | None = None, origen: str | None = None) -> tuple
     - **real_anonimizado**: solo ``ruta`` (el extracto anonimizado). Nunca cae en los sintéticos: sin ``ruta``
       falla, para no etiquetar como reales unos datos generados.
 
-    Todo archivo debe cumplir el contrato (``contrato.validar``); si no, ``DatosInvalidos``. Con datos reales el
-    mensaje no lleva valores ni filas de ejemplo (``contrato.sin_valores``). Los generados en memoria no se
-    validan aquí: el generador cumple el contrato por construcción (lo prueba tests/data).
+    Las 44 columnas del extracto deben cumplir el contrato. Los sintéticos llevan además
+    ``EVENTO_RETIRO_3M_SINTETICO``. Un extracto real no tiene esa etiqueta y se rechaza para entrenamiento
+    supervisado: ``#RETIROS`` es historia acumulada, no el resultado de los próximos tres meses.
     """
     from proyecto_ml import contrato
     from proyecto_ml.config import ORIGEN_REAL, PROCESSED_DIR, origen_datos
@@ -60,10 +60,21 @@ def datos_eleccion(ruta: Path | None = None, origen: str | None = None) -> tuple
         return contrato.limpiar_extracto(datos_desarrollo()), "datos_desarrollo() en memoria"
     archivo = ruta or desarrollo
     df = a.cargar(archivo)
-    # El contrato v2 ya describe el archivo anonimizado definitivo; en ambos orígenes se exige el mismo esquema.
+    # El contrato describe únicamente las 44 columnas reales. La etiqueta 3M es un artefacto del generador.
     exigido = contrato.para_ml() if origen == ORIGEN_REAL else contrato.cargar()
-    errores = contrato.validar(df, exigido)
-    for aviso in contrato.advertencias(df, exigido):  # heurísticas sin regla de negocio: se avisa, no se rechaza
+    base = df.drop(columns=[a.TARGET], errors="ignore")
+    errores = contrato.validar(base, exigido)
+    extras = set(df) - set(exigido.nombres) - ({a.TARGET} if origen != ORIGEN_REAL else set())
+    if extras:
+        errores.append(f"columnas no previstas por el contrato: {sorted(extras)}")
+    if origen == ORIGEN_REAL:
+        errores.append(
+            f"falta una etiqueta futura válida: #RETIROS es acumulado durante la permanencia y no puede usarse "
+            f"como {a.TARGET}"
+        )
+    elif a.TARGET not in df:
+        errores.append(f"falta la etiqueta sintética {a.TARGET}")
+    for aviso in contrato.advertencias(base, exigido):  # heurísticas sin regla de negocio: se avisa, no se rechaza
         warnings.warn(aviso, contrato.AdvertenciaContrato, stacklevel=2)
     if origen == ORIGEN_REAL:  # fechas después del corte: FECHA_CORTE no es la del extracto y la foto queda corrida
         for columna in ("FECHAULTACTUALIZACION", "FECHAINGRESO", "FECHAINGRESOLABORA"):
@@ -91,11 +102,18 @@ def datos_exploracion(ruta: Path, script: str, limpiar: bool = True) -> pd.DataF
     if origen_datos() == ORIGEN_REAL:
         raise DatosInvalidos(
             f"{script} es exploratorio: compara contra asociados generados y solo tiene sentido con "
-            "ORIGEN_DATOS=sintetico. Con datos reales usa make campeon DATA=<extracto anonimizado>."
+            "ORIGEN_DATOS=sintetico. El extracto real no tiene una etiqueta futura para entrenamiento."
         )
     df = a.cargar(ruta, limpiar)
     # Con --sin-limpieza el script entrena con el archivo tal cual, pero el contrato se mide sobre su versión
     # limpia: la limpieza no cambia el significado (espacios, 'N/A', repetidos), así que no rechaza de más.
-    if errores := contrato.validar(df if limpiar else contrato.limpiar_extracto(df)):
+    medido = df if limpiar else contrato.limpiar_extracto(df)
+    base = medido.drop(columns=[a.TARGET], errors="ignore")
+    errores = contrato.validar(base)
+    if a.TARGET not in medido:
+        errores.append(f"falta la etiqueta sintética {a.TARGET}")
+    if extras := set(medido) - set(contrato.cargar().nombres) - {a.TARGET}:
+        errores.append(f"columnas no previstas por el contrato: {sorted(extras)}")
+    if errores:
         raise incumplimientos(ruta, errores, real=False)
     return df

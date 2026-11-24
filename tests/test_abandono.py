@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from proyecto_ml import abandono as a
 from proyecto_ml.generador import GeneradorAsociados
@@ -17,6 +18,13 @@ def test_preparar_solo_usa_predictores_permitidos():
     assert list(X.columns) == a.NUMERICAS + a.CATEGORICAS
     assert not set(X) & set(a.IDENTIFICADORES + a.FUGA)
     assert {"EDAD", "ANTIGUEDAD_F_MESES", "ANTIGUEDAD_LA_MESES"} <= set(X)
+    assert "#RETIROS" in X
+
+
+def test_extracto_real_no_fabrica_la_etiqueta_desde_retiros():
+    extracto = GeneradorAsociados(n=80, seed=4).generar_extracto()
+    with pytest.raises(ValueError, match="conteo histórico"):
+        a.separar(extracto)
 
 
 def test_numericas_y_categoricas_quedan_tipadas():

@@ -62,7 +62,7 @@ class Contrato:
     nombre: str
     version: str
     tabla_db: str
-    objetivo: str
+    objetivo: str | None
     columnas: list[Columna]
     reglas: list[dict] = field(default_factory=list)
     distribucion: list[dict] = field(default_factory=list)
@@ -164,10 +164,6 @@ def _texto(*cols: pd.Series) -> pd.Series:
 # Nivel 2: (medida del lote, condición sobre la medida). Los parámetros p vienen del YAML.
 DISTRIBUCION: dict[str, tuple[Callable[[pd.DataFrame, dict], float], Callable[[float, dict], bool]]] = {
     "volumen_minimo": (lambda d, p: len(d), lambda v, p: v >= p["min_filas"]),
-    "tasa_retiro_plausible": (
-        lambda d, p: (pd.to_numeric(d["#RETIROS"], errors="coerce") > 0).mean(),
-        lambda v, p: p["min"] <= v <= p["max"],
-    ),
     "salario_en_pesos": (lambda d, p: d["SALARIO"].median(), lambda v, p: p["min"] <= v <= p["max"]),
     "salarios_atipicos_marginales": (
         lambda d, p: (d["SALARIO"] > p["factor"] * d["SALARIO"].median()).mean(),

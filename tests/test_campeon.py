@@ -89,3 +89,10 @@ def test_datos_eleccion_con_ruta(tmp_path):
     datos, fuente = c.datos_eleccion(ruta)
     assert fuente == "asociados.parquet" and len(datos) == 60
     assert isinstance(datos, pd.DataFrame)
+
+
+def test_datos_reales_sin_etiqueta_futura_no_entrenan(tmp_path):
+    ruta = tmp_path / "extracto.parquet"
+    GeneradorAsociados(n=60, seed=4).generar_extracto().to_parquet(ruta, index=False)
+    with pytest.raises(c.DatosInvalidos, match="conteo histórico|acumulado durante la permanencia"):
+        c.datos_eleccion(ruta, origen="real_anonimizado")
