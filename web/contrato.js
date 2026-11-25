@@ -1,7 +1,7 @@
 // Generado desde contratos/asociados.yaml. No editar a mano: make contrato-web
 window.CONTRATO = {
   "nombre": "asociados",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "tabla_db": "asociados",
   "grupos": {
     "SOCIODEMOGRAFICO": [
@@ -99,6 +99,10 @@ window.CONTRATO = {
         "nombre": "SEXO",
         "tipo": "texto",
         "requerido": true,
+        "valores": [
+          "F",
+          "M"
+        ],
         "db": "sexo"
       },
       {
@@ -160,7 +164,15 @@ window.CONTRATO = {
       {
         "nombre": "ESTRATO",
         "tipo": "texto",
-        "requerido": true,
+        "valores": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6"
+        ],
+        "descripcion": "Opcional; el extracto real trae vacíos",
         "db": "estrato"
       },
       {
@@ -175,6 +187,15 @@ window.CONTRATO = {
         "nombre": "ESTUDIOS",
         "tipo": "texto",
         "requerido": true,
+        "valores": [
+          "O",
+          "U",
+          "G",
+          "S",
+          "E",
+          "P",
+          "T"
+        ],
         "db": "estudios"
       },
       {
@@ -187,6 +208,16 @@ window.CONTRATO = {
         "nombre": "ESTADOCIVIL",
         "tipo": "texto",
         "requerido": true,
+        "valores": [
+          "C",
+          "T",
+          "V",
+          "S",
+          "D",
+          "U",
+          "F",
+          "P"
+        ],
         "db": "estadocivil"
       },
       {
@@ -229,7 +260,6 @@ window.CONTRATO = {
         "nombre": "FECHAINGRESOLABORA",
         "tipo": "fecha",
         "requerido": true,
-        "min": "1950-01-01",
         "db": "fechaingresolabora"
       },
       {
@@ -242,6 +272,13 @@ window.CONTRATO = {
         "nombre": "TIPOCONTRATO",
         "tipo": "texto",
         "requerido": true,
+        "valores": [
+          "2",
+          "1",
+          "15",
+          "O",
+          "0"
+        ],
         "db": "tipocontrato"
       },
       {
@@ -291,6 +328,10 @@ window.CONTRATO = {
         "nombre": "#SOLICITUD_DISMINUCIONCUOTAS",
         "tipo": "texto",
         "requerido": true,
+        "valores": [
+          "SI",
+          "NO"
+        ],
         "db": "num_solicitud_disminucioncuotas"
       },
       {

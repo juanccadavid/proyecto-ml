@@ -65,7 +65,7 @@ def es_experimental(origen: str | None = None) -> bool:
     return origen_datos(origen) == ORIGEN_SINTETICO
 
 
-FECHA_CORTE_DEFECTO = "2026-10-31"  # la de los datos sintéticos
+FECHA_CORTE_DEFECTO = "2026-03-31"  # la del extracto real (DataAnonimizada.xlsx); los sintéticos usan la misma
 
 
 def fecha_corte() -> str:

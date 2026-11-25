@@ -1,4 +1,4 @@
--- Generado desde contratos/asociados.yaml v2.1.0. No editar a mano: make contrato-sql
+-- Generado desde contratos/asociados.yaml v2.2.0. No editar a mano: make contrato-sql
 -- Pegar en Supabase > SQL Editor > Run. Para aplicar un contrato nuevo en desarrollo: drop table public.asociados;
 
 create table if not exists public.asociados (
@@ -18,7 +18,7 @@ create table if not exists public.asociados (
   coddepartamentoresidencia bigint not null check (coddepartamentoresidencia >= 0),
   codciudadresidencia bigint not null check (codciudadresidencia >= 0),
   relacion text not null check (relacion <> ''),
-  sexo text not null check (sexo <> ''),
+  sexo text not null check (sexo <> '' and sexo in ('F', 'M')),
   email text check (email <> ''),
   fechanacimiento date not null check (fechanacimiento >= date '1920-01-01'),
   edad bigint not null check (edad >= 0 and edad <= 120),
@@ -27,33 +27,32 @@ create table if not exists public.asociados (
   ciudadnace bigint not null check (ciudadnace >= 0),
   fechaultactualizacion date not null check (fechaultactualizacion >= date '1990-01-01'),
   estado text not null check (estado <> ''),
-  estrato text not null check (estrato <> ''),
+  estrato text check (estrato <> '' and estrato in ('1', '2', '3', '4', '5', '6')),
   celular bigint not null check (celular >= 0),
-  estudios text not null check (estudios <> ''),
+  estudios text not null check (estudios <> '' and estudios in ('O', 'U', 'G', 'S', 'E', 'P', 'T')),
   codprofesion text not null check (codprofesion <> ''),
-  estadocivil text not null check (estadocivil <> ''),
+  estadocivil text not null check (estadocivil <> '' and estadocivil in ('C', 'T', 'V', 'S', 'D', 'U', 'F', 'P')),
   fechaingreso date not null check (fechaingreso >= date '1950-01-01'),
   antiguedad_f_meses bigint not null check (antiguedad_f_meses >= 0),
   codempresa text not null check (codempresa <> ''),
   coddependencia text not null check (coddependencia <> ''),
   salario bigint not null check (salario >= 0),
-  fechaingresolabora date not null check (fechaingresolabora >= date '1950-01-01'),
+  fechaingresolabora date not null,
   antiguedad_la_meses bigint check (antiguedad_la_meses >= 0),
-  tipocontrato text not null check (tipocontrato <> ''),
+  tipocontrato text not null check (tipocontrato <> '' and tipocontrato in ('2', '1', '15', 'O', '0')),
   cargo text not null check (cargo <> ''),
   num_solicitudcreditos_ult3mes bigint not null check (num_solicitudcreditos_ult3mes >= 0),
   num_cantidad_ahorrosalavista bigint not null check (num_cantidad_ahorrosalavista >= 0),
   num_cantidad_ahorroscontractuales bigint not null check (num_cantidad_ahorroscontractuales >= 0),
   num_solicitud_retiroparcialahorros bigint not null check (num_solicitud_retiroparcialahorros >= 0),
   num_solicitud_cancelacionahorros bigint not null check (num_solicitud_cancelacionahorros >= 0),
-  num_solicitud_disminucioncuotas text not null check (num_solicitud_disminucioncuotas <> ''),
+  num_solicitud_disminucioncuotas text not null check (num_solicitud_disminucioncuotas <> '' and num_solicitud_disminucioncuotas in ('SI', 'NO')),
   num_cantidad_servicios bigint not null check (num_cantidad_servicios >= 0),
   num_retiros bigint not null check (num_retiros >= 0),
-  constraint ingreso_fondo_posterior_nacimiento check (fechaingreso > fechanacimiento),
-  constraint ingreso_laboral_posterior_nacimiento check (fechaingresolabora > fechanacimiento)
+  constraint ingreso_fondo_posterior_nacimiento check (fechaingreso > fechanacimiento)
 );
 
-comment on table public.asociados is 'Contrato asociados v2.1.0';
+comment on table public.asociados is 'Contrato asociados v2.2.0';
 comment on column public.asociados.tipoidentificacion is 'TIPOIDENTIFICACION';
 comment on column public.asociados.nroidentificacion is 'NROIDENTIFICACION — Identificador anonimizado; no entra al modelo';
 comment on column public.asociados.codpaiscedula is 'CODPAISCEDULA';
@@ -76,7 +75,7 @@ comment on column public.asociados.dptonace is 'DPTONACE';
 comment on column public.asociados.ciudadnace is 'CIUDADNACE';
 comment on column public.asociados.fechaultactualizacion is 'FECHAULTACTUALIZACION';
 comment on column public.asociados.estado is 'ESTADO — No entra al modelo por riesgo de fuga';
-comment on column public.asociados.estrato is 'ESTRATO';
+comment on column public.asociados.estrato is 'ESTRATO — Opcional; el extracto real trae vacíos';
 comment on column public.asociados.celular is 'CELULAR — Valor anonimizado; no entra al modelo';
 comment on column public.asociados.estudios is 'ESTUDIOS';
 comment on column public.asociados.codprofesion is 'CODPROFESION';

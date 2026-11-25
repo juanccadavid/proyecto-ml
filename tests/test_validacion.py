@@ -5,7 +5,7 @@ import pytest
 
 from proyecto_ml import abandono as a
 from proyecto_ml import validacion as v
-from proyecto_ml.generador import DESARROLLO, GeneradorAsociados, datos_desarrollo
+from proyecto_ml.generador import DESARROLLO, PRODUCTOS, GeneradorAsociados, datos_desarrollo
 
 
 def test_fuerza_uno_no_cambia_nada():
@@ -15,14 +15,17 @@ def test_fuerza_uno_no_cambia_nada():
 
 
 def test_fuerza_escala_la_diferencia_entre_retirados_y_activos():
+    columna = "#SOLICITUD_RETIROPARCIALAHORROS"
+    base, senal, extra = PRODUCTOS[columna]  # P(tener) en activos y en "retirados"; 1 + Poisson(extra) si tiene
     diferencia = {}
     for f in (1.0, 0.5, 0.0):
-        df = GeneradorAsociados(n=4000, seed=5, fuerza_senal=f).generar()
-        medias = df.groupby(a.objetivo_binario(df))["#SOLICITUD_RETIROPARCIALAHORROS"].mean()
+        df = GeneradorAsociados(n=8000, seed=5, fuerza_senal=f).generar()
+        medias = df.groupby(a.objetivo_binario(df))[columna].mean()
         diferencia[f] = medias[1] - medias[0]
-    assert diferencia[1.0] == pytest.approx(1.3, abs=0.15)  # 1.5 - 0.2 en el generador
-    assert diferencia[0.5] == pytest.approx(0.65, abs=0.15)
-    assert abs(diferencia[0.0]) < 0.1  # indistinguibles
+    esperada = (senal - base) * (1 + extra)  # con f = 1; escala con f
+    assert diferencia[1.0] == pytest.approx(esperada, abs=0.12)
+    assert diferencia[0.5] == pytest.approx(esperada / 2, abs=0.1)
+    assert abs(diferencia[0.0]) < 0.05  # indistinguibles
 
 
 def test_fuerza_negativa_no_se_acepta():
@@ -64,8 +67,9 @@ def test_escenarios_usan_el_umbral_dado(logistica):
 def test_particion_temporal_entrena_con_la_foto_vieja():
     df = GeneradorAsociados(n=1500, seed=2).generar()
     entrenamiento, prueba = v.particion_temporal(df, horizonte_meses=3, meses_prueba=3)
-    assert (entrenamiento[a.FECHA_OBSERVACION] == pd.Timestamp("2026-04-30")).all()
-    assert (prueba[a.FECHA_OBSERVACION] == pd.Timestamp("2026-07-31")).all()
+    # Corte 2026-03-31 (el del extracto real): la foto de prueba es 3 meses antes y la de entrenamiento, 3 más.
+    assert (entrenamiento[a.FECHA_OBSERVACION] == pd.Timestamp("2025-09-30")).all()
+    assert (prueba[a.FECHA_OBSERVACION] == pd.Timestamp("2025-12-31")).all()
     assert len(entrenamiento) == len(prueba) == len(df)
     assert entrenamiento[a.TARGET].equals(prueba[a.TARGET])
     with pytest.raises(ValueError):

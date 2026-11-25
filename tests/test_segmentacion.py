@@ -21,6 +21,13 @@ def segmentacion(datos):
     return s.Segmentacion().fit(datos)
 
 
+def test_eps_ignora_los_duplicados_exactos():
+    # En el extracto real casi todos los conteos valen 0: muchos asociados idénticos, distancia 0 al vecino.
+    Z = np.vstack([np.zeros((500, 2)), np.random.default_rng(0).normal(3, 1, (50, 2))])
+    eps = s.eps_por_vecinos(Z, min_samples=4)
+    assert eps > 0
+
+
 def test_kmeans_elige_k_por_silueta_y_numera_por_senal(datos, segmentacion):
     assert segmentacion.k_ == int(segmentacion.tabla_k_["silueta"].idxmax())
     assert list(segmentacion.tabla_k_.index) == list(s.RANGO_K)

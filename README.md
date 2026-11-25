@@ -142,7 +142,10 @@ la migración al esquema definitivo, `make campeon` vuelve a calcularlas con 5.0
 solo verifican el funcionamiento del pipeline; no describen al fondo ni sustituyen una evaluación temporal real.
 
 Solo habrá un corte real y `#RETIROS` cuenta retiros acumulados durante la permanencia. No es la etiqueta de los
-próximos tres meses; por ello el proyecto bloquea el entrenamiento supervisado con ese extracto.
+próximos tres meses; por ello el proyecto bloquea el entrenamiento supervisado del abandono con ese extracto. Lo
+que no necesita etiqueta sí corre con él (`make real`): la segmentación, la regresión del salario y la predicción
+con el campeón entrenado con sintéticos, que hablan los mismos campos y códigos que el extracto. Ver
+[docs/datos_reales.md](docs/datos_reales.md).
 
 ## Arquitectura
 

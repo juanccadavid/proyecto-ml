@@ -47,7 +47,9 @@ def test_tabla_comparativa_como_pycaret():
     assert tabla.loc["random_forest", "Model"] == "RandomForestClassifier"
     assert tabla["Recall"].is_monotonic_decreasing  # ordenada por la columna pedida
     assert tabla[COLUMNAS_COMPARATIVA[:-1]].le(1).all().all()  # métricas en [-1, 1]
-    assert tabla.loc["ridge", "AUC"] > 0.8  # Ridge sin predict_proba: AUC con decision_function (no 0)
+    # Ridge sin predict_proba: AUC con decision_function (no 0). Con 300 sintéticos de forma real (casi todos los
+    # conteos en 0) ronda 0,75: el umbral solo comprueba que aprende.
+    assert tabla.loc["ridge", "AUC"] > 0.65
     assert (tabla[TIEMPO] > 0).all()
 
     rapida = tabla_comparativa(modelos, a.preparar(df), a.objetivo_binario(df), folds=3, ordenar=TIEMPO)

@@ -70,7 +70,7 @@ def test_huella_cambia_con_una_sola_celda():
     texto = df.copy()
     texto.iloc[0, texto.columns.get_loc("CARGO")] = None  # un vacío en una categórica
     assert r.huella(texto) != huella
-    assert r.huella(df.astype({"ESTRATO": "float64"})) != huella  # mismo valor, otro tipo
+    assert r.huella(df.astype({"CODDEPENDENCIA": "float64"})) != huella  # mismo valor, otro tipo (códigos de dígitos)
     assert r.huella(df.iloc[::-1]) != huella  # el orden de las filas cuenta
     assert r.huella(df.astype({"CARGO": object})) == r.huella(df.astype({"CARGO": "string"}))
 

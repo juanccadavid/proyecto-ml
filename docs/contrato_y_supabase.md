@@ -10,8 +10,15 @@
 | 2. Distribución | `distribucion` → check sobre el lote | problemas sistemáticos | `salario_en_pesos`, `volumen_minimo` | No: la BD ve fila a fila |
 | 3. Entre columnas | `reglas` → check con varias columnas | incoherencias | ingresos posteriores al nacimiento | Sí (CHECK) |
 
-Cada check de nivel 2 tiene `severidad`: **`error`** (por defecto, bloquea) o **`advertencia`** (se informa con
-`contrato.advertencias` y no bloquea). No se valida una tasa de retiro futura: `#RETIROS` es historia acumulada y
+Cada check de nivel 2 y cada regla de nivel 3 tiene `severidad`: **`error`** (por defecto, bloquea) o
+**`advertencia`** (se informa con `contrato.advertencias`, solo con la cantidad de filas, y no bloquea; una regla
+de advertencia no es CHECK en la BD). Hoy son advertencias las dos reglas de `FECHAINGRESOLABORA`, que el
+extracto real trae con algunos errores de digitación y que no entra al modelo.
+
+Desde la v2.2.0 el contrato habla los campos del extracto real ([datos_reales.md](datos_reales.md)): `alias` para
+los nombres con que llegan algunas columnas (`EDAD_AÑOS` → `EDAD`) y `valores` con los códigos del
+[diccionario](diccionario_datos.md). Una base de Supabase ya creada se actualiza con
+[`supabase/migraciones/004_codigos_extracto_real.sql`](../supabase/migraciones/004_codigos_extracto_real.sql). No se valida una tasa de retiro futura: `#RETIROS` es historia acumulada y
 el extracto real no contiene la etiqueta de los próximos tres meses.
 
 De ahí salen la validación en Python, la tabla de Supabase y el formulario web:

@@ -2,9 +2,13 @@
 # Única fuente de verdad para Python, Supabase y el formulario web.
 # El archivo entregado por el custodio ya está anonimizado; los identificadores y
 # campos personales se conservan para validar el esquema, pero nunca son predictores.
+#
+# alias: nombres con que la columna llega en el extracto real del fondo. Al leer un archivo se
+#   renombran al nombre del contrato, que es el que usan Python, Supabase y el formulario (ASCII, sin tildes).
+# valores: códigos válidos, los del diccionario de datos (docs/diccionario_datos.md).
 
 nombre: asociados
-version: 2.1.0
+version: 2.2.0
 tabla_db: asociados
 objetivo: null
 
@@ -23,29 +27,29 @@ grupos:
     - {nombre: CODDEPARTAMENTORESIDENCIA, tipo: entero, requerido: true, min: 0}
     - {nombre: CODCIUDADRESIDENCIA, tipo: entero, requerido: true, min: 0}
     - {nombre: RELACION, tipo: texto, requerido: true}
-    - {nombre: SEXO, tipo: texto, requerido: true}
+    - {nombre: SEXO, tipo: texto, requerido: true, valores: [F, M]}
     - {nombre: EMAIL, tipo: texto, descripcion: Valor anonimizado; no entra al modelo}
     - {nombre: FECHANACIMIENTO, tipo: fecha, requerido: true, min: "1920-01-01"}
-    - {nombre: EDAD, tipo: entero, requerido: true, min: 0, max: 120}
+    - {nombre: EDAD, tipo: entero, requerido: true, min: 0, max: 120, alias: [EDAD_AÑOS]}
     - {nombre: PAISNACE, tipo: entero, requerido: true, min: 0}
     - {nombre: DPTONACE, tipo: entero, requerido: true, min: 0}
     - {nombre: CIUDADNACE, tipo: entero, requerido: true, min: 0}
     - {nombre: FECHAULTACTUALIZACION, tipo: fecha, requerido: true, min: "1990-01-01"}
     - {nombre: ESTADO, tipo: texto, requerido: true, descripcion: No entra al modelo por riesgo de fuga}
-    - {nombre: ESTRATO, tipo: texto, requerido: true}
+    - {nombre: ESTRATO, tipo: texto, valores: ["1", "2", "3", "4", "5", "6"], descripcion: Opcional; el extracto real trae vacíos}
     - {nombre: CELULAR, tipo: entero, requerido: true, min: 0, descripcion: Valor anonimizado; no entra al modelo}
-    - {nombre: ESTUDIOS, tipo: texto, requerido: true}
+    - {nombre: ESTUDIOS, tipo: texto, requerido: true, valores: [O, U, G, S, E, P, T]}
     - {nombre: CODPROFESION, tipo: texto, requerido: true}
-    - {nombre: ESTADOCIVIL, tipo: texto, requerido: true}
+    - {nombre: ESTADOCIVIL, tipo: texto, requerido: true, valores: [C, T, V, S, D, U, F, P]}
     - {nombre: FECHAINGRESO, tipo: fecha, requerido: true, min: "1950-01-01"}
-    - {nombre: ANTIGUEDAD_F_MESES, tipo: entero, requerido: true, min: 0}
+    - {nombre: ANTIGUEDAD_F_MESES, tipo: entero, requerido: true, min: 0, alias: [ANTIGÜEDAD_F_MESES]}
   LABORAL:
     - {nombre: CODEMPRESA, tipo: texto, requerido: true}
     - {nombre: CODDEPENDENCIA, tipo: texto, requerido: true}
     - {nombre: SALARIO, tipo: entero, requerido: true, min: 0, descripcion: Pesos colombianos mensuales}
-    - {nombre: FECHAINGRESOLABORA, tipo: fecha, requerido: true, min: "1950-01-01"}
-    - {nombre: ANTIGUEDAD_LA_MESES, tipo: entero, min: 0}
-    - {nombre: TIPOCONTRATO, tipo: texto, requerido: true}
+    - {nombre: FECHAINGRESOLABORA, tipo: fecha, requerido: true, alias: [FECHAINGRESALABORA]}
+    - {nombre: ANTIGUEDAD_LA_MESES, tipo: entero, min: 0, alias: [ANTIGÜEDAD_LA_MESES]}
+    - {nombre: TIPOCONTRATO, tipo: texto, requerido: true, valores: ["2", "1", "15", O, "0"]}
     - {nombre: CARGO, tipo: texto, requerido: true}
   PRODUCTOS:
     - {nombre: "#SOLICITUDCREDITOS_ULT3MES", tipo: entero, requerido: true, min: 0}
@@ -53,7 +57,7 @@ grupos:
     - {nombre: "#CANTIDAD_AHORROSCONTRACTUALES", tipo: entero, requerido: true, min: 0}
     - {nombre: "#SOLICITUD_RETIROPARCIALAHORROS", tipo: entero, requerido: true, min: 0}
     - {nombre: "#SOLICITUD_CANCELACIONAHORROS", tipo: entero, requerido: true, min: 0}
-    - {nombre: "#SOLICITUD_DISMINUCIONCUOTAS", tipo: texto, requerido: true}
+    - {nombre: "#SOLICITUD_DISMINUCIONCUOTAS", tipo: texto, requerido: true, valores: [SI, "NO"]}
     - {nombre: "#CANTIDAD_SERVICIOS", tipo: entero, requerido: true, min: 0}
   RETIRO:
     - {nombre: "#RETIROS", tipo: entero, requerido: true, min: 0, descripcion: "Conteo histórico acumulado durante la permanencia; es predictor, no etiqueta futura"}
@@ -79,6 +83,14 @@ reglas:
   - id: ingreso_fondo_posterior_nacimiento
     descripcion: FECHAINGRESO es posterior al nacimiento
     sql: fechaingreso > fechanacimiento
+  # La fecha de ingreso laboral la reporta la empresa y el extracto real trae algunas imposibles (antes de 1950 o
+  # del nacimiento). Se informan como advertencia, sin bloquear: no entran al modelo, que usa ANTIGUEDAD_LA_MESES
+  # y trata como vacía una antigüedad laboral imposible (abandono.preparar).
   - id: ingreso_laboral_posterior_nacimiento
     descripcion: FECHAINGRESOLABORA es posterior al nacimiento
+    severidad: advertencia
     sql: fechaingresolabora > fechanacimiento
+  - id: ingreso_laboral_desde_1950
+    descripcion: FECHAINGRESOLABORA es de 1950 en adelante
+    severidad: advertencia
+    sql: fechaingresolabora >= date '1950-01-01'

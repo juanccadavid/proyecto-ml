@@ -45,7 +45,7 @@ ETIQUETAS = {
     "#CANTIDAD_SERVICIOS": "Servicios que usa",
     "SEXO": "Sexo",
     "TIPOCONTRATO": "Tipo de contrato",
-    "CARGO": "Cargo",
+    "CODPROFESION": "Profesión",
     "CODCIUDADRESIDENCIA": "Ciudad de residencia",
     "CODEMPRESA": "Empresa",
     "CODDEPENDENCIA": "Dependencia",
@@ -57,7 +57,7 @@ CONTINUAS = {
     "SALARIO": 100_000.0,
 }
 PERFIL = ["SALARIO", "ESTRATO", "SEXO", "TIPOCONTRATO", "CODEMPRESA", "CODDEPENDENCIA"]
-UBICACION = ["CARGO", "CODCIUDADRESIDENCIA"]
+UBICACION = ["CODPROFESION", "CODCIUDADRESIDENCIA"]  # CARGO no entra al modelo: repite CODPROFESION
 ZONA = {  # emoji, tipo de mensaje, texto
     "se retira": ("😟", "error", "Se retira: el modelo está seguro. ¡Contáctalo pronto!"),
     "zona gris": ("😐", "warning", "Zona gris: hay señales de retiro, pero el modelo no está seguro. Haz seguimiento."),

@@ -8,6 +8,10 @@ Ojo con los datos generados: el generador saca el salario al azar (lognormal), s
 variables, así que ningún modelo debería ganarle al promedio (R² cerca de 0). Eso es lo correcto: un R² alto
 ahí sería fuga. Con el extracto real (salario según cargo, antigüedad, estrato...) el R² debería subir.
 
+Con ``ORIGEN_DATOS=real_anonimizado`` entrena con el extracto real (no necesita la etiqueta de retiro; make
+regresion-real). Los salarios imposibles (relleno 987.654, miles de millones) no se aprenden: quedan entre los
+que el modelo estima, como los que no reportan salario.
+
 Guarda reports/figures/regresion_salario.html y reports/metrics/regresion_<fecha>.json; en MLflow
 (experimento ``salario``), una corrida "regresion_salario" con una hija por modelo.
 
@@ -45,9 +49,9 @@ def main() -> None:
     parser.add_argument("--sin-mlflow", action="store_true", help="No registrar en MLflow")
     args = parser.parse_args()
 
-    df, fuente = c.datos_eleccion(args.datos)
+    df, fuente = c.datos_eleccion(args.datos, supervisado=False)  # no usa la etiqueta: sirve con datos reales
     X, y = g.separar(df)
-    print(f"Datos: {fuente} · {len(X)} asociados con salario (de {len(df)}) · objetivo {g.OBJETIVO}")
+    print(f"Datos: {fuente} · {len(X)} asociados con salario plausible (de {len(df)}) · objetivo {g.OBJETIVO}")
     print(aviso_origen())
     print(f"Salario: mediana ${y.median():,.0f} · promedio ${y.mean():,.0f} · desviación ${y.std():,.0f}\n")
 
