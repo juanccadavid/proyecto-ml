@@ -25,6 +25,10 @@ El contrato conserva las 44 columnas para validar la entrega, pero el modelo no 
 dirección, correo, celular, fechas crudas, `ESTADO` ni `FECHAULTACTUALIZACION`. `#RETIROS` sí puede entrar como
 predictor histórico, pero no es el objetivo.
 
+Las equivalencias de códigos comunicadas para `CODESTUDIOS`, `CODESTADOCIVIL` y `TIPOCONTRATO` están en el
+[diccionario de datos](diccionario_datos.md). Allí se aclara la diferencia entre los nombres de las dos primeras
+columnas y los del contrato vigente.
+
 ## Validación local
 
 ```bash

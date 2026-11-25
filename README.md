@@ -275,6 +275,7 @@ de aprobación: [`docs/licencia.md`](docs/licencia.md)).
 | [`docs/privacidad.md`](docs/privacidad.md) | Custodia del archivo anonimizado, lista blanca de 44 columnas, exclusión de identificadores y salida sin datos individuales |
 | [`docs/mlflow.md`](docs/mlflow.md) | Experimentos y modelo registrado en MLflow, la versión liviana de los datos |
 | [`docs/datos_reales.md`](docs/datos_reales.md) | Estado del extracto local, respuestas del fondo, validación y límites del corte único |
+| [`docs/diccionario_datos.md`](docs/diccionario_datos.md) | Significado de los códigos de estudios, estado civil y tipo de contrato; alcance de sus nombres de columna |
 | [`docs/licencia.md`](docs/licencia.md) | Propuesta de licencia (MIT, pendiente de aprobación), qué cubre y las licencias de las dependencias |
 | [`docs/guia_comandos.txt`](docs/guia_comandos.txt) | Guía para empezar: Git, uv, Make, imports, contratos y cada comando del proyecto |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Ramas, commits y Pull Requests |
