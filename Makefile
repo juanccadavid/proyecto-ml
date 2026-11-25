@@ -111,8 +111,8 @@ pipeline: ## Corre todo el flujo: campeón, predicción, segmentos, validación 
 # ==============================================================================
 # Extracto real (ORIGEN_DATOS=real_anonimizado sin tocar el .env; DATA=... para otro archivo)
 # ==============================================================================
-segmentos-real: ## Segmenta el extracto real (KMeans y DBSCAN; no necesita etiqueta)
-	$(PY_REAL) scripts/segmentar.py --datos $(or $(DATA),$(REAL)) $(ARGS)
+segmentos-real: ## Segmenta el extracto real por comportamiento y perfil (k = 5; no necesita etiqueta)
+	$(PY_REAL) scripts/segmentar.py --datos $(or $(DATA),$(REAL)) --perfil $(ARGS)
 
 regresion-real: ## Estima el SALARIO con el extracto real (no necesita etiqueta)
 	$(PY_REAL) scripts/regresion_salario.py --datos $(or $(DATA),$(REAL)) $(ARGS)

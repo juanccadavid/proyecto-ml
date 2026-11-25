@@ -9,12 +9,16 @@ Sobre la foto del asociado (los mismos datos del campeón), solo con el comporta
 Con ``ORIGEN_DATOS=real_anonimizado`` segmenta el extracto real, porque no necesita etiqueta (make segmentos-real):
 sin la comparación con el evento sintético y con el mapa solo por segmento, sin el detalle de cada asociado.
 
+Con ``--perfil`` (lo usa make segmentos-real) agrupa por comportamiento y por quién es el asociado (edad,
+antigüedad, salario, si le falta el estrato), con k = 5 salvo --k: segmentos que se le pueden contar al fondo.
+
 Guarda reports/figures/segmentos.html (mapa con botón KMeans/DBSCAN + silueta por k) y
 reports/metrics/segmentos_<fecha>.json; en MLflow (experimento ``abandono``), una corrida "segmentos".
 
 Uso:
     uv run python scripts/segmentar.py
     uv run python scripts/segmentar.py --k 4 --sin-mlflow
+    uv run python scripts/segmentar.py --perfil --sin-mlflow
 """
 
 from __future__ import annotations
@@ -40,19 +44,26 @@ def main() -> None:
     parser.add_argument(
         "--horizonte", type=int, default=a.HORIZONTE_MESES, help="Meses de la foto (0 = todos al corte)"
     )
-    parser.add_argument("--k", type=int, help="Segmentos de KMeans (por defecto, el de mejor silueta)")
+    parser.add_argument(
+        "--k", type=int, help=f"Segmentos de KMeans (por defecto, el de mejor silueta; con --perfil, {s.K_PERFIL})"
+    )
     parser.add_argument("--eps", type=float, help="Radio de DBSCAN (por defecto, de la curva de vecinos)")
+    parser.add_argument(
+        "--perfil", action="store_true", help="Agrupar también por edad, antigüedad, salario y estrato faltante"
+    )
     parser.add_argument("--sin-mlflow", action="store_true", help="No registrar en MLflow")
     args = parser.parse_args()
 
+    modo = "perfil" if args.perfil else "comportamiento"
     df, fuente = c.datos_eleccion(args.datos, supervisado=False)  # no usa la etiqueta: sirve con datos reales
     h = args.horizonte or None
     if h:
         df = a.foto(df, h)
-    print(f"Datos: {fuente} · foto a {h or 0} meses · {len(df)} asociados · {len(s.VARIABLES)} variables")
+    variables = s.VARIABLES_PERFIL if args.perfil else s.VARIABLES
+    print(f"Datos: {fuente} · foto a {h or 0} meses · {len(df)} asociados · modo {modo} ({len(variables)} variables)")
     print(aviso_origen())
 
-    seg = s.Segmentacion(k=args.k, eps=args.eps).fit(df)
+    seg = s.Segmentacion(k=args.k, eps=args.eps, modo=modo).fit(df)
     if seg.tabla_k_ is not None:
         print("\n=== KMeans: silueta e inercia según k ===")
         print(seg.tabla_k_.round(3).T.to_string())
@@ -81,6 +92,7 @@ def main() -> None:
         "datos": fuente,
         "filas": len(df),
         "horizonte_meses": h,
+        "modo": modo,
         "k": seg.k_,
         "eps": seg.eps_,
         "min_samples": seg.min_samples_,

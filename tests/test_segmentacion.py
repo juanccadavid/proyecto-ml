@@ -68,6 +68,34 @@ def test_k_fijo_y_mapa(datos):
     assert len(s.figura_k(s.tabla_k(seg.transform(datos), range(2, 4)), 2).data) == 2
 
 
+def test_modo_perfil_agrupa_tambien_por_quien_es(datos):
+    seg = s.Segmentacion(modo="perfil").fit(datos)
+    assert seg.variables_ == s.VARIABLES_PERFIL and seg.transform(datos).shape == (len(datos), len(s.VARIABLES_PERFIL))
+    assert seg.k_ == s.K_PERFIL and list(seg.tabla_k_.index) == list(s.RANGO_K)  # silueta plana: k fijo
+    assert seg.min_samples_ == 2 * len(s.VARIABLES_PERFIL)
+    segmento = seg.kmeans(datos)
+    tabla = s.perfil(datos, segmento)
+    senal = sum(tabla[v] * peso for v, peso in a.SENAL_RIESGO.items())
+    assert senal.idxmax() == 1  # el segmento 1 sigue siendo el de más señales de salida
+    assert np.isfinite(seg.plano(datos)).all()
+    assert s.Segmentacion(k=3, modo="perfil").fit(datos).k_ == 3
+    with pytest.raises(ValueError, match="modo"):
+        s.Segmentacion(modo="otro").fit(datos)
+
+
+def test_perfil_describe_quien_es_cada_segmento_sin_estandarizar(datos):
+    X = a.preparar(datos)
+    segmento = np.where(X["EDAD"] >= X["EDAD"].median(), 1, 2)
+    tabla = s.perfil(datos, segmento)
+    assert {"edad_mediana", "antiguedad_f_mediana", "salario_mediano", "pct_sin_estrato", "pct_sin_movimientos"} <= set(
+        tabla.columns
+    )
+    assert tabla.loc[1, "edad_mediana"] > tabla.loc[2, "edad_mediana"]  # en años, sin estandarizar
+    assert tabla["pct_sin_estrato"].between(0, 1).all()
+    sin_etiqueta = s.perfil(datos.drop(columns=a.TARGET), segmento)
+    assert "tasa_retiro" not in sin_etiqueta.columns  # con datos reales no hay tasa que mostrar
+
+
 def test_contorno_cerrado():
     puntos = np.random.default_rng(0).normal(size=(50, 2))
     borde = s._contorno(puntos)
