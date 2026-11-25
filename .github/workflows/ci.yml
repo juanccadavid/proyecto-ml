@@ -29,7 +29,21 @@ jobs:
       - name: Tipos (mypy)
         run: uv run mypy
       - name: Pruebas
-        run: uv run pytest
+        run: uv run pytest -m "not notebook"
+
+  notebooks:
+    # Ejecuta los notebooks 02 y 03 con datos sintéticos: un cambio de esquema que los rompa deja el PR en rojo.
+    # Va aparte de "calidad" porque tarda varios minutos.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Instalar dependencias (versiones exactas de uv.lock)
+        run: uv sync --locked
+      - name: Ejecutar los notebooks
+        run: uv run pytest -m notebook
 
   pre-commit:
     # Los mismos hooks que en local: secretos (gitleaks), notebooks sin salidas, archivos de datos bloqueados...

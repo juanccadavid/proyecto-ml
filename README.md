@@ -79,7 +79,7 @@ el comando `uv run ...` equivalente.
 | Plantilla | Aquí | Nota |
 |---|---|---|
 | `README.md`, `Makefile`, `pyproject.toml` | ✅ los mismos | `make` sin argumentos lista los comandos; dependencias con uv (`uv.lock`) |
-| `.github/workflows/ci.yml` | ✅ | en cada push: lint + pruebas y, si pasan, `make pipeline` (ver abajo) |
+| `.github/workflows/ci.yml` | ✅ | en cada push: lint + pruebas, los notebooks 02 y 03 de principio a fin y, si pasan las pruebas, `make pipeline` (ver abajo) |
 | `notebooks/` | `sesiones/` | los notebooks de EDA y la bitácora del equipo |
 | `src/<paquete>/config.py`, `data.py`, `features.py`, `train.py` | ✅ `src/proyecto_ml/` | |
 | `model.py` | `models.py` | el catálogo de modelos; el abandono los arma en `abandono.armar_pipeline` |
