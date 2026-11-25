@@ -34,6 +34,7 @@ ETIQUETAS = {
     "EDAD": "Edad (años)",
     "ANTIGUEDAD_F_MESES": "Antigüedad en el fondo (meses)",
     "ANTIGUEDAD_LA_MESES": "Antigüedad laboral (meses)",
+    "#RETIROS": "Retiros históricos",
     "SALARIO": "Salario mensual",
     "ESTRATO": "Estrato",
     "#SOLICITUD_DISMINUCIONCUOTAS": "Solicitudes de disminución de cuotas",
@@ -45,8 +46,18 @@ ETIQUETAS = {
     "#CANTIDAD_SERVICIOS": "Servicios que usa",
     "SEXO": "Sexo",
     "TIPOCONTRATO": "Tipo de contrato",
-    "CODPROFESION": "Profesión",
+    "TIPOIDENTIFICACION": "Tipo de identificación",
+    "CODPAISCEDULA": "País de expedición de la identificación",
+    "CODPAISRESIDENCIA": "País de residencia",
+    "CODDEPARTAMENTORESIDENCIA": "Departamento de residencia",
     "CODCIUDADRESIDENCIA": "Ciudad de residencia",
+    "RELACION": "Relación con el fondo",
+    "PAISNACE": "País de nacimiento",
+    "DPTONACE": "Departamento de nacimiento",
+    "CIUDADNACE": "Ciudad de nacimiento",
+    "ESTUDIOS": "Nivel de estudios",
+    "CODPROFESION": "Profesión",
+    "ESTADOCIVIL": "Estado civil",
     "CODEMPRESA": "Empresa",
     "CODDEPENDENCIA": "Dependencia",
 }
@@ -56,8 +67,45 @@ CONTINUAS = {
     "ANTIGUEDAD_LA_MESES": 1.0,
     "SALARIO": 100_000.0,
 }
-PERFIL = ["SALARIO", "ESTRATO", "SEXO", "TIPOCONTRATO", "CODEMPRESA", "CODDEPENDENCIA"]
-UBICACION = ["CODPROFESION", "CODCIUDADRESIDENCIA"]  # CARGO no entra al modelo: repite CODPROFESION
+SECCIONES_FORMULARIO = {
+    "Datos básicos": ["EDAD", "ANTIGUEDAD_F_MESES", "ANTIGUEDAD_LA_MESES", "SALARIO"],
+    "Comportamiento con el fondo": [
+        "#SOLICITUDCREDITOS_ULT3MES",
+        "#SOLICITUD_CANCELACIONAHORROS",
+        "#SOLICITUD_RETIROPARCIALAHORROS",
+        "#CANTIDAD_AHORROSALAVISTA",
+        "#CANTIDAD_AHORROSCONTRACTUALES",
+        "#CANTIDAD_SERVICIOS",
+        "#RETIROS",
+        "#SOLICITUD_DISMINUCIONCUOTAS",
+    ],
+    "Perfil": [
+        "TIPOIDENTIFICACION",
+        "RELACION",
+        "SEXO",
+        "ESTRATO",
+        "ESTUDIOS",
+        "CODPROFESION",
+        "ESTADOCIVIL",
+        "TIPOCONTRATO",
+    ],
+    "Ubicación": [
+        "CODPAISCEDULA",
+        "CODPAISRESIDENCIA",
+        "CODDEPARTAMENTORESIDENCIA",
+        "CODCIUDADRESIDENCIA",
+        "PAISNACE",
+        "DPTONACE",
+        "CIUDADNACE",
+    ],
+    "Información laboral": ["CODEMPRESA", "CODDEPENDENCIA"],
+}
+CAMPOS_MODELO = a.NUMERICAS + a.CATEGORICAS
+CAMPOS_FORMULARIO = [campo for campos in SECCIONES_FORMULARIO.values() for campo in campos]
+if len(CAMPOS_FORMULARIO) != len(set(CAMPOS_FORMULARIO)):
+    raise RuntimeError("Hay variables repetidas en SECCIONES_FORMULARIO")
+if diferencia := sorted(set(CAMPOS_FORMULARIO) ^ set(CAMPOS_MODELO)):
+    raise RuntimeError(f"El formulario y el modelo no tienen las mismas variables: {diferencia}")
 ZONA = {  # emoji, tipo de mensaje, texto
     "se retira": ("😟", "error", "Se retira: el modelo está seguro. ¡Contáctalo pronto!"),
     "zona gris": ("😐", "warning", "Zona gris: hay señales de retiro, pero el modelo no está seguro. Haz seguimiento."),
@@ -251,30 +299,14 @@ with st.sidebar:
         st.rerun()
 
 valores: dict[str, float | int | str] = {}
-izquierda, derecha = st.columns(2)
-with izquierda:
-    valores["EDAD"] = control("EDAD", referencia)
-with derecha:
-    valores["ANTIGUEDAD_F_MESES"] = control("ANTIGUEDAD_F_MESES", referencia)
-valores["ANTIGUEDAD_LA_MESES"] = control("ANTIGUEDAD_LA_MESES", referencia)
+for titulo, campos in SECCIONES_FORMULARIO.items():
+    st.subheader(titulo)
+    columnas = st.columns(2)
+    for i, columna in enumerate(campos):
+        with columnas[i % 2]:
+            valores[columna] = control(columna, referencia)
 
-st.subheader("Comportamiento con el fondo")
-columnas = st.columns(2)
-for i, columna in enumerate(a.COMPORTAMIENTO):
-    with columnas[i % 2]:
-        valores[columna] = control(columna, referencia)
-
-st.subheader("Perfil")
-columnas = st.columns(2)
-for i, columna in enumerate(PERFIL):
-    with columnas[i % 2]:
-        valores[columna] = control(columna, referencia)
-columnas = st.columns(len(UBICACION))
-for col, columna in zip(columnas, UBICACION, strict=True):
-    with col:
-        valores[columna] = control(columna, referencia)
-
-asociado = pd.DataFrame([valores])[a.NUMERICAS + a.CATEGORICAS]
+asociado = pd.DataFrame([valores], columns=CAMPOS_MODELO)
 asociado[a.NUMERICAS] = asociado[a.NUMERICAS].astype(float)  # como en preparar: los conteos son float
 puntaje = float(a.puntaje(modelo, asociado)[0])
 zona = modelo.predict(asociado)[0]

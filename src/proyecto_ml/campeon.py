@@ -682,7 +682,8 @@ def guardar(campeon: Campeon, carpeta: Path, extra: dict | None = None) -> dict[
     }
     joblib.dump(campeon.con_zonas(), rutas["modelo"])
     joblib.dump(campeon.agrupador, rutas["grupos"])
-    texto = json.dumps({**resumen(campeon), **(extra or {})}, indent=2, ensure_ascii=False, default=str)
+    contenido = {**resumen(campeon), **(extra or {}), "variables": a.NUMERICAS + a.CATEGORICAS}
+    texto = json.dumps(contenido, indent=2, ensure_ascii=False, default=str)
     rutas["info"].write_text(texto + "\n", encoding="utf-8", newline="\n")
     return rutas
 
@@ -707,15 +708,19 @@ def firma(carpeta: Path) -> str | None:
 
 
 def cargar(carpeta: Path):
-    """(modelo, agrupador, info) desde ``carpeta``; None si falta alguno de los tres archivos.
+    """(modelo, agrupador, info) desde ``carpeta``; None si falta un archivo o el esquema ya no es compatible.
 
     ``modelo`` es un ModeloZonas. Un campeón guardado antes (solo el pipeline) se envuelve con los umbrales de
-    ``campeon.json``.
+    ``campeon.json``. Los artefactos sin la lista exacta de variables se consideran obsoletos: es más seguro volver
+    a elegir el campeón que descubrir la incompatibilidad durante una predicción.
     """
     rutas = [carpeta / ARCHIVO_MODELO, carpeta / ARCHIVO_GRUPOS, carpeta / ARCHIVO_INFO]
     if not all(r.exists() for r in rutas):
         return None
-    modelo, info = joblib.load(rutas[0]), json.loads(rutas[2].read_text(encoding="utf-8"))
+    info = json.loads(rutas[2].read_text(encoding="utf-8"))
+    if info.get("variables") != a.NUMERICAS + a.CATEGORICAS:
+        return None
+    modelo = joblib.load(rutas[0])
     if not isinstance(modelo, ModeloZonas):
         modelo = ModeloZonas(modelo, info["umbral"], info["umbral_alto"])
     return modelo, joblib.load(rutas[1]), info

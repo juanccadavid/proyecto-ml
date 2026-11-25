@@ -1,5 +1,7 @@
 """Modelo campeón: umbrales fuera de partición, tres zonas, elección por PR-AUC y archivos para el simulador."""
 
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -73,8 +75,13 @@ def test_guardar_y_cargar(elegido, foto, tmp_path):
     assert np.allclose(a.puntaje(modelo, X), a.puntaje(elegido.modelo, X))
     assert (agrupador.grupos(X) == elegido.agrupador.predict(foto)).all()
     assert info["modelo"] == elegido.nombre and info["umbral"] == elegido.umbral and info["nota"] == "prueba"
+    assert info["variables"] == a.NUMERICAS + a.CATEGORICAS
     assert set(info["grupos"]) == {"riesgo", "estable"}
     assert c.cargar(tmp_path / "vacia") is None
+
+    info["variables"].append("VARIABLE_OBSOLETA")
+    rutas["info"].write_text(json.dumps(info), encoding="utf-8")
+    assert c.cargar(tmp_path) is None
 
 
 def test_figura_de_umbrales(elegido):
