@@ -15,6 +15,18 @@ El mapa pone a cada asociado en dos ejes que se leen directo (promedios del comp
 **señales de salida** (``SALIDA``: cancelaciones, disminuciones, retiros parciales, intención de retiro) y
 **vínculo con el fondo** (``VINCULO``: ahorros, créditos, servicios), y dibuja el contorno de cada segmento.
 Con PCA, dos componentes solo explican el 28 % de la variación y los segmentos se enciman.
+
+Dos modos (``Segmentacion(modo=...)``):
+
+- ``"comportamiento"`` (por defecto): solo los conteos de ``abandono.COMPORTAMIENTO``. Con el extracto real, casi
+  todos en 0, separa sobre todo por qué productos tiene cada uno.
+- ``"perfil"``: los conteos en escala logarítmica (``log1p``, para que un conteo raro no domine la distancia) más
+  quién es el asociado: ``EDAD``, la antigüedad en el fondo (log), el salario (log) y si le falta el estrato. Da
+  segmentos que se le pueden contar al fondo (nuevos con y sin estrato, veteranos, los que retiran o cancelan
+  ahorros). Con variables mixtas la silueta queda plana para todo ``k`` y no sirve para elegirlo: ``k`` se fija en
+  ``K_PERFIL`` (se puede cambiar con ``k``).
+
+``perfil`` describe cada segmento con medianas y porcentajes que se leen sin estandarizar.
 """
 
 from __future__ import annotations
@@ -23,6 +35,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.cluster import DBSCAN, KMeans
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
@@ -37,6 +50,11 @@ if TYPE_CHECKING:
     import plotly.graph_objects as go
 
 VARIABLES = a.COMPORTAMIENTO
+# Modo "perfil": los conteos (en log) más quién es el asociado.
+QUIEN = ["EDAD", "ANTIGUEDAD_F_LOG", "SALARIO_LOG", "SIN_ESTRATO"]
+VARIABLES_PERFIL = [*VARIABLES, *QUIEN]
+MODOS = ("comportamiento", "perfil")
+K_PERFIL = 5
 RANGO_K = range(2, 9)
 SALIDA = [v for v, peso in a.SENAL_RIESGO.items() if peso > 0]
 VINCULO = [v for v in VARIABLES if v not in SALIDA]
@@ -48,12 +66,39 @@ _COLORES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#
 _GRIS, _TINTA = "#898781", "#0b0b0b"
 
 
-def escalador() -> Pipeline:
-    """Fila cruda o preparada -> comportamiento imputado (mediana) y estandarizado: la entrada de los dos."""
+class VariablesPerfil(TransformerMixin, BaseEstimator):
+    """Salida de ``abandono.preparar`` -> ``VARIABLES_PERFIL`` (sin estado: no aprende nada).
+
+    Los conteos y la antigüedad van en ``log1p`` y el salario en log: los tres están sesgados a la derecha y, sin
+    eso, unos pocos valores altos deciden los segmentos. ``SIN_ESTRATO`` vale 1 si el estrato está en blanco, que
+    en el extracto real marca un perfil incompleto (ver ``abandono.ESTRATO_SIN_DATO``). El salario vacío o
+    imposible queda vacío: lo rellena el imputador del escalador.
+    """
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        Z = np.log1p(X[VARIABLES].astype(float))
+        Z["EDAD"] = X["EDAD"].astype(float)
+        Z["ANTIGUEDAD_F_LOG"] = np.log1p(X["ANTIGUEDAD_F_MESES"].astype(float))
+        Z["SALARIO_LOG"] = np.log(X["SALARIO"].astype(float))
+        Z["SIN_ESTRATO"] = (X["ESTRATO"] == a.ESTRATO_SIN_DATO).astype(float)
+        return Z[VARIABLES_PERFIL]
+
+    def get_feature_names_out(self, input_features=None):
+        return np.array(VARIABLES_PERFIL, dtype=object)
+
+
+def escalador(modo: str = "comportamiento") -> Pipeline:
+    """Fila cruda o preparada -> variables del ``modo`` imputadas (mediana) y estandarizadas: la entrada de los dos."""
+    if modo not in MODOS:
+        raise ValueError(f"modo debe ser uno de {MODOS}, no {modo!r}")
+    variables = ColumnTransformer([("c", "passthrough", VARIABLES)]) if modo == "comportamiento" else VariablesPerfil()
     return Pipeline(
         [
             ("preparar", a.PrepararVariables()),
-            ("comportamiento", ColumnTransformer([("c", "passthrough", VARIABLES)])),
+            ("variables", variables),
             ("imputer", SimpleImputer(strategy="median")),
             ("scaler", StandardScaler()),
         ]
@@ -89,10 +134,11 @@ def eps_por_vecinos(Z: np.ndarray, min_samples: int, cuantil: float = CUANTIL_EP
 
 
 class Segmentacion:
-    """KMeans y DBSCAN sobre el mismo comportamiento escalado, más los dos ejes del mapa.
+    """KMeans y DBSCAN sobre las mismas variables escaladas, más los dos ejes del mapa.
 
     Los segmentos de KMeans se numeran por su señal de salida (``abandono.SENAL_RIESGO`` en el centro): el
     segmento 1 es el de más solicitudes de cancelación e intención de retiro. Sin mirar la etiqueta sintética.
+    ``modo``: ``"comportamiento"`` (por defecto) o ``"perfil"`` (ver el docstring del módulo).
     """
 
     def __init__(
@@ -101,29 +147,33 @@ class Segmentacion:
         eps: float | None = None,
         min_samples: int | None = None,
         random_state: int = 42,
+        modo: str = "comportamiento",
     ):
         self.k = k
         self.eps = eps
         self.min_samples = min_samples
         self.random_state = random_state
+        self.modo = modo
 
     def fit(self, df: pd.DataFrame) -> Segmentacion:
-        self.escalador_ = escalador().fit(df)
+        self.escalador_ = escalador(self.modo).fit(df)
+        self.variables_ = VARIABLES if self.modo == "comportamiento" else VARIABLES_PERFIL
         Z = self.escalador_.transform(df)
-        if self.k is None:  # k por silueta
+        if self.k is None:  # la silueta por k se calcula siempre, para mostrarla
             self.tabla_k_ = tabla_k(Z, random_state=self.random_state)
-            self.k_ = int(self.tabla_k_["silueta"].idxmax())
+            # Con solo conteos, k por silueta. En modo perfil la silueta queda plana: k fijo (ver K_PERFIL).
+            self.k_ = int(self.tabla_k_["silueta"].idxmax()) if self.modo == "comportamiento" else K_PERFIL
         else:
             self.tabla_k_ = None
             self.k_ = self.k
         kmeans = KMeans(n_clusters=self.k_, n_init=20, random_state=self.random_state).fit(Z)
-        centros = pd.DataFrame(kmeans.cluster_centers_, columns=VARIABLES)
+        centros = pd.DataFrame(kmeans.cluster_centers_, columns=self.variables_)
         senal = sum(centros[c] * peso for c, peso in a.SENAL_RIESGO.items())
         orden = senal.sort_values(ascending=False).index  # segmento 1 = más señales de salida
         self.renombrar_ = {int(grupo): i + 1 for i, grupo in enumerate(orden)}
         self.kmeans_ = kmeans
 
-        self.min_samples_ = self.min_samples or 2 * len(VARIABLES)  # regla común: el doble de dimensiones
+        self.min_samples_ = self.min_samples or 2 * len(self.variables_)  # regla común: el doble de dimensiones
         self.eps_ = self.eps or eps_por_vecinos(Z, self.min_samples_)
         self.dbscan_ = DBSCAN(eps=self.eps_, min_samples=self.min_samples_).fit(Z)
         nucleos = self.dbscan_.core_sample_indices_
@@ -148,17 +198,30 @@ class Segmentacion:
     def plano(self, df: pd.DataFrame) -> np.ndarray:
         """Coordenadas del mapa: (señales de salida, vínculo con el fondo), en desviaciones estándar."""
         Z = self.transform(df)
-        columnas = {v: i for i, v in enumerate(VARIABLES)}
+        columnas = {v: i for i, v in enumerate(self.variables_)}
         return np.column_stack(
             [Z[:, [columnas[v] for v in SALIDA]].mean(axis=1), Z[:, [columnas[v] for v in VINCULO]].mean(axis=1)]
         )
 
 
 def perfil(df: pd.DataFrame, segmento: np.ndarray) -> pd.DataFrame:
-    """Por segmento: asociados, %, tasa del evento sintético (que el algoritmo no vio) y comportamiento medio."""
+    """Por segmento: asociados, %, tasa del evento sintético (que el algoritmo no vio; solo con sintéticos), quién es
+    (medianas de edad, antigüedad en el fondo y salario; % sin estrato y % sin ningún producto ni solicitud) y el
+    comportamiento medio. Todo en sus unidades, sin estandarizar: es la tabla para contarle al fondo cada segmento."""
     X = a.preparar(df) if "FECHANACIMIENTO" in df else df
-    tabla = X[VARIABLES].groupby(segmento).mean()
-    tabla.insert(0, "tasa_retiro", a.objetivo_binario(df).groupby(segmento).mean() if a.TARGET in df else np.nan)
+    grupos = X.groupby(segmento)
+    quien = pd.DataFrame(
+        {
+            "edad_mediana": grupos["EDAD"].median(),
+            "antiguedad_f_mediana": grupos["ANTIGUEDAD_F_MESES"].median(),
+            "salario_mediano": grupos["SALARIO"].median(),
+            "pct_sin_estrato": (X["ESTRATO"] == a.ESTRATO_SIN_DATO).groupby(segmento).mean(),
+            "pct_sin_movimientos": (X[VARIABLES].fillna(0).sum(axis=1) == 0).groupby(segmento).mean(),
+        }
+    )
+    tabla = pd.concat([quien, grupos[VARIABLES].mean()], axis=1)
+    if a.TARGET in df:
+        tabla.insert(0, "tasa_retiro", a.objetivo_binario(df).groupby(segmento).mean())
     tabla.insert(0, "pct", pd.Series(segmento).value_counts(normalize=True))
     tabla.insert(0, "asociados", pd.Series(segmento).value_counts())
     return tabla.rename_axis("segmento")

@@ -18,6 +18,8 @@
 | ¿Por qué `CARGO` llega idéntico a `CODPROFESION`? | Es la conversión que usa el fondo. | 2026-11-25 | `CARGO` sigue en el contrato, pero no entra al modelo (`abandono.DUPLICADAS`): repetido no agrega información y partiría la importancia de la profesión. |
 | ¿Qué significa `ESTRATO` en blanco? | No se sabe. | 2026-11-25 | Supuesto del equipo, revisado con agregados: no indica retiro de ahorros (esos asociados piden menos retiros y cancelaciones), sino un perfil incompleto (más recientes, con menos productos y datos actualizados hace más tiempo). Es una categoría propia, `SIN_DATO`, y no se imputa con el estrato más común. |
 | ¿`987654` en `SALARIO` es "no informado"? | Probablemente un valor anonimizado. | 2026-11-25 | En los dos casos el salario verdadero se desconoce: se trata como vacío (`SALARIO_PLAUSIBLE`) y la regresión no lo aprende. |
+| ¿`#RETIROS` > 0 son asociados que se retiraron y volvieron a ingresar? | Sí. | 2026-11-25 | Todos los del extracto están activos: `#RETIROS` cuenta salidas anteriores de quienes reingresaron. Explica que casi no aparezca entre los de muchos años en el fondo (al reingresar, `FECHAINGRESO` vuelve a empezar). Sigue como predictor histórico, nunca como etiqueta. |
+| ¿Se pueden publicar en el repositorio las proporciones redondeadas que usa el generador sintético? | Sí. | 2026-11-25 | `generador.py` conserva las proporciones aproximadas del extracto (códigos, conteos casi todos en 0, empresa principal). Las cifras exactas siguen sin publicarse. |
 
 ## Esquema definitivo
 
@@ -65,7 +67,7 @@ archivo. Los datos sintéticos usan el mismo corte.
 
 ```bash
 make real                 # contrato-ml + segmentos-real + regresion-real + predecir-real
-make segmentos-real       # KMeans y DBSCAN sobre el comportamiento (no necesita etiqueta)
+make segmentos-real       # KMeans y DBSCAN por comportamiento y perfil, k = 5 (no necesita etiqueta)
 make regresion-real       # estima el SALARIO (no necesita etiqueta)
 make predecir-real        # puntúa a cada asociado con el campeón entrenado con sintéticos (make campeon)
 ```
@@ -80,10 +82,6 @@ Estos objetivos ponen `ORIGEN_DATOS=real_anonimizado` sin tocar el `.env`; los r
   mismos códigos y una forma parecida a la del extracto. El puntaje ordena por las señales que el generador
   asocia al retiro (cancelaciones, retiros parciales, disminución de cuotas, pocos productos); **no está validado
   contra retiros reales** y no debe leerse como probabilidad de retiro del fondo.
-
-## Pregunta abierta para el fondo
-
-- ¿`#RETIROS` > 0 corresponde a asociados que se retiraron y volvieron a ingresar? Todos están activos.
 
 ## Limitaciones vigentes
 

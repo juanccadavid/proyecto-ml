@@ -423,9 +423,20 @@ segmentos sirven para **describir** a los asociados y para campañas, no para re
 
 Con PCA, en cambio, dos componentes solo explican el 28 % de la variación y los segmentos se enciman.
 
+**Con el extracto real: modo perfil** (`--perfil`, lo usa `make segmentos-real`). En el extracto casi todos los
+conteos valen 0, así que solo con comportamiento los segmentos salen por qué producto tiene cada uno. El modo
+perfil agrupa por comportamiento (en `log1p`, para que un conteo raro no domine) y por quién es el asociado: edad,
+antigüedad en el fondo (log), salario (log) y si le falta el estrato. La silueta queda plana (alrededor de 0,18 para
+todo `k`) y no sirve para elegir, así que `k` se fija en 5. Con el extracto salen cinco segmentos que se le pueden
+contar al fondo: los que **cancelan ahorros** (segmento 1, la señal de salida más fuerte), los que **retiran
+ahorros** (2), los **nuevos sin estrato** y con pocos productos (3), los **nuevos con estrato** (4) y los
+**veteranos** vinculados, de más edad, antigüedad y salario (5). `segmentacion.perfil` describe cada segmento con
+medianas y porcentajes en sus unidades (edad, antigüedad, salario, % sin estrato, % sin movimientos).
+
 ```bash
 make segmentos                                   # k por silueta, eps por vecinos
 make segmentos ARGS="--k 4"                      # 4 segmentos (los dos de riesgo: 10,2 % y 9,9 % de retiro)
+make segmentos-real                              # extracto real, modo perfil, k = 5
 ```
 
 ## Mapa de evaluación (para la sustentación)
