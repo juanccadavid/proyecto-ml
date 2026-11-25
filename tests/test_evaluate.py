@@ -40,7 +40,7 @@ def test_compute_metrics_claves_y_una_clase():
 def test_tabla_comparativa_como_pycaret():
     df = GeneradorAsociados(n=300, seed=3).generar()
     modelos = a.modelos_supervisados()
-    tabla = tabla_comparativa(modelos, a.preparar(df), df[a.TARGET], folds=3, ordenar="Recall")
+    tabla = tabla_comparativa(modelos, a.preparar(df), a.objetivo_binario(df), folds=3, ordenar="Recall")
 
     assert list(tabla.columns) == ["Model", *COLUMNAS_COMPARATIVA]
     assert sorted(tabla.index) == sorted(modelos)
@@ -50,7 +50,7 @@ def test_tabla_comparativa_como_pycaret():
     assert tabla.loc["ridge", "AUC"] > 0.8  # Ridge sin predict_proba: AUC con decision_function (no 0)
     assert (tabla[TIEMPO] > 0).all()
 
-    rapida = tabla_comparativa(modelos, a.preparar(df), df[a.TARGET], folds=3, ordenar=TIEMPO)
+    rapida = tabla_comparativa(modelos, a.preparar(df), a.objetivo_binario(df), folds=3, ordenar=TIEMPO)
     assert rapida[TIEMPO].is_monotonic_increasing  # en tiempo, el más rápido arriba
     # pandas junta en una regla CSS todas las celdas resaltadas: al menos una por columna (puede haber empates).
     selector = resaltar(tabla).to_html().split("background-color: #ffff00")[0].rsplit("}", 1)[-1]
@@ -59,7 +59,7 @@ def test_tabla_comparativa_como_pycaret():
 
 def test_afinar_usa_las_mismas_particiones_que_la_tabla():
     df = GeneradorAsociados(n=300, seed=3).generar()
-    X, y = a.preparar(df), df[a.TARGET]
+    X, y = a.preparar(df), a.objetivo_binario(df)
     grilla = {"model__alpha": [0.1, 1.0, 100.0], "model__class_weight": [None, "balanced"]}
     busqueda = afinar(a.modelo_ridge(), grilla, X, y, folds=3, metrica="F1")
 
@@ -87,7 +87,7 @@ def test_tabla_por_fold_un_pipeline_por_preprocesamiento():
     from proyecto_ml.features import Preprocesador
 
     df = GeneradorAsociados(n=300, seed=3).generar()
-    X, y = a.preparar(df), df[a.TARGET]
+    X, y = a.preparar(df), a.objetivo_binario(df)
     modelo = Pipeline([("preprocess", Preprocesador(a.NUMERICAS, a.CATEGORICAS)), ("model", a.modelo_ridge()[-1])])
     grilla = {"preprocess__encoding": ["onehot", "ordinal"], "model__alpha": [0.1, 10.0]}
     busqueda = afinar(modelo, grilla, X, y, folds=3, metrica="AUC")
@@ -114,9 +114,9 @@ def test_importancia_de_variables_por_modelo():
     from proyecto_ml.evaluate import figura_importancia, importancia_variables, top_importancia
 
     train, nuevos = GeneradorAsociados(n=300, seed=1).generar(), GeneradorAsociados(n=300, seed=2).generar()
-    X, y = a.preparar(train), train[a.TARGET]
+    X, y = a.preparar(train), a.objetivo_binario(train)
     modelos = {n: m.fit(X, y) for n, m in a.modelos_supervisados().items() if n in ("ridge", "hist_gb")}
-    imp = importancia_variables(modelos, a.preparar(nuevos), nuevos[a.TARGET], n_repeats=3)
+    imp = importancia_variables(modelos, a.preparar(nuevos), a.objetivo_binario(nuevos), n_repeats=3)
 
     assert list(imp.columns) == ["modelo", "variable", "importancia", "std"]
     assert len(imp) == 2 * len(X.columns)  # una fila por variable ORIGINAL (no por columna del OneHot)
@@ -162,7 +162,7 @@ def test_importancia_del_random_forest_por_columna_transformada():
     from proyecto_ml.evaluate import figura_importancia_interactiva, importancia_arbol
 
     df = GeneradorAsociados(n=300, seed=1).generar()
-    rf = a.modelos_supervisados()["random_forest"].fit(a.preparar(df), df[a.TARGET])
+    rf = a.modelos_supervisados()["random_forest"].fit(a.preparar(df), a.objetivo_binario(df))
     imp = importancia_arbol(rf)
 
     assert len(imp) == rf.steps[-1][1].n_features_in_  # una fila por columna que recibe el bosque

@@ -43,7 +43,7 @@ def test_dbscan_predice_igual_que_al_entrenar_y_marca_atipicos(datos, segmentaci
 def test_los_atipicos_concentran_el_retiro(datos, segmentacion):
     tabla = s.comparar_con_retiro(datos, segmentacion)
     assert list(tabla.index) == ["KMeans: segmento 1", "DBSCAN: atípicos"]
-    assert tabla.loc["DBSCAN: atípicos", "tasa_retiro"] > datos[a.TARGET].mean()  # validación, sin haberlo visto
+    assert tabla.loc["DBSCAN: atípicos", "tasa_retiro"] > a.objetivo_binario(datos).mean()
     assert ((tabla["recall"] >= 0) & (tabla["recall"] <= 1)).all()
 
 

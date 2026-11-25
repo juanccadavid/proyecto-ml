@@ -4,9 +4,9 @@
 # campos personales se conservan para validar el esquema, pero nunca son predictores.
 
 nombre: asociados
-version: 2.0.0
+version: 2.1.0
 tabla_db: asociados
-objetivo: "#RETIROS"
+objetivo: null
 
 grupos:
   SOCIODEMOGRAFICO:
@@ -56,17 +56,12 @@ grupos:
     - {nombre: "#SOLICITUD_DISMINUCIONCUOTAS", tipo: texto, requerido: true}
     - {nombre: "#CANTIDAD_SERVICIOS", tipo: entero, requerido: true, min: 0}
   RETIRO:
-    - {nombre: "#RETIROS", tipo: entero, requerido: true, valores: [0, 1], descripcion: Objetivo definido por el fondo}
+    - {nombre: "#RETIROS", tipo: entero, requerido: true, min: 0, descripcion: "Conteo histórico acumulado durante la permanencia; es predictor, no etiqueta futura"}
 
 distribucion:
   - id: volumen_minimo
     descripcion: El lote trae al menos min_filas asociados
     min_filas: 30
-  - id: tasa_retiro_plausible
-    descripcion: "La fracción con #RETIROS=1 está entre min y max; es una heurística, no una regla confirmada"
-    severidad: advertencia
-    min: 0.01
-    max: 0.50
   - id: salario_en_pesos
     descripcion: La mediana de SALARIO está entre min y max pesos
     min: 1000000

@@ -30,7 +30,7 @@ def test_rellena_test_con_la_mediana_de_train():
 
 def test_pipeline_de_abandono_solo_aprende_de_train():
     df = GeneradorAsociados(n=300, seed=5).generar()
-    X, y = a.preparar(df), df[a.TARGET]
+    X, y = a.preparar(df), a.objetivo_binario(df)
     X_train, X_test, y_train, _ = split_data(X, y, test_size=0.25, random_state=0)
 
     modelo = a.modelo_ridge().fit(X_train, y_train)

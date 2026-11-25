@@ -19,7 +19,7 @@ _spec.loader.exec_module(cli)
 
 def _filas_bd(n: int, seed: int = 8) -> list[dict]:
     """Filas como las devuelve Supabase: nombres de la BD + id, creado_en y origen."""
-    filas = k.a_registros_db(GeneradorAsociados(n=n, seed=seed).generar(), origen="formulario")
+    filas = k.a_registros_db(GeneradorAsociados(n=n, seed=seed).generar_extracto(), origen="formulario")
     for i, fila in enumerate(filas, start=1):
         fila.update(id=i, creado_en="2026-10-30T22:00:00+00:00")
     return filas
@@ -65,7 +65,7 @@ def entorno(monkeypatch, tmp_path):
 
 
 def test_ida_y_vuelta_bd_contrato():
-    original = GeneradorAsociados(n=60, seed=8).generar()
+    original = GeneradorAsociados(n=60, seed=8).generar_extracto()
     vuelta = k.desde_registros_db(_filas_bd(60))
     assert list(vuelta.columns) == k.cargar().nombres  # sin id, creado_en ni origen
     assert k.validar(vuelta) == []

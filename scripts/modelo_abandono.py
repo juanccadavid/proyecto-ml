@@ -112,14 +112,14 @@ def main() -> None:
         print(a.resumen_foto(train).round(3).to_string() + "\n")
         train = a.foto(train, args.horizonte)
         validaciones = {nombre: a.foto(df, args.horizonte) for nombre, df in validaciones.items()}
-        minimo = int(train[a.TARGET].value_counts().reindex([0, 1], fill_value=0).min())
+        minimo = int(a.objetivo_binario(train).value_counts().reindex([0, 1], fill_value=0).min())
         if minimo < 5:  # la validación cruzada estratificada necesita al menos 5 de cada clase
             raise SystemExit(
                 f"Con --horizonte {args.horizonte} la clase minoritaria tiene {minimo} asociados (mínimo 5). "
                 'Usa más filas (make ejemplo ARGS="--rows 2000 ...") o un horizonte mayor.'
             )
         print(f"Horizonte: {args.horizonte} meses (t0 = {a.fecha_observacion(args.horizonte).date()})")
-    print(f"Entrenamiento: {args.datos} ({len(train)} filas, {train[a.TARGET].mean():.0%} abandono)")
+    print(f"Entrenamiento: {args.datos} ({len(train)} filas, {a.objetivo_binario(train).mean():.0%} abandono)")
     if limpiar:
         print(
             f"Limpieza: extracto (limpiar_extracto) + ColumnDropper (> {a.MAX_NULOS:.0%} vacíos o constantes)"
@@ -157,7 +157,7 @@ def main() -> None:
 
     # Qué variables usa cada modelo: permutation importance sobre los asociados nuevos (no vistos).
     con_objetivo = validaciones[nombre_nuevos]
-    importancias = importancia_variables(supervisados, a.preparar(con_objetivo), con_objetivo[a.TARGET])
+    importancias = importancia_variables(supervisados, a.preparar(con_objetivo), a.objetivo_binario(con_objetivo))
     print(f"\n=== Variables que más aportan a cada modelo: caída de AUC al desordenarlas ({nombre_nuevos}) ===")
     print(top_importancia(importancias).to_string())
     importancia_rf = importancia_arbol(supervisados["random_forest"])  # la propia del bosque, por columna transformada
@@ -170,7 +170,7 @@ def main() -> None:
         "entrenamiento": a.metricas_agrupacion(agrupador, train),
         **{nombre: a.metricas_agrupacion(agrupador, df) for nombre, df in validaciones.items()},
     }
-    print("\n=== KMeans (2 grupos, sin ver #RETIROS) vs. abandono real ===")
+    print("\n=== KMeans (2 grupos, sin ver la etiqueta sintética) vs. evento futuro sintético ===")
     print(_tabla(m_kmeans))
     print("\nPerfil promedio de cada grupo:")
     print(agrupador.perfil_.T.round(2).to_string())

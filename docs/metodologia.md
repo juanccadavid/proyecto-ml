@@ -5,7 +5,7 @@
 `make abandono` responde "¿este asociado abandona el fondo?" con dos enfoques
 ([`src/proyecto_ml/abandono.py`](../src/proyecto_ml/abandono.py)):
 
-- **Supervisados** (aprenden de `#RETIROS`), con el mismo preprocesador: métricas en entrenamiento,
+- **Supervisados** (aprenden de `EVENTO_RETIRO_3M_SINTETICO`), con el mismo preprocesador: métricas en entrenamiento,
   validación cruzada y datos nuevos, más una tabla que los compara sobre los nuevos.
 
   | Modelo | Tipo | Idea |
@@ -15,7 +15,7 @@
   | Random Forest | **bagging** | muchos árboles independientes (muestras bootstrap) que votan |
   | HistGradientBoosting | **boosting** | árboles en secuencia, cada uno corrige al anterior (estilo LightGBM) |
 - **KMeans** (sin objetivo): agrupa por comportamiento (solicitudes, ahorros, intención de retiro) en 2 grupos;
-  el de "riesgo" se elige por su perfil, no por el objetivo. Después se compara con el abandono real.
+  el de "riesgo" se elige por su perfil, no por el objetivo. Después se compara con el evento futuro sintético.
 
 Para validar, se generan asociados **que los modelos nunca vieron** (mismo generador, otra semilla):
 
@@ -64,7 +64,7 @@ Eso vale también para el campeón guardado y para `models:/abandono@campeon` en
 preparada, la deja igual; así siguen funcionando el simulador y la importancia por permutación.
 
 ```python
-X, y = a.separar(vista)  # quita #RETIROS; el pipeline prepara el resto
+X, y = a.separar(vista)  # quita solo la etiqueta sintética; #RETIROS queda como predictor histórico
 modelo = a.armar_pipeline(LogisticRegression(class_weight="balanced"), crear_variables=True, scaler="robust")
 modelo.fit(X, y).predict_proba(fila_de_supabase)
 a.armar_pipeline(modelo_rf, buscable=True)  # preprocess__<opción> para GridSearchCV u Optuna
@@ -92,7 +92,9 @@ campeon`, `tecnicas`, `validacion` y `segmentos` usan la foto por defecto (`--ho
 diseño correcto es una **foto** en t0 = corte − H:
 
 - **Población:** asociados activos en t0 (los que se retiraron antes ya no eran asociados en la foto).
-- **Objetivo:** `#RETIROS`, entregado por el fondo y pendiente de confirmar como variable binaria.
+- **Objetivo sintético:** `EVENTO_RETIRO_3M_SINTETICO`, creado únicamente por el generador.
+- **Historial:** `#RETIROS` es el conteo acumulado durante la permanencia y entra como predictor; nunca se convierte
+  en etiqueta futura.
 - **Variables:** `EDAD`, `ANTIGUEDAD_F_MESES` y `ANTIGUEDAD_LA_MESES` vienen calculadas en el archivo.
 
 ```python
@@ -138,7 +140,7 @@ Los afinados, Optuna y PyCaret son **experimentos** (quedan en MLflow); el **cam
   - *alto*: el menor puntaje desde el cual **al menos 8 de cada 10 alertas son retiros reales**.
 - **Tres zonas:** 😟 **se retira** (≥ alto) · 😐 **zona gris** (entre los dos) · 😀 **se queda** (< alerta).
 - **KMeans** con los mismos datos y sin el objetivo: el simulador muestra en qué grupo cae el asociado y la
-  tasa de retiro real del grupo.
+  tasa del evento futuro sintético del grupo.
 
 | Candidato | PR-AUC ± entre particiones | IC 95 % (bootstrap) | campeón − candidato (IC 95 %) | umbral alerta | precisión / recall |
 |---|---|---|---|---|---|
@@ -183,7 +185,7 @@ umbrales de `campeon.json`. KMeans también recibe la fila cruda (`agrupador.pre
 ```bash
 make campeon                                     # foto a 3 meses, datos de desarrollo
 make campeon ARGS="--horizonte 12 --precision-min 0.9"
-make campeon DATA=data/raw/supabase_asociados.parquet   # con el extracto, cuando llegue
+make campeon DATA=data/raw/supabase_asociados.parquet   # se detiene sin una etiqueta futura válida
 make simulador                                   # usa el campeón
 ```
 
@@ -386,7 +388,7 @@ depende del cargo, la antigüedad y el estrato, el R² debería subir. Resultado
 
 | | Supervisado | No supervisado |
 |---|---|---|
-| Aprende de | el retiro real (`#RETIROS`) | solo el comportamiento: nunca ve quién se retiró |
+| Aprende de | `EVENTO_RETIRO_3M_SINTETICO` | solo el comportamiento: nunca ve la etiqueta sintética |
 | Modelos | Ridge, logística, Random Forest, HistGB (el campeón) | KMeans y DBSCAN ([`segmentacion.py`](../src/proyecto_ml/segmentacion.py)) |
 | Responde | ¿este asociado se retira? (puntaje y zona) | ¿qué tipos de asociado hay? (segmentos) |
 | Se valida con | PR-AUC, recall, precisión (validación cruzada) | silueta; y, solo al final, la tasa de retiro de cada segmento |
@@ -498,7 +500,7 @@ modelo afinado en MLflow (corrida "afinar", una hija por afinado con sus hiperpa
 guardar un pipeline por partes (completo, solo preprocesamiento y solo estimador) sigue `a.guardar_modelo`.
 
 También arma una **tabla de predicciones** de los dos afinados (como `predict_model` de PyCaret) sobre los
-asociados nuevos: variables, abandono real y, por modelo, `<modelo>_label` (1 = abandona) y `<modelo>_score`
+asociados nuevos: variables, evento futuro sintético y, por modelo, `<modelo>_label` (1 = abandona) y `<modelo>_score`
 (riesgo de abandono: probabilidad en la logística; en Ridge, distancia a la frontera, > 0 = abandona). Muestra
 unas filas en la terminal (`ARGS="--muestra 10"`) y guarda todas en `data/processed/predicciones_afinados.csv`
 (no va a Git). Con regularización fuerte las probabilidades se acercan a 0.5: sirven para **ordenar** el riesgo,

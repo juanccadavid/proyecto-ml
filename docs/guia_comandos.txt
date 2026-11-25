@@ -139,9 +139,8 @@
                            KMeans y MLflow (models:/abandono@campeon). Solo el campeón queda en models/.
                            Gráficos: campeon_umbrales, campeon_roc, campeon_confusion, campeon_calibracion y
                            campeon_shap (SHAP: qué variables mueven el puntaje). ej.: ARGS="--shap 0" (sin SHAP)
-                           Con el extracto real: ORIGEN_DATOS=real_anonimizado en el .env y
-                           make campeon DATA=data/raw/extracto_anon.parquet (exige el contrato, sin nuevos ni
-                           escenarios del generador; MLflow aparte: experimento y modelo abandono_real)
+                           Con el extracto real se detiene: #RETIROS es historia acumulada y falta la etiqueta
+                           futura. No se entrena hasta tener seguimiento posterior al corte.
      make tecnicas         compara técnicas de preprocesamiento: SMOTE/ADASYN, imputadores (KNN, iterativo,
                            indicador), encoders (ordinal, target), escaladores, variables nuevas, binning,
                            PCA y RFE (PR-AUC en CV) + correlación de variables. ej.: ARGS="--clasificador hist_gb"
@@ -259,14 +258,13 @@
  5.2 Tres niveles de verificación
      Nivel 1  Por fila         registros corruptos           ESTRATO entre 1 y 6, SEXO en F/M
      Nivel 2  Distribución     problemas del lote completo   salario_en_pesos, volumen_minimo
-              (severidad: error bloquea; advertencia se informa: tasa_retiro_plausible, rango por
-              confirmar con el fondo)
-     Nivel 3  Entre columnas   incoherencias                 retiro_coherente (#RETIROS=1 exige
-                                                             fecha y motivo de retiro)
+              (no se infiere una tasa futura de #RETIROS: es un conteo histórico)
+     Nivel 3  Entre columnas   incoherencias                 ingreso_posterior_nacimiento
+                                                             (las fechas de ingreso deben ser
+                                                             posteriores al nacimiento)
 
  5.3 Dónde se exige (la "frontera": donde el dato ENTRA, no donde se usa)
-     uv run python scripts/ingesta.py --input <archivo> --target "#RETIROS" \
-         --contrato contratos/asociados.yaml
+     make contrato DATA=<archivo>
      make supabase-subir                       (valida antes de subir)
      Supabase                                  CHECK de la tabla (niveles 1 y 3) en cada INSERT
 

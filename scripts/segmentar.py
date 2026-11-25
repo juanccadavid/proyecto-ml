@@ -4,7 +4,7 @@ Sobre la foto del asociado (los mismos datos del campeón), solo con el comporta
 
 - KMeans con ``k`` elegido por la silueta (2 a 8), o el que se pida con --k;
 - DBSCAN con ``eps`` de la curva de vecinos: los atípicos (fuera de toda zona densa) quedan aparte;
-- el perfil de cada segmento y, solo al final, su tasa de retiro real: no supervisado vs. supervisado.
+- el perfil de cada segmento y, solo al final, su tasa del evento sintético: no supervisado vs. supervisado.
 
 Guarda reports/figures/segmentos.html (mapa con botón KMeans/DBSCAN + silueta por k) y
 reports/metrics/segmentos_<fecha>.json; en MLflow (experimento ``abandono``), una corrida "segmentos".
@@ -60,7 +60,7 @@ def main() -> None:
         print(f"\n=== DBSCAN (eps = {seg.eps_:.2f}, min_samples = {seg.min_samples_}; -1 = atípicos) ===")
         print(s.perfil(df, dbscan).round(3).to_string())
         comparacion = s.comparar_con_retiro(df, seg)
-        print("\n=== No supervisado vs. retiro real: ¿el segmento 'de riesgo' encuentra a los que se van? ===")
+        print("\n=== No supervisado vs. evento futuro sintético ===")
         print(comparacion.round(3).to_string())
 
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)

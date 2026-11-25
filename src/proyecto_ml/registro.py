@@ -166,7 +166,7 @@ def parametros_datos(df: pd.DataFrame, origen: str | None = None) -> dict[str, s
 
 
 def registrar_datos(
-    df: pd.DataFrame, nombre: str, contexto: str, fuente: str, objetivo: str | None = "#RETIROS"
+    df: pd.DataFrame, nombre: str, contexto: str, fuente: str, objetivo: str | None = "EVENTO_RETIRO_3M_SINTETICO"
 ) -> str:
     """Registra ``df`` como dataset de la corrida activa (sin copiar los datos) y devuelve su huella.
 

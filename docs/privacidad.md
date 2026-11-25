@@ -8,7 +8,8 @@ pero el extracto y sus predicciones individuales nunca se adjuntan.
 
 - El contrato funciona como lista blanca: un campo desconocido detiene el modo `real_anonimizado`.
 - `NROIDENTIFICACION`, nombres, dirección, correo y celular se validan, pero no entran al modelo.
-- `ESTADO`, `FECHAULTACTUALIZACION` y `#RETIROS` tampoco son predictores.
+- `ESTADO` y `FECHAULTACTUALIZACION` no son predictores. `#RETIROS` sí es un conteo histórico predictor, nunca la
+  etiqueta de los próximos tres meses.
 - Las fechas crudas no entran al modelo; se usan las variables aprobadas `EDAD`, `ANTIGUEDAD_F_MESES` y
   `ANTIGUEDAD_LA_MESES`.
 - La salida de predicción contiene solo `fila`, puntaje, zona, alerta y grupo; no copia identificadores.

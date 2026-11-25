@@ -1,7 +1,7 @@
 // Generado desde contratos/asociados.yaml. No editar a mano: make contrato-web
 window.CONTRATO = {
   "nombre": "asociados",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "tabla_db": "asociados",
   "grupos": {
     "SOCIODEMOGRAFICO": [
@@ -23,6 +23,7 @@ window.CONTRATO = {
         "nombre": "CODPAISCEDULA",
         "tipo": "entero",
         "requerido": true,
+        "min": 0,
         "db": "codpaiscedula"
       },
       {
@@ -71,18 +72,21 @@ window.CONTRATO = {
         "nombre": "CODPAISRESIDENCIA",
         "tipo": "entero",
         "requerido": true,
+        "min": 0,
         "db": "codpaisresidencia"
       },
       {
         "nombre": "CODDEPARTAMENTORESIDENCIA",
         "tipo": "entero",
         "requerido": true,
+        "min": 0,
         "db": "coddepartamentoresidencia"
       },
       {
         "nombre": "CODCIUDADRESIDENCIA",
         "tipo": "entero",
         "requerido": true,
+        "min": 0,
         "db": "codciudadresidencia"
       },
       {
@@ -114,6 +118,7 @@ window.CONTRATO = {
         "nombre": "EDAD",
         "tipo": "entero",
         "requerido": true,
+        "min": 0,
         "max": 120,
         "db": "edad"
       },
@@ -121,18 +126,21 @@ window.CONTRATO = {
         "nombre": "PAISNACE",
         "tipo": "entero",
         "requerido": true,
+        "min": 0,
         "db": "paisnace"
       },
       {
         "nombre": "DPTONACE",
         "tipo": "entero",
         "requerido": true,
+        "min": 0,
         "db": "dptonace"
       },
       {
         "nombre": "CIUDADNACE",
         "tipo": "entero",
         "requerido": true,
+        "min": 0,
         "db": "ciudadnace"
       },
       {
@@ -159,6 +167,7 @@ window.CONTRATO = {
         "nombre": "CELULAR",
         "tipo": "entero",
         "requerido": true,
+        "min": 0,
         "descripcion": "Valor anonimizado; no entra al modelo",
         "db": "celular"
       },
@@ -191,6 +200,7 @@ window.CONTRATO = {
         "nombre": "ANTIGUEDAD_F_MESES",
         "tipo": "entero",
         "requerido": true,
+        "min": 0,
         "db": "antiguedad_f_meses"
       }
     ],
@@ -211,6 +221,7 @@ window.CONTRATO = {
         "nombre": "SALARIO",
         "tipo": "entero",
         "requerido": true,
+        "min": 0,
         "descripcion": "Pesos colombianos mensuales",
         "db": "salario"
       },
@@ -224,6 +235,7 @@ window.CONTRATO = {
       {
         "nombre": "ANTIGUEDAD_LA_MESES",
         "tipo": "entero",
+        "min": 0,
         "db": "antiguedad_la_meses"
       },
       {
@@ -244,30 +256,35 @@ window.CONTRATO = {
         "nombre": "#SOLICITUDCREDITOS_ULT3MES",
         "tipo": "entero",
         "requerido": true,
+        "min": 0,
         "db": "num_solicitudcreditos_ult3mes"
       },
       {
         "nombre": "#CANTIDAD_AHORROSALAVISTA",
         "tipo": "entero",
         "requerido": true,
+        "min": 0,
         "db": "num_cantidad_ahorrosalavista"
       },
       {
         "nombre": "#CANTIDAD_AHORROSCONTRACTUALES",
         "tipo": "entero",
         "requerido": true,
+        "min": 0,
         "db": "num_cantidad_ahorroscontractuales"
       },
       {
         "nombre": "#SOLICITUD_RETIROPARCIALAHORROS",
         "tipo": "entero",
         "requerido": true,
+        "min": 0,
         "db": "num_solicitud_retiroparcialahorros"
       },
       {
         "nombre": "#SOLICITUD_CANCELACIONAHORROS",
         "tipo": "entero",
         "requerido": true,
+        "min": 0,
         "db": "num_solicitud_cancelacionahorros"
       },
       {
@@ -280,6 +297,7 @@ window.CONTRATO = {
         "nombre": "#CANTIDAD_SERVICIOS",
         "tipo": "entero",
         "requerido": true,
+        "min": 0,
         "db": "num_cantidad_servicios"
       }
     ],
@@ -288,11 +306,8 @@ window.CONTRATO = {
         "nombre": "#RETIROS",
         "tipo": "entero",
         "requerido": true,
-        "valores": [
-          0,
-          1
-        ],
-        "descripcion": "Objetivo definido por el fondo",
+        "min": 0,
+        "descripcion": "Conteo histórico acumulado durante la permanencia; es predictor, no etiqueta futura",
         "db": "num_retiros"
       }
     ]

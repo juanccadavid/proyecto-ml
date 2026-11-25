@@ -59,7 +59,7 @@ def experimento(train: pd.DataFrame, folds: int = 5) -> tuple[pd.DataFrame, dict
     from pycaret.classification import ClassificationExperiment
 
     exp = ClassificationExperiment(target=a.TARGET, session_id=42, fold=folds, normalize=True)
-    exp.fit(a.preparar(train), train[a.TARGET])
+    exp.fit(a.preparar(train), a.objetivo_binario(train))
     incluir = [LGBMClassifier(verbose=-1, random_state=42) if m == "lightgbm" else m for m in MODELOS]
     resultado = exp.compare_models(include=incluir, sort="AUC", n_select=len(incluir))
     ids = ["lightgbm" if i == "LGBMClassifier" else i for i in resultado.ranked_ids]  # instancia propia -> su id
@@ -93,19 +93,19 @@ def main() -> None:
     except DatosInvalidos as error:
         raise SystemExit(str(error)) from None  # con limpiar_extracto y el contrato
     nuevos = GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos).generar()
-    print(f"Entrenamiento: {args.datos} ({len(train)} filas, {train[a.TARGET].mean():.0%} abandono)\n")
+    print(f"Entrenamiento: {args.datos} ({len(train)} filas, {a.objetivo_binario(train).mean():.0%} abandono)\n")
 
     tabla_pycaret, de_pycaret = experimento(train, args.folds)
 
     # Tabla comparativa: PyCaret y a mano, con las mismas particiones sobre todo `train`.
-    X, y = a.preparar(train), train[a.TARGET]
+    X, y = a.preparar(train), a.objetivo_binario(train)
     modelos = {f"pycaret_{n}": m for n, m in de_pycaret.items()} | a.modelos_supervisados()
     comparativa = tabla_comparativa(modelos, X, y, folds=args.folds, ordenar=args.ordenar)
     print(f"=== Tabla comparativa: validación cruzada ({args.folds}), mismas particiones, por {args.ordenar} ===")
     print(comparativa.round(4).to_string())
 
     # Los mismos asociados nuevos para todos.
-    Xn, yn = a.preparar(nuevos), nuevos[a.TARGET]
+    Xn, yn = a.preparar(nuevos), a.objetivo_binario(nuevos)
     en_nuevos = {}
     for nombre, modelo in modelos.items():
         if nombre.startswith("pycaret_"):  # ya reentrenados por finalize_model

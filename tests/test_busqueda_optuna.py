@@ -14,7 +14,7 @@ optuna.logging.set_verbosity(optuna.logging.WARNING)
 @pytest.fixture(scope="module")
 def datos():
     df = GeneradorAsociados(n=150, seed=1).generar()
-    return a.preparar(df), df[a.TARGET]
+    return a.preparar(df), a.objetivo_binario(df)
 
 
 @pytest.mark.parametrize("nombre", bo.MODELOS)

@@ -1,4 +1,4 @@
--- Migración 003: el equipo inserta directo en public.asociados, sin revisión (contrato v2.0.0).
+-- Migración 003: el equipo inserta directo en public.asociados, sin revisión (contrato v2.1.0).
 -- Para una base que ya corrió la 002. Pegar en Supabase > SQL Editor > Run.
 -- Generado con contrato.migracion_formulario(); una base nueva lo trae en supabase/asociados.sql.
 -- Ojo: borra public.asociados_entrada (y lo que hubiera pendiente: son datos de prueba del formulario).

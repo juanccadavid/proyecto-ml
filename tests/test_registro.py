@@ -29,7 +29,7 @@ def test_corridas_y_alias_del_campeon(tmp_path, monkeypatch):
 
     monkeypatch.setenv("MLFLOW_TRACKING_URI", f"sqlite:///{(tmp_path / 'mlflow.db').as_posix()}")
     df = GeneradorAsociados(n=200, seed=1).generar()
-    X, y = a.preparar(df), df[a.TARGET]
+    X, y = a.preparar(df), a.objetivo_binario(df)
     modelo = a.modelos_supervisados()["logreg"].fit(X, y)
     agrupador = a.AgrupadorAbandono().fit(df)
 
@@ -110,7 +110,9 @@ def test_misma_huella_en_memoria_y_en_archivo(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "PROCESSED_DIR", tmp_path)
     memoria, fuente = c.datos_eleccion()
     assert fuente == "datos_desarrollo() en memoria"
-    GeneradorAsociados(**generador.DESARROLLO).guardar(tmp_path, generador.NOMBRE_DESARROLLO)  # make datos-desarrollo
+    GeneradorAsociados(**generador.DESARROLLO).guardar(
+        tmp_path, generador.NOMBRE_DESARROLLO, incluir_objetivo_sintetico=True
+    )  # make datos-desarrollo
     archivo, fuente = c.datos_eleccion()
     assert fuente == f"{generador.NOMBRE_DESARROLLO}.parquet"
     assert r.huella(archivo) == r.huella(memoria)

@@ -75,7 +75,7 @@ def main() -> None:
         raise SystemExit(str(error)) from None  # con limpiar_extracto y el contrato
     nuevos = GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos).generar()
     X, y = a.separar(train)
-    print(f"Entrenamiento: {args.datos} ({len(train)} filas, {train[a.TARGET].mean():.0%} abandono)")
+    print(f"Entrenamiento: {args.datos} ({len(train)} filas, {a.objetivo_binario(train).mean():.0%} abandono)")
     print(f"Maximiza: {args.metrica} (validación cruzada, {args.folds} particiones) · {args.intentos} intentos\n")
 
     estudios, modelos = {}, {}

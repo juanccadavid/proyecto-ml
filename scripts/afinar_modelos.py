@@ -96,7 +96,7 @@ def modelos_base(train: pd.DataFrame, folds: int = 5) -> dict[str, Pipeline]:
     from pycaret.classification import ClassificationExperiment
 
     exp = ClassificationExperiment(target=a.TARGET, session_id=42, fold=folds, normalize=True)
-    exp.fit(a.preparar(train), train[a.TARGET])
+    exp.fit(a.preparar(train), a.objetivo_binario(train))
 
     # pycaret_lr: el preprocesamiento de PyCaret (media + ordinal, sin recorte ni ColumnDropper)
     lr = clone(exp.create_model("lr").pipeline[-1])
@@ -132,7 +132,7 @@ def main() -> None:
         raise SystemExit(str(error)) from None  # con limpiar_extracto y el contrato
     nuevos = GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos).generar()
     X, y = a.separar(train)
-    print(f"Entrenamiento: {args.datos} ({len(train)} filas, {train[a.TARGET].mean():.0%} abandono)")
+    print(f"Entrenamiento: {args.datos} ({len(train)} filas, {a.objetivo_binario(train).mean():.0%} abandono)")
     print(f"Elige por: {args.metrica} (validación cruzada, {args.folds} particiones)\n")
 
     base = modelos_base(train, args.folds)

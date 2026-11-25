@@ -29,6 +29,7 @@ from proyecto_ml.contrato import limpiar_extracto
 from proyecto_ml.data import load_dataset
 from proyecto_ml.evaluate import compute_metrics
 from proyecto_ml.features import Preprocesador, build_preprocessor
+from proyecto_ml.generador import TARGET_SINTETICO
 from proyecto_ml.models import get_models
 
 if TYPE_CHECKING:
@@ -36,7 +37,8 @@ if TYPE_CHECKING:
 
     from matplotlib.figure import Figure
 
-TARGET = "#RETIROS"
+TARGET = TARGET_SINTETICO
+RETIROS_HISTORICOS = "#RETIROS"
 FECHA_CORTE = pd.Timestamp(fecha_corte())  # FECHA_CORTE del .env; por defecto la de los sintéticos
 # Fecha de referencia usada para documentar el horizonte del lote.
 HORIZONTE_MESES = 3
@@ -70,7 +72,14 @@ COMPORTAMIENTO = [
 # extracción. Si son a la extracción, para los retirados incluyen lo que pasó después de t0 (fuga). Lo confirma
 # el fondo; mientras tanto, una evaluación con datos reales queda marcada (config.temporalidad_confirmada).
 CONTEOS_SIN_FECHA = COMPORTAMIENTO
-NUMERICAS = [*COMPORTAMIENTO, "SALARIO", "EDAD", "ANTIGUEDAD_F_MESES", "ANTIGUEDAD_LA_MESES"]
+NUMERICAS = [
+    *COMPORTAMIENTO,
+    RETIROS_HISTORICOS,
+    "SALARIO",
+    "EDAD",
+    "ANTIGUEDAD_F_MESES",
+    "ANTIGUEDAD_LA_MESES",
+]
 CATEGORICAS = [
     "#SOLICITUD_DISMINUCIONCUOTAS",
     "TIPOIDENTIFICACION",
@@ -118,9 +127,9 @@ def fecha_observacion(horizonte_meses: int = HORIZONTE_MESES, corte: pd.Timestam
 def foto(df: pd.DataFrame, horizonte_meses: int = HORIZONTE_MESES, corte: pd.Timestamp = FECHA_CORTE) -> pd.DataFrame:
     """Conserva el lote y anota t0 = corte - horizonte.
 
-    El esquema definitivo ya trae ``#RETIROS`` y no incluye fecha de retiro; por eso no se puede reconstruir el
-    objetivo ni filtrar activos. La temporalidad de los conteos debe estar documentada antes de interpretar una
-    evaluación real.
+    El esquema real trae ``#RETIROS`` como historia acumulada y no incluye una etiqueta futura. Solo los datos
+    sintéticos llevan ``EVENTO_RETIRO_3M_SINTETICO``; por eso un único extracto real no permite entrenar ni evaluar
+    la pregunta de retiro en los próximos tres meses.
     """
     vista = df.copy()
     vista[FECHA_OBSERVACION] = fecha_observacion(horizonte_meses, corte)
@@ -132,13 +141,14 @@ def resumen_foto(df: pd.DataFrame, horizontes=(1, 3, 6, 12), corte: pd.Timestamp
     filas = []
     for h in horizontes:
         vista = foto(df, h, corte)
+        y = objetivo_binario(vista)
         filas.append(
             {
                 "horizonte_meses": h,
                 "fecha_observacion": fecha_observacion(h, corte).date(),
                 "asociados": len(vista),
-                "se_retiran": int(vista[TARGET].sum()),
-                "tasa_retiro": float(vista[TARGET].mean()) if len(vista) else float("nan"),
+                "se_retiran": int(y.sum()),
+                "tasa_retiro": float(y.mean()) if len(vista) else float("nan"),
                 "fuera_de_la_foto": len(df) - len(vista),  # retirados antes de t0 o ingresados después
             }
         )
@@ -156,9 +166,23 @@ def preparar(df: pd.DataFrame) -> pd.DataFrame:
     return X[NUMERICAS + CATEGORICAS]
 
 
+def objetivo_binario(datos: pd.DataFrame | pd.Series) -> pd.Series:
+    """Etiqueta futura binaria creada por el generador; nunca se deriva de ``#RETIROS``."""
+    conteo = datos[TARGET] if isinstance(datos, pd.DataFrame) else datos
+    y = pd.to_numeric(conteo, errors="raise").astype(int).rename(TARGET)
+    if not set(y.dropna().unique()) <= {0, 1}:
+        raise ValueError(f"{TARGET} debe ser binaria")
+    return y
+
+
 def separar(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
-    """X (las filas sin el objetivo, tal cual: el pipeline las prepara) e y (#RETIROS)."""
-    return df.drop(columns=TARGET), df[TARGET]
+    """X incluye el historial ``#RETIROS``; y es la etiqueta futura disponible solo en sintéticos."""
+    if TARGET not in df:
+        raise ValueError(
+            f"Falta {TARGET}: #RETIROS es un conteo histórico y no puede sustituir la etiqueta de los próximos "
+            "tres meses. El extracto real sirve para predecir con un modelo ya entrenado, no para supervisarlo."
+        )
+    return df.drop(columns=TARGET), objetivo_binario(df)
 
 
 class PrepararVariables(TransformerMixin, BaseEstimator):
@@ -350,7 +374,7 @@ def puntaje(modelo: Pipeline, X: pd.DataFrame) -> np.ndarray:
 
 def metricas_supervisado(modelo: Pipeline, df: pd.DataFrame) -> dict[str, float]:
     metodo = metodo_puntaje(modelo)
-    return compute_metrics(df[TARGET], puntaje(modelo, df), threshold=UMBRAL[metodo], metodo=metodo)
+    return compute_metrics(objetivo_binario(df), puntaje(modelo, df), threshold=UMBRAL[metodo], metodo=metodo)
 
 
 def guardar_modelo(pipeline: Pipeline, carpeta: Path, nombre: str) -> dict[str, Path]:
@@ -375,7 +399,7 @@ def guardar_modelo(pipeline: Pipeline, carpeta: Path, nombre: str) -> dict[str, 
 
 
 def tabla_predicciones(modelos: dict[str, Pipeline], df: pd.DataFrame) -> pd.DataFrame:
-    """Como ``predict_model`` de PyCaret: las variables, el abandono real (si está) y lo que predice cada modelo.
+    """Como ``predict_model`` de PyCaret: variables, etiqueta futura sintética (si está) y predicciones.
 
     Por modelo, ``<nombre>_label`` (1 = abandona) y ``<nombre>_score``: la probabilidad de abandono si el
     modelo la da (0 a 1) o, si no (Ridge), la distancia a la frontera (> 0 = abandona). A diferencia de
@@ -383,7 +407,7 @@ def tabla_predicciones(modelos: dict[str, Pipeline], df: pd.DataFrame) -> pd.Dat
     más alto = más riesgo, así sirve para ordenar a quién contactar primero.
     """
     X = preparar(df)
-    tabla = X.assign(**{TARGET: df[TARGET].to_numpy()}) if TARGET in df else X.copy()
+    tabla = X.assign(**{TARGET: objetivo_binario(df).to_numpy()}) if TARGET in df else X.copy()
     for nombre, modelo in modelos.items():
         tabla[f"{nombre}_label"] = modelo.predict(X)
         tabla[f"{nombre}_score"] = puntaje(modelo, X)
@@ -441,8 +465,8 @@ class AgrupadorAbandono:
 
 
 def metricas_agrupacion(agrupador: AgrupadorAbandono, df: pd.DataFrame) -> dict[str, float]:
-    """Compara los grupos con el abandono real (que el modelo nunca vio)."""
-    y, grupo = df[TARGET].to_numpy(), agrupador.predict(df)
+    """Compara los grupos con la etiqueta futura sintética (que el agrupador nunca vio)."""
+    y, grupo = objetivo_binario(df).to_numpy(), agrupador.predict(df)
     X = agrupador.pipeline[:-1].transform(df)  # preparado, imputado y escalado, sin KMeans
     tn, fp, fn, tp = confusion_matrix(y, grupo, labels=[0, 1]).ravel()
     return {
@@ -451,7 +475,7 @@ def metricas_agrupacion(agrupador: AgrupadorAbandono, df: pd.DataFrame) -> dict[
         "precision": float(tp / (tp + fp)) if tp + fp else 0.0,  # de los marcados en riesgo, cuántos se fueron
         "recall": float(tp / (tp + fn)) if tp + fn else 0.0,  # de los que se fueron, cuántos quedaron en riesgo
         "accuracy": float((tp + tn) / len(y)),
-        "ari": float(adjusted_rand_score(y, grupo)),  # 0 = azar, 1 = grupos idénticos al abandono real
+        "ari": float(adjusted_rand_score(y, grupo)),  # 0 = azar, 1 = grupos idénticos al evento sintético
         "silhouette": float(silhouette_score(X, grupo)) if len(set(grupo)) > 1 else float("nan"),
     }
 
@@ -470,7 +494,7 @@ def figura_matrices_confusion(
     from matplotlib import colormaps
     from matplotlib.figure import Figure  # sin pyplot: no abre ventanas ni depende del backend
 
-    y, X = df[TARGET].to_numpy(), preparar(df)
+    y, X = objetivo_binario(df).to_numpy(), preparar(df)
     reales = ["0\nse queda", "1\nabandona"]
     paneles = {TITULOS.get(nombre, nombre): (modelo.predict(X), reales) for nombre, modelo in supervisados.items()}
     paneles["KMeans (sin objetivo)"] = (agrupador.predict(df), ["0\nestable", "1\nriesgo"])

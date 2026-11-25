@@ -11,16 +11,14 @@
 | 3. Entre columnas | `reglas` → check con varias columnas | incoherencias | ingresos posteriores al nacimiento | Sí (CHECK) |
 
 Cada check de nivel 2 tiene `severidad`: **`error`** (por defecto, bloquea) o **`advertencia`** (se informa con
-`contrato.advertencias` y no bloquea). `tasa_retiro_plausible` (1 %–50 % de `#RETIROS=1` en el lote) es
-advertencia: el rango salió del diseño de los sintéticos (10 % de retiro), no de una regla del fondo, y un
-extracto real con otra prevalencia no es por eso un dato malo. **Pendiente: confirmar el rango con el fondo.** Si
-da una regla validada, se ajustan `min`/`max` en el YAML y se pasa a `severidad: error`.
+`contrato.advertencias` y no bloquea). No se valida una tasa de retiro futura: `#RETIROS` es historia acumulada y
+el extracto real no contiene la etiqueta de los próximos tres meses.
 
 De ahí salen la validación en Python, la tabla de Supabase y el formulario web:
 
 ```bash
 make contrato                              # valida data/ejemplo (o DATA=...)
-uv run python scripts/ingesta.py --input ... --target "#RETIROS" --contrato contratos/asociados.yaml
+make contrato DATA=ruta/al/extracto.xlsx
 make contrato-sql contrato-web             # regenerar tras cambiar el contrato
 ```
 
@@ -82,10 +80,10 @@ formulario / supabase-subir ──► asociados ──► make supabase-bajar �
 1. En Supabase, *Project Settings → API Keys → Secret keys*: crear una y ponerla en el `.env` como
    `SUPABASE_SECRET_KEY`. Nunca en Git, en la web ni en un chat: salta el RLS.
 2. `make supabase-bajar`: descarga, valida con el contrato (si no cumple, no guarda) y deja la última copia.
-3. En el `.env`, el interruptor `DATOS_ASOCIADOS` elige con qué entrenan los modelos (una línea sin comentar):
-   `data/ejemplo/asociados_ejemplo.parquet` o `data/raw/supabase_asociados.parquet`. Luego `make abandono`.
+3. La copia descargada conserva las 44 columnas del contrato, pero no trae la etiqueta futura. Puede usarse para
+   validación o predicción con un campeón ya entrenado; `make abandono` no la usa para supervisar.
 
-Se entrena con la copia descargada, no con la BD en vivo: así un entrenamiento se puede repetir con los mismos datos.
+Los entrenamientos sintéticos usan una copia fija con su etiqueta generada, no la BD en vivo.
 
 **Formulario en internet (GitHub Pages, gratis):** `https://juanccadavid.github.io/proyecto-ml/formulario.html`
 (la raíz del sitio redirige ahí).

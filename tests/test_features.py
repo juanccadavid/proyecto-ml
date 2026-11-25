@@ -60,7 +60,7 @@ def test_pagina_pipelines_con_el_diagrama_de_cada_uno():
     from proyecto_ml.generador import GeneradorAsociados
 
     df = GeneradorAsociados(n=200, seed=1).generar()
-    ridge = a.modelo_ridge().fit(a.preparar(df), df[a.TARGET])
+    ridge = a.modelo_ridge().fit(a.preparar(df), a.objetivo_binario(df))
     html = pagina_pipelines({"Ridge": ridge, "Ridge sin entrenar": a.modelo_ridge()}, "Pipelines <abandono>")
 
     assert html.startswith("<!doctype html>") and '<meta charset="utf-8">' in html
@@ -114,7 +114,7 @@ def test_preprocesador_para_gridsearch_y_aplanar():
     from proyecto_ml.generador import GeneradorAsociados
 
     df = GeneradorAsociados(n=300, seed=2).generar()
-    X, y = a.preparar(df), df[a.TARGET]
+    X, y = a.preparar(df), a.objetivo_binario(df)
     opciones = {"numeric_strategy": "mean", "encoding": "ordinal", "clip_outliers": "iqr"}
     envuelto = Preprocesador(a.NUMERICAS, a.CATEGORICAS, clip_columns=a.COLUMNAS_RECORTE, **opciones).fit(X)
     directo = build_preprocessor(a.NUMERICAS, a.CATEGORICAS, clip_columns=a.COLUMNAS_RECORTE, **opciones).fit(X)

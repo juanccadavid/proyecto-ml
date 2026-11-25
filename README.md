@@ -141,8 +141,8 @@ Las métricas versionadas anteriores correspondían al contrato de 74 columnas y
 la migración al esquema definitivo, `make campeon` vuelve a calcularlas con 5.000 asociados sintéticos. Esas cifras
 solo verifican el funcionamiento del pipeline; no describen al fondo ni sustituyen una evaluación temporal real.
 
-Solo habrá un corte real y `#RETIROS` llega como objetivo en el archivo. Por ello el proyecto no presenta una
-validación fuera de tiempo con datos reales.
+Solo habrá un corte real y `#RETIROS` cuenta retiros acumulados durante la permanencia. No es la etiqueta de los
+próximos tres meses; por ello el proyecto bloquea el entrenamiento supervisado con ese extracto.
 
 ## Arquitectura
 
@@ -217,7 +217,7 @@ flowchart TD
 
 | Paso | Qué pasa | Comando | Dónde |
 |---|---|---|---|
-| **1. Datos** | Tres fuentes con el mismo esquema de 44 columnas. El extracto real ya llega anonimizado, se guarda solo en `data/raw/` y no se versiona. | `make supabase-bajar`, `make datos-desarrollo` | `contrato.py`, `generador.py` |
+| **1. Datos** | El contrato real tiene 44 columnas. El desarrollo sintético agrega `EVENTO_RETIRO_3M_SINTETICO`, que nunca se espera ni se fabrica en el extracto real. | `make supabase-bajar`, `make datos-desarrollo` | `contrato.py`, `generador.py` |
 | **2. Contrato** | Columnas, tipos, rangos y reglas del negocio. Un lote que no cumple no sigue. | `make contrato DATA=...` (o `scripts/ingesta.py --contrato contratos/asociados.yaml`) | `contratos/asociados.yaml`, `contrato.py` |
 | **3. Preparación** | Selecciona los predictores permitidos. Usa `EDAD`, `ANTIGUEDAD_F_MESES` y `ANTIGUEDAD_LA_MESES`; excluye identificadores, contacto, fechas crudas y estado. | incluido en todos los pipelines | `abandono.preparar` |
 | **4a. Supervisado** | Un solo pipeline para todos los modelos: preparar → preprocesar (imputar, codificar, escalar, recortar) → modelo. Los candidatos son una lista fija (`campeon.lista_candidatos`): los 4 supervisados y la logística sin balancear y con TargetEncoder, que ganaron de forma concluyente en un `make tecnicas` anterior. | `make tecnicas`, `make validacion` | `abandono.armar_pipeline`, `features.py`, `tecnicas.py` |
@@ -229,31 +229,25 @@ flowchart TD
 ## Datos sintéticos y datos reales
 
 Hoy todo corre con **datos sintéticos** (`GeneradorAsociados`): sirven para construir y probar el sistema, **no son
-evidencia** de cómo le irá al modelo con el fondo. Cuando llegue el extracto anonimizado, el mismo pipeline lo usa
-cambiando una sola línea del `.env`:
+evidencia** de cómo le irá al modelo con el fondo. El extracto real sirve para validar el esquema y, cuando exista
+un modelo entrenado con una etiqueta futura válida, para predecir; hoy no sirve para entrenar el clasificador:
 
 ```bash
 ORIGEN_DATOS=sintetico            # por defecto
-ORIGEN_DATOS=real_anonimizado     # y luego: make campeon DATA=data/raw/extracto_anon.parquet
+ORIGEN_DATOS=real_anonimizado     # make campeon se detiene: falta la etiqueta futura
 ```
 
 | | `sintetico` | `real_anonimizado` |
 |---|---|---|
 | De dónde salen los datos | `--datos`, o `data/processed/asociados_desarrollo.parquet`, o el generador en memoria | **solo** `--datos` (sin él, falla: nunca cae en los generados) |
-| Contrato de datos | contrato v2 de 44 columnas | el mismo contrato v2 como lista blanca; el error dice cantidades y columnas, **sin valores** (`contrato.sin_valores`). Ver [docs/privacidad.md](docs/privacidad.md) |
-| Asociados nuevos y escenarios del generador | sí (validación sobre datos que el modelo no vio) | no: serían de otro origen. La validación de afuera es la temporal (`validacion.particion_temporal`) |
-| MLflow | experimentos `abandono`, `salario`; modelo `abandono` | experimentos `abandono_real`, `salario_real`; modelo `abandono_real` |
-| Etiqueta en consola, `campeon.json`, resumen del CI y simulador | **MODO SINTÉTICO: resultados experimentales** | DATOS REALES ANONIMIZADOS |
+| Contrato de datos | 44 columnas reales + una etiqueta futura solo sintética | contrato v2 de 44 columnas como lista blanca; el error dice cantidades y columnas, **sin valores** (`contrato.sin_valores`). Ver [docs/privacidad.md](docs/privacidad.md) |
+| Entrenamiento supervisado | sí, experimental | no disponible: falta seguimiento futuro |
+| MLflow | experimentos `abandono`, `salario`; modelo `abandono` | no se registra un campeón de abandono sin etiqueta válida |
+| Etiqueta en consola, `campeon.json`, resumen del CI y simulador | **MODO SINTÉTICO: resultados experimentales** | no aplica al entrenamiento actual |
 
-Con datos reales, además: **`FECHA_CORTE`** (`.env`) debe ser la fecha de extracción, porque la foto se toma
-3 meses antes; si el archivo trae fechas posteriores, `make campeon` se detiene. Y el simulador comprueba que
-`DATOS_ASOCIADOS` sea el mismo extracto con que se eligió el campeón (misma huella): si no, se detiene en vez
-de explicar un modelo real con datos de otro origen. Las figuras de un resultado sintético llevan la marca
-"DATOS SINTÉTICOS · resultado experimental".
-
-Las métricas de los dos orígenes nunca quedan en la misma tabla de MLflow ni en el mismo `campeon.json`. El
-contrato es el que se conoce hoy (`contratos/asociados.yaml`): si el extracto real trae otras columnas o
-categorías, el contrato lo detiene antes de entrenar, y se ajusta el contrato con el equipo, no el modelo a ciegas.
+Con datos reales, `make contrato-ml` valida las 44 columnas sin mostrar valores. `make campeon` se detiene de
+forma explícita por ausencia de la etiqueta futura. Las figuras sintéticas llevan la marca "DATOS SINTÉTICOS ·
+resultado experimental".
 
 ## Limitaciones
 
@@ -261,15 +255,15 @@ categorías, el contrato lo detiene antes de entrenar, y se ajusta el contrato c
   escenarios miden degradación, no rendimiento real.
 - **Temporalidad limitada.** Los conteos corresponden al corte y a sus tres meses anteriores, pero no traen fecha
   propia. Solo hay un corte, así que no puede construirse una evaluación fuera de tiempo.
-- **Objetivo pendiente de confirmación.** El archivo real contiene valores de `#RETIROS` que deben validarse como
-  etiqueta binaria antes de entrenar.
+- **No hay etiqueta real de tres meses.** `#RETIROS` es un predictor histórico acumulado. No se convierte en clase.
+  La etiqueta `EVENTO_RETIRO_3M_SINTETICO` existe únicamente en los datos generados.
 - **No está validado para producción.** Hasta tener esa validación con datos reales, ninguna cifra de este README
   dice cómo le irá al modelo con el fondo.
 - **SHAP explica el modelo, no la causa** del retiro: dice qué variables mueven el puntaje, no qué haría que
   alguien se quede.
 
-**Pendiente** (necesita al fondo): la definición binaria de `#RETIROS`, el rango de la tasa de retiro del contrato
-(hoy es solo una advertencia) y la licencia (propuesta MIT pendiente
+**Pendiente**: definir una fuente válida de seguimiento futuro para construir la etiqueta de tres meses y aprobar
+la licencia (propuesta MIT pendiente
 de aprobación: [`docs/licencia.md`](docs/licencia.md)).
 
 ## Documentación
@@ -281,6 +275,7 @@ de aprobación: [`docs/licencia.md`](docs/licencia.md)).
 | [`docs/privacidad.md`](docs/privacidad.md) | Custodia del archivo anonimizado, lista blanca de 44 columnas, exclusión de identificadores y salida sin datos individuales |
 | [`docs/mlflow.md`](docs/mlflow.md) | Experimentos y modelo registrado en MLflow, la versión liviana de los datos |
 | [`docs/datos_reales.md`](docs/datos_reales.md) | Estado del extracto local, respuestas del fondo, validación y límites del corte único |
+| [`docs/diccionario_datos.md`](docs/diccionario_datos.md) | Significado de los códigos de estudios, estado civil y tipo de contrato; alcance de sus nombres de columna |
 | [`docs/licencia.md`](docs/licencia.md) | Propuesta de licencia (MIT, pendiente de aprobación), qué cubre y las licencias de las dependencias |
 | [`docs/guia_comandos.txt`](docs/guia_comandos.txt) | Guía para empezar: Git, uv, Make, imports, contratos y cada comando del proyecto |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Ramas, commits y Pull Requests |

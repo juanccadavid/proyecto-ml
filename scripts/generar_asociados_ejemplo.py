@@ -7,7 +7,8 @@ Uso:
     uv run python scripts/generar_asociados_ejemplo.py --desarrollo   # los 5.000 de desarrollo (make datos-desarrollo)
     uv run python scripts/generar_asociados_ejemplo.py --rows 1000 --tasa-retiro 0.1 --fuerza-senal 0.5 \\
         --output-dir data/processed --nombre senal_debil                # retirados menos distinguibles
-Luego: uv run python scripts/ingesta.py --input data/ejemplo/asociados_ejemplo.parquet --target "#RETIROS"
+Los archivos de ejemplo reproducen solo las 44 columnas reales. ``--desarrollo`` agrega la etiqueta futura
+``EVENTO_RETIRO_3M_SINTETICO`` que existe únicamente para probar el entrenamiento.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from proyecto_ml.generador import (
     DESARROLLO,
     FALTANTES,
     NOMBRE_DESARROLLO,
+    TARGET_SINTETICO,
     GeneradorAsociados,
 )
 
@@ -56,11 +58,16 @@ def main() -> None:
     generador = GeneradorAsociados(
         args.rows, args.seed, args.tasa_retiro, FALTANTES if args.faltantes else None, args.fuerza_senal
     )
-    parquet, xlsx = generador.guardar(args.output_dir, args.nombre)
+    parquet, xlsx = generador.guardar(args.output_dir, args.nombre, incluir_objetivo_sintetico=args.desarrollo)
     for columna, vacias in generador.reporte_faltantes_.items():
         print(f"  {vacias:5d} vacíos en {columna} ({vacias / args.rows:.1%}; esperado {FALTANTES[columna]:.0%})")
-    retiros = pd.read_parquet(parquet)["#RETIROS"].mean()
-    print(f"{args.rows} filas (retiros {retiros:.0%}) -> {parquet}, {xlsx}")
+    guardado = pd.read_parquet(parquet)
+    detalle = (
+        f", evento futuro sintético {guardado[TARGET_SINTETICO].mean():.0%}"
+        if TARGET_SINTETICO in guardado
+        else ", sin etiqueta futura"
+    )
+    print(f"{args.rows} filas ({len(guardado.columns)} columnas{detalle}) -> {parquet}, {xlsx}")
 
 
 if __name__ == "__main__":
