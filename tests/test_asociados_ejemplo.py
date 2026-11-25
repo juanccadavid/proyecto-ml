@@ -5,6 +5,7 @@ import pandas as pd
 from proyecto_ml import contrato as k
 from proyecto_ml.generador import (
     DESARROLLO,
+    FECHA_CORTE,
     GRUPOS,
     TARGET_SINTETICO,
     GeneradorAsociados,
@@ -34,7 +35,7 @@ def test_diccionario_cubre_todas_las_columnas():
 
 def test_datos_evidentemente_ficticios_y_seudonimos_unicos():
     df = GeneradorAsociados(n=50, seed=3).generar_extracto()
-    assert df["NROIDENTIFICACION"].str.fullmatch(r"[0-9a-f]{64}").all()
+    assert df["NROIDENTIFICACION"].str.fullmatch(r"[0-9a-f]{10}").all()  # como el identificador del extracto
     assert df["NROIDENTIFICACION"].is_unique
     assert set(df["PRIMERAPELLIDO"]) <= {"PRUEBA", "FICTICIO", "EJEMPLO", "DEMO", "SINTETICO", "MUESTRA"}
     assert df["EMAIL"].str.endswith(".invalid").all()
@@ -42,7 +43,7 @@ def test_datos_evidentemente_ficticios_y_seudonimos_unicos():
 
 def test_edades_y_antiguedades_coherentes_con_fechas():
     df = GeneradorAsociados(n=120, seed=4).generar_extracto()
-    corte = pd.Timestamp("2026-10-31")
+    corte = FECHA_CORTE
     edad = ((corte - pd.to_datetime(df["FECHANACIMIENTO"])).dt.days / 365.25).astype(int)
     assert (df["EDAD"] == edad).all()
     assert (pd.to_datetime(df["FECHAINGRESO"]) > pd.to_datetime(df["FECHANACIMIENTO"])).all()

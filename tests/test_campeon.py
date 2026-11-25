@@ -96,3 +96,44 @@ def test_datos_reales_sin_etiqueta_futura_no_entrenan(tmp_path):
     GeneradorAsociados(n=60, seed=4).generar_extracto().to_parquet(ruta, index=False)
     with pytest.raises(c.DatosInvalidos, match="conteo histórico|acumulado durante la permanencia"):
         c.datos_eleccion(ruta, origen="real_anonimizado")
+
+
+def test_datos_reales_sirven_para_lo_que_no_usa_la_etiqueta(tmp_path):
+    # Segmentación y regresión del salario no usan la etiqueta futura: con el extracto real sí corren. Se escribe
+    # como llega el real: Excel, nombres con tildes y una actualización a las 23:00 del día del corte.
+    extracto = GeneradorAsociados(n=60, seed=4).generar_extracto()
+    extracto = extracto.rename(columns={"EDAD": "EDAD_AÑOS", "FECHAINGRESOLABORA": "FECHAINGRESALABORA"})
+    extracto.loc[0, "FECHAULTACTUALIZACION"] = a.FECHA_CORTE + pd.Timedelta(hours=23)
+    ruta = tmp_path / "extracto.xlsx"
+    extracto.to_excel(ruta, index=False)
+    datos, fuente = c.datos_eleccion(ruta, origen="real_anonimizado", supervisado=False)
+    assert fuente == "extracto.xlsx" and len(datos) == 60 and a.TARGET not in datos
+    assert {"EDAD", "FECHAINGRESOLABORA"} <= set(datos.columns)
+
+
+def test_datos_reales_con_fechas_posteriores_al_corte_no_pasan(tmp_path):
+    extracto = GeneradorAsociados(n=60, seed=4).generar_extracto()
+    extracto.loc[0, "FECHAINGRESO"] = a.FECHA_CORTE + pd.Timedelta(days=1)  # corte mal puesto en el .env
+    ruta = tmp_path / "extracto.parquet"
+    extracto.to_parquet(ruta, index=False)
+    with pytest.raises(c.DatosInvalidos, match="FECHAINGRESO tiene fechas después de FECHA_CORTE"):
+        c.datos_eleccion(ruta, origen="real_anonimizado", supervisado=False)
+
+
+def test_valores_imposibles_quedan_vacios():
+    df = GeneradorAsociados(n=4, seed=4).generar_extracto()
+    df.loc[0, "SALARIO"] = 987_654  # relleno del extracto
+    df.loc[1, "SALARIO"] = 32_421_080_000  # error de digitación
+    df.loc[2, ["EDAD", "ANTIGUEDAD_LA_MESES"]] = [30, 1514]  # 126 años de antigüedad laboral
+    X = a.preparar(df)
+    assert X.loc[[0, 1], "SALARIO"].isna().all()
+    assert pd.isna(X.loc[2, "ANTIGUEDAD_LA_MESES"])
+    assert pd.notna(X.loc[3, "SALARIO"])
+
+
+def test_estrato_en_blanco_es_categoria_y_cargo_no_entra():
+    df = GeneradorAsociados(n=4, seed=4).generar_extracto()
+    df.loc[0, "ESTRATO"] = None
+    X = a.preparar(df)
+    assert X.loc[0, "ESTRATO"] == a.ESTRATO_SIN_DATO  # categoría propia: no se imputa con la moda
+    assert "CARGO" not in X.columns and "CODPROFESION" in X.columns  # CARGO repite CODPROFESION

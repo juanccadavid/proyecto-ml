@@ -32,7 +32,9 @@ def incumplimientos(archivo: str | Path, errores: list[str], real: bool) -> Dato
     )
 
 
-def datos_eleccion(ruta: Path | None = None, origen: str | None = None) -> tuple[pd.DataFrame, str]:
+def datos_eleccion(
+    ruta: Path | None = None, origen: str | None = None, supervisado: bool = True
+) -> tuple[pd.DataFrame, str]:
     """Los asociados con que se elige el campeón y de dónde salieron, según el origen (``config.origen_datos``).
 
     - **sintetico** (por defecto): ``ruta``, o el archivo de ``make datos-desarrollo``, o los mismos 5.000
@@ -41,8 +43,9 @@ def datos_eleccion(ruta: Path | None = None, origen: str | None = None) -> tuple
       falla, para no etiquetar como reales unos datos generados.
 
     Las 44 columnas del extracto deben cumplir el contrato. Los sintéticos llevan además
-    ``EVENTO_RETIRO_3M_SINTETICO``. Un extracto real no tiene esa etiqueta y se rechaza para entrenamiento
-    supervisado: ``#RETIROS`` es historia acumulada, no el resultado de los próximos tres meses.
+    ``EVENTO_RETIRO_3M_SINTETICO``. Un extracto real no tiene esa etiqueta: con ``supervisado=True`` (el
+    abandono) se rechaza, porque ``#RETIROS`` es historia acumulada y no el resultado de los próximos tres meses.
+    Con ``supervisado=False`` (segmentación y regresión del salario, que no usan esa etiqueta) se acepta.
     """
     from proyecto_ml import contrato
     from proyecto_ml.config import ORIGEN_REAL, PROCESSED_DIR, origen_datos
@@ -67,18 +70,21 @@ def datos_eleccion(ruta: Path | None = None, origen: str | None = None) -> tuple
     extras = set(df) - set(exigido.nombres) - ({a.TARGET} if origen != ORIGEN_REAL else set())
     if extras:
         errores.append(f"columnas no previstas por el contrato: {sorted(extras)}")
-    if origen == ORIGEN_REAL:
+    if origen == ORIGEN_REAL and supervisado:
         errores.append(
             f"falta una etiqueta futura válida: #RETIROS es acumulado durante la permanencia y no puede usarse "
             f"como {a.TARGET}"
         )
-    elif a.TARGET not in df:
+    elif origen != ORIGEN_REAL and supervisado and a.TARGET not in df:
         errores.append(f"falta la etiqueta sintética {a.TARGET}")
     for aviso in contrato.advertencias(base, exigido):  # heurísticas sin regla de negocio: se avisa, no se rechaza
         warnings.warn(aviso, contrato.AdvertenciaContrato, stacklevel=2)
     if origen == ORIGEN_REAL:  # fechas después del corte: FECHA_CORTE no es la del extracto y la foto queda corrida
-        for columna in ("FECHAULTACTUALIZACION", "FECHAINGRESO", "FECHAINGRESOLABORA"):
-            if columna in df and (pd.to_datetime(df[columna], errors="coerce") > a.FECHA_CORTE).any():
+        # Solo las fechas que registra el fondo. La de ingreso laboral la reporta la empresa y trae errores de
+        # digitación (años futuros): esos los informa el contrato como advertencia. Se compara el día, no la hora:
+        # una actualización a las 23:00 del día del corte es del corte.
+        for columna in ("FECHAULTACTUALIZACION", "FECHAINGRESO"):
+            if columna in df and (pd.to_datetime(df[columna], errors="coerce").dt.normalize() > a.FECHA_CORTE).any():
                 errores.append(
                     f"{columna} tiene fechas después de FECHA_CORTE ({a.FECHA_CORTE.date()}): pon en el .env "
                     "FECHA_CORTE = la fecha de extracción del archivo"

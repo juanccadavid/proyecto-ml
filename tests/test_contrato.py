@@ -15,7 +15,8 @@ def test_esquema_pandera_con_los_tres_niveles():
     contrato = k.cargar()
     df = GeneradorAsociados(n=50, seed=42).generar_extracto()
     assert k.validar(df, contrato) == []
-    assert len(contrato.reglas) == 2
+    assert len(contrato.reglas) == 3
+    assert [r.get("severidad", "error") for r in contrato.reglas] == ["error", "advertencia", "advertencia"]
     assert len(contrato.distribucion) == 4
 
 

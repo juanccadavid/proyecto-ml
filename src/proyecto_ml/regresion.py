@@ -74,8 +74,13 @@ def modelos(random_state: int = 42) -> dict[str, Pipeline]:
 
 
 def separar(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
-    """X (filas crudas, sin el abandono) e y (SALARIO), solo de quienes reportan salario."""
-    con_salario = df[pd.to_numeric(df[OBJETIVO], errors="coerce").notna()]
+    """X (filas crudas, sin el abandono) e y (SALARIO), solo de quienes reportan un salario plausible.
+
+    Un salario de relleno (987.654) o de miles de millones no se aprende como si fuera cierto: esa fila queda,
+    como la de quien no reporta salario, entre las que el modelo estima (``abandono.SALARIO_PLAUSIBLE``).
+    """
+    salario = pd.to_numeric(df[OBJETIVO], errors="coerce")
+    con_salario = df[salario.between(*a.SALARIO_PLAUSIBLE)]
     return con_salario.drop(columns=[a.TARGET], errors="ignore"), pd.to_numeric(con_salario[OBJETIVO]).astype(float)
 
 

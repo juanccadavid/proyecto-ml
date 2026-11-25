@@ -24,6 +24,9 @@ APP_PORT    := 8501
 DEMO_DATA   := data/processed/sintetico.parquet
 BUNDLE      := rediseno-v3.bundle
 EJEMPLO     := data/ejemplo/asociados_ejemplo.parquet
+# El extracto real anonimizado: solo en el equipo de quien lo custodia (data/ y *.xlsx no van a Git).
+REAL        := data/raw/DataAnonimizada.xlsx
+PY_REAL     := ORIGEN_DATOS=real_anonimizado $(PY)
 
 # Variables opcionales: make train DATA=ruta.parquet ARGS="--pca 0.95 --smote"
 DATA ?=
@@ -31,7 +34,7 @@ ARGS ?=
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup setup-hf demo-data demo train train-hf abandono campeon tecnicas validacion regresion segmentos predecir pipeline pycaret afinar optuna mlflow-ui app \
+.PHONY: help setup setup-hf demo-data demo train train-hf abandono campeon tecnicas validacion regresion segmentos predecir pipeline \n        segmentos-real regresion-real predecir-real real pycaret afinar optuna mlflow-ui app \
         simulador ejemplo datos-desarrollo contrato contrato-ml anonimizar contrato-sql contrato-web supabase-subir supabase-bajar supabase-crear formulario \
         test test-fast cov lint tipos format check hooks secrets up docker-campeon down logs salt bundle clean clean-all
 
@@ -105,6 +108,24 @@ pipeline: ## Corre todo el flujo: campeón, predicción, segmentos, validación 
 	$(MAKE) validacion
 	$(MAKE) regresion
 
+# ==============================================================================
+# Extracto real (ORIGEN_DATOS=real_anonimizado sin tocar el .env; DATA=... para otro archivo)
+# ==============================================================================
+segmentos-real: ## Segmenta el extracto real (KMeans y DBSCAN; no necesita etiqueta)
+	$(PY_REAL) scripts/segmentar.py --datos $(or $(DATA),$(REAL)) $(ARGS)
+
+regresion-real: ## Estima el SALARIO con el extracto real (no necesita etiqueta)
+	$(PY_REAL) scripts/regresion_salario.py --datos $(or $(DATA),$(REAL)) $(ARGS)
+
+predecir-real: ## Puntúa el extracto real con el campeón guardado (entrenado con sintéticos: make campeon)
+	$(PY_REAL) -m proyecto_ml.predict --datos $(or $(DATA),$(REAL)) $(ARGS)
+
+real: ## Todo lo que corre con el extracto real: contrato, segmentos, regresión y predicción
+	$(MAKE) contrato-ml
+	$(MAKE) segmentos-real
+	$(MAKE) regresion-real
+	$(MAKE) predecir-real
+
 optuna: ## Afina Random Forest y HistGB con Optuna (búsqueda en rangos con poda), validados con nuevos
 	$(PY) scripts/afinar_optuna.py $(if $(DATA),--datos $(DATA)) $(ARGS)
 
@@ -132,8 +153,8 @@ datos-desarrollo: ## Genera los 5.000 asociados de desarrollo (semilla 7, 10 % d
 contrato: ## Valida un dataset contra el contrato de origen (DATA=..., por defecto el de ejemplo)
 	$(PY) scripts/contrato_datos.py validar $(or $(DATA),$(EJEMPLO))
 
-contrato-ml: ## Valida un dataset ANONIMIZADO contra el contrato para ML (sin PII; DATA=...)
-	$(PY) scripts/contrato_datos.py validar $(DATA) --ml
+contrato-ml: ## Valida un dataset ANONIMIZADO contra el contrato para ML (DATA=..., por defecto el extracto real)
+	$(PY) scripts/contrato_datos.py validar $(or $(DATA),$(REAL)) --ml
 
 anonimizar: ## Anonimiza un extracto según el contrato (lo corre el custodio; DATA=entrada SALIDA=salida)
 	$(PY) scripts/anonimizar.py --input $(DATA) --output $(SALIDA) $(ARGS)

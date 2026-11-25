@@ -188,9 +188,11 @@
                                custodio. Antes de escribir verifica que no quede PII (también
                                incrustada en textos) y valida el contrato para ML; si algo falla, no
                                escribe nada ni reemplaza la salida que ya existía.
-     make contrato-ml DATA=data/raw/extracto_anon.parquet
-                               valida el dataset ANONIMIZADO contra el contrato para ML (sin PII; los
-                               errores no muestran valores)
+     make contrato-ml          valida el extracto ANONIMIZADO (data/raw/DataAnonimizada.xlsx, o DATA=...)
+                               contra el contrato; los errores no muestran valores
+     make real                 todo lo que corre con el extracto real: contrato-ml, segmentos-real,
+                               regresion-real y predecir-real (ORIGEN_DATOS=real_anonimizado sin tocar
+                               el .env). El abandono no se entrena con él: no tiene etiqueta futura
      make bundle               respaldo offline de todo el historial de Git
      make clean / clean-all    limpia cachés (clean-all borra también .venv, mlruns/ y models/)
 

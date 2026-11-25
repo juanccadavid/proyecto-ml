@@ -41,6 +41,7 @@ RANGO_K = range(2, 9)
 SALIDA = [v for v, peso in a.SENAL_RIESGO.items() if peso > 0]
 VINCULO = [v for v in VARIABLES if v not in SALIDA]
 CUANTIL_EPS = 0.9  # eps = distancia al vecino min_samples que solo supera el 10 % de los asociados
+MUESTRA_SILUETA = 5000  # la silueta es cuadrática: con más asociados se mide en una muestra fija
 ATIPICO = -1
 # Paleta de referencia en orden fijo; el gris queda para los atípicos de DBSCAN.
 _COLORES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"]
@@ -60,18 +61,31 @@ def escalador() -> Pipeline:
 
 
 def tabla_k(Z: np.ndarray, rango=RANGO_K, random_state: int = 42) -> pd.DataFrame:
-    """Silueta (más alta = grupos más separados) e inercia (para el codo) de KMeans con cada ``k``."""
+    """Silueta (más alta = grupos más separados) e inercia (para el codo) de KMeans con cada ``k``.
+
+    La silueta compara todos contra todos: con más de ``MUESTRA_SILUETA`` asociados (el extracto real) se mide en
+    una muestra fija de ese tamaño; la inercia y KMeans sí usan a todos.
+    """
+    muestra = MUESTRA_SILUETA if len(Z) > MUESTRA_SILUETA else None
     filas = []
     for k in rango:
         km = KMeans(n_clusters=k, n_init=10, random_state=random_state).fit(Z)
-        filas.append({"k": k, "silueta": float(silhouette_score(Z, km.labels_)), "inercia": float(km.inertia_)})
+        silueta = silhouette_score(Z, km.labels_, sample_size=muestra, random_state=random_state)
+        filas.append({"k": k, "silueta": float(silueta), "inercia": float(km.inertia_)})
     return pd.DataFrame(filas).set_index("k")
 
 
 def eps_por_vecinos(Z: np.ndarray, min_samples: int, cuantil: float = CUANTIL_EPS) -> float:
-    """``eps`` de DBSCAN: el cuantil de la distancia de cada asociado a su vecino número ``min_samples``."""
+    """``eps`` de DBSCAN: el cuantil de la distancia de cada asociado a su vecino número ``min_samples``.
+
+    Los conteos de comportamiento son discretos y en el extracto real casi todos valen 0: muchos asociados tienen
+    exactamente el mismo comportamiento y su distancia al vecino es 0, lo que daría ``eps = 0`` (DBSCAN no lo
+    acepta). El cuantil se toma entonces sobre las distancias positivas, que son las que dicen a qué escala se
+    separan los asociados distintos.
+    """
     distancias = NearestNeighbors(n_neighbors=min_samples).fit(Z).kneighbors(Z)[0][:, -1]
-    return float(np.quantile(distancias, cuantil))
+    positivas = distancias[distancias > 0]
+    return float(np.quantile(positivas, cuantil)) if len(positivas) else 1e-6
 
 
 class Segmentacion:

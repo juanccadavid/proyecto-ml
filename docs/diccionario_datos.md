@@ -37,4 +37,4 @@ Equivalencias de las nomenclaturas comunicadas para interpretar los valores de c
 | `O` | OTRO |
 | `0` | SIN CONTRATO |
 
-**Alcance de los nombres:** el [contrato vigente](../contratos/asociados.yaml) contiene `ESTUDIOS` y `ESTADOCIVIL`, no `CODESTUDIOS` ni `CODESTADOCIVIL`. Estas equivalencias se registran con los nombres de columna proporcionados y no implican que los campos del contrato usen necesariamente esos códigos. `TIPOCONTRATO` sí figura en el contrato, que no restringe aquí sus valores a esta tabla.
+**Uso en el contrato:** el extracto real trae estos códigos en las columnas `ESTUDIOS`, `ESTADOCIVIL` y `TIPOCONTRATO`. Desde la v2.2.0, el [contrato](../contratos/asociados.yaml) los exige como `valores` válidos de esas tres columnas (también `SEXO` F/M, `ESTRATO` 1 a 6 y `#SOLICITUD_DISMINUCIONCUOTAS` SI/NO), y el generador sintético y el formulario usan los mismos.

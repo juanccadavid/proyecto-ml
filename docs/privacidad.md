@@ -13,7 +13,12 @@ pero el extracto y sus predicciones individuales nunca se adjuntan.
 - Las fechas crudas no entran al modelo; se usan las variables aprobadas `EDAD`, `ANTIGUEDAD_F_MESES` y
   `ANTIGUEDAD_LA_MESES`.
 - La salida de predicción contiene solo `fila`, puntaje, zona, alerta y grupo; no copia identificadores.
-- En modo real, los errores de contrato se resumen sin valores del extracto.
+- En modo real, los errores y advertencias de contrato se resumen sin valores del extracto (solo columna y
+  cantidad de filas).
+- Leer el extracto no reescribe datos: los `alias` del contrato solo renombran columnas y la normalización de
+  códigos (`2` → `'2'`, `'O  '` → `'O'`) no cambia su significado. Los valores imposibles (salario de relleno,
+  antigüedad laboral imposible) se tratan como vacíos dentro del modelo, sin tocar el archivo.
+- El mapa de segmentos con datos reales muestra solo agregados por segmento, no el detalle de cada asociado.
 
 ## Seudonimización y anonimía
 
@@ -28,7 +33,7 @@ documentación, logs ni chats.
 ## Procedimiento con el archivo definitivo
 
 1. Guardar el archivo en `data/raw/DataAnonimizada.xlsx`.
-2. Ejecutar `make contrato-ml DATA=data/raw/DataAnonimizada.xlsx`.
+2. Ejecutar `make contrato-ml` (valida ese archivo por defecto) y, para trabajar con él, `make real`.
 3. Revisar columnas, tipos, vacíos, rangos y coherencia de fechas sin imprimir filas.
 4. Corregir en la fuente cualquier discrepancia confirmada; no reescribir valores para forzar el contrato.
 5. Compartirlo solo por el canal privado autorizado por la organización.

@@ -6,6 +6,9 @@ Sobre la foto del asociado (los mismos datos del campeón), solo con el comporta
 - DBSCAN con ``eps`` de la curva de vecinos: los atípicos (fuera de toda zona densa) quedan aparte;
 - el perfil de cada segmento y, solo al final, su tasa del evento sintético: no supervisado vs. supervisado.
 
+Con ``ORIGEN_DATOS=real_anonimizado`` segmenta el extracto real, porque no necesita etiqueta (make segmentos-real):
+sin la comparación con el evento sintético y con el mapa solo por segmento, sin el detalle de cada asociado.
+
 Guarda reports/figures/segmentos.html (mapa con botón KMeans/DBSCAN + silueta por k) y
 reports/metrics/segmentos_<fecha>.json; en MLflow (experimento ``abandono``), una corrida "segmentos".
 
@@ -27,7 +30,7 @@ from proyecto_ml import abandono as a
 from proyecto_ml import campeon as c
 from proyecto_ml import registro as r
 from proyecto_ml import segmentacion as s
-from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, aviso_origen
+from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, aviso_origen, es_experimental
 from proyecto_ml.figuras import marcar_origen
 
 
@@ -42,7 +45,7 @@ def main() -> None:
     parser.add_argument("--sin-mlflow", action="store_true", help="No registrar en MLflow")
     args = parser.parse_args()
 
-    df, fuente = c.datos_eleccion(args.datos)
+    df, fuente = c.datos_eleccion(args.datos, supervisado=False)  # no usa la etiqueta: sirve con datos reales
     h = args.horizonte or None
     if h:
         df = a.foto(df, h)
@@ -59,14 +62,16 @@ def main() -> None:
         print(s.perfil(df, kmeans).round(3).to_string())
         print(f"\n=== DBSCAN (eps = {seg.eps_:.2f}, min_samples = {seg.min_samples_}; -1 = atípicos) ===")
         print(s.perfil(df, dbscan).round(3).to_string())
-        comparacion = s.comparar_con_retiro(df, seg)
-        print("\n=== No supervisado vs. evento futuro sintético ===")
-        print(comparacion.round(3).to_string())
+        comparacion = s.comparar_con_retiro(df, seg) if a.TARGET in df else pd.DataFrame()
+        if not comparacion.empty:
+            print("\n=== No supervisado vs. evento futuro sintético ===")
+            print(comparacion.round(3).to_string())
 
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
     METRICS_DIR.mkdir(parents=True, exist_ok=True)
     figura = FIGURES_DIR / "segmentos.html"
-    partes = [marcar_origen(s.figura_mapa(seg, df)).to_html(full_html=False, include_plotlyjs="cdn")]
+    mapa = s.figura_mapa(seg, df, detalle_individual=es_experimental())  # con datos reales, solo agregados
+    partes = [marcar_origen(mapa).to_html(full_html=False, include_plotlyjs="cdn")]
     if seg.tabla_k_ is not None:
         partes.append(marcar_origen(s.figura_k(seg.tabla_k_, seg.k_)).to_html(full_html=False, include_plotlyjs=False))
     pagina = '<!doctype html><meta charset="utf-8"><title>Segmentos de asociados</title>' + "".join(partes)

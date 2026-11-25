@@ -50,6 +50,7 @@ class Columna:
     patron: str | None = None
     descripcion: str | None = None
     pii: str | None = None  # "eliminar" o "seudonimizar" (ver contratos/asociados.yaml)
+    alias: list[str] | None = None  # nombres con que llega en el extracto real; se renombran al leer
 
     @property
     def db(self) -> str:
@@ -79,8 +80,12 @@ def cargar(path: str | Path = CONTRATO_ASOCIADOS) -> Contrato:
         raise ValueError(f"Tipos no soportados en el contrato: {invalidos}")
     if invalidos := {c.pii for c in columnas if c.pii} - set(PII):
         raise ValueError(f"pii debe ser uno de {PII}: {invalidos}")
-    if invalidos := {d.get("severidad", "error") for d in raw.get("distribucion", [])} - set(SEVERIDADES):
+    severidades = {d.get("severidad", "error") for d in [*raw.get("distribucion", []), *raw.get("reglas", [])]}
+    if invalidos := severidades - set(SEVERIDADES):
         raise ValueError(f"severidad debe ser una de {SEVERIDADES}: {invalidos}")
+    alias = [a for c in columnas for a in c.alias or []]
+    if repetidos := {a for a in alias if alias.count(a) > 1} | (set(alias) & {c.nombre for c in columnas}):
+        raise ValueError(f"Un alias no puede repetirse ni ser el nombre de otra columna: {sorted(repetidos)}")
     meta = (raw["nombre"], str(raw["version"]), raw["tabla_db"], raw["objetivo"])
     return Contrato(*meta, columnas, raw.get("reglas", []), raw.get("distribucion", []))
 
@@ -176,6 +181,7 @@ DISTRIBUCION: dict[str, tuple[Callable[[pd.DataFrame, dict], float], Callable[[f
 REGLAS: dict[str, Callable[[pd.DataFrame], pd.Series]] = {
     "ingreso_fondo_posterior_nacimiento": lambda d: _fecha(d["FECHAINGRESO"]) > _fecha(d["FECHANACIMIENTO"]),
     "ingreso_laboral_posterior_nacimiento": lambda d: _fecha(d["FECHAINGRESOLABORA"]) > _fecha(d["FECHANACIMIENTO"]),
+    "ingreso_laboral_desde_1950": lambda d: _fecha(d["FECHAINGRESOLABORA"]) >= pd.Timestamp("1950-01-01"),
 }
 
 
@@ -221,26 +227,78 @@ def esquema(contrato: Contrato | None = None) -> pa.DataFrameSchema:
         medida, condicion = DISTRIBUCION[d["id"]]
         lote = lambda df, d=d, m=medida, ok=condicion: bool(ok(m(df, d), d))  # noqa: E731
         checks.append(pa.Check(_check_lote(lote), name=d["id"]))
-    for r in contrato.reglas:
+    for r in [r for r in contrato.reglas if _severidad(r) == "error"]:
         filas = lambda df, f=REGLAS[r["id"]]: f(df).fillna(False).astype(bool)  # noqa: E731
         checks.append(pa.Check(_check_lote(filas), name=r["id"]))
     columnas = {c.nombre: _columna_pa(c) for c in contrato.columnas}
     return pa.DataFrameSchema(columnas, checks=checks, strict=True, name=f"{contrato.nombre} v{contrato.version}")
 
 
+def renombrar_alias(df: pd.DataFrame, contrato: Contrato | None = None) -> pd.DataFrame:
+    """Las columnas que llegan con un ``alias`` del contrato (``EDAD_AÑOS``, ``FECHAINGRESALABORA``...) pasan a
+    su nombre del contrato. Si el archivo ya trae el nombre del contrato, el alias no se toca (y lo reporta el
+    nivel 1 como columna fuera del contrato)."""
+    contrato = contrato or cargar()
+    nombres = {
+        alias: c.nombre for c in contrato.columnas for alias in c.alias or [] if alias in df and c.nombre not in df
+    }
+    return df.rename(columns=nombres) if nombres else df
+
+
+def texto_canonico(s: pd.Series) -> pd.Series:
+    """Una columna de texto del contrato sin espacios sobrantes, con los números como texto sin decimales (Excel
+    lee el código de contrato ``2`` como número y un estrato ``1`` como ``1.0``) y el vacío como faltante. No
+    cambia el significado del dato: ``'O  '`` y ``'O'`` son el mismo código, ``2`` y ``'2'`` también."""
+
+    def canonico(v: Any) -> Any:
+        if v is None or (not isinstance(v, str) and pd.isna(v)):
+            return None
+        if isinstance(v, float) and v.is_integer():
+            v = int(v)
+        texto = " ".join(str(v).split())
+        return texto or None
+
+    return s.astype(object).map(canonico)
+
+
+def fecha_canonica(s: pd.Series) -> pd.Series:
+    """Una columna de fechas como fechas, sin ambigüedad. Excel entrega las celdas de fecha ya convertidas y el
+    sistema del fondo escribe texto ISO (``aaaa-mm-dd hh:mm:ss``), pero una fecha digitada a mano llega como
+    ``'dd/mm/aaaa'`` en medio de las demás. Cada forma se lee con su formato exacto: solo ``dd/mm/aaaa`` lleva el
+    día primero (la convención colombiana); aplicarle ``dayfirst`` a una ISO voltearía mes y día. Lo que no tiene
+    ninguna de las dos formas queda vacío y lo reporta el contrato."""
+    if pd.api.types.is_datetime64_any_dtype(s):
+        return s
+    valores = s.astype(object)
+    salida = pd.Series(pd.NaT, index=s.index, dtype="datetime64[ns]")
+    es_texto = valores.map(lambda v: isinstance(v, str))
+    otros = ~es_texto & valores.notna()
+    if otros.any():  # datetime, Timestamp o date de Excel
+        salida[otros] = pd.to_datetime(valores[otros], errors="coerce")
+    texto = valores[es_texto].str.strip()
+    dia_primero = texto.str.fullmatch(r"\d{1,2}/\d{1,2}/\d{4}")
+    if dia_primero.any():
+        salida[texto.index[dia_primero]] = pd.to_datetime(texto[dia_primero], format="%d/%m/%Y", errors="coerce")
+    iso = texto[~dia_primero & (texto != "")]
+    if len(iso):
+        salida[iso.index] = pd.to_datetime(iso, format="ISO8601", errors="coerce")
+    return salida
+
+
 def _normalizar(df: pd.DataFrame, contrato: Contrato) -> pd.DataFrame:
-    """El texto vacío cuenta como dato faltante (igual que en la BD, donde se guarda como null)."""
-    df = df.copy()
+    """Nombres por alias y textos canónicos; el texto vacío cuenta como dato faltante (igual que en la BD, donde
+    se guarda como null)."""
+    df = renombrar_alias(df, contrato).copy()
     for c in contrato.columnas:
         if c.tipo == "texto" and c.nombre in df:
-            df[c.nombre] = df[c.nombre].astype(object).where(~_vacio(df[c.nombre]), None)
+            df[c.nombre] = texto_canonico(df[c.nombre])
     return df
 
 
 def _mensajes(fallas: pd.DataFrame, df: pd.DataFrame, contrato: Contrato) -> list[str]:
     """Traduce los failure_cases de pandera a mensajes ordenados por nivel."""
     distribucion = {d["id"]: d for d in contrato.distribucion}
-    reglas = {r["id"]: r for r in contrato.reglas}
+    reglas = {r["id"]: r for r in contrato.reglas if _severidad(r) == "error"}
     tipos = {c.nombre: c.tipo for c in contrato.columnas}
     traduccion = {"not_nullable": "vacías en columna requerida", "field_uniqueness": "duplicadas en columna única"}
     check = fallas["check"].astype(str)
@@ -273,7 +331,7 @@ def _mensajes(fallas: pd.DataFrame, df: pd.DataFrame, contrato: Contrato) -> lis
             errores.append(_mensaje_lote(d, observado))
 
     # Nivel 3: pandera repite cada fila fallida una vez por columna; se cuentan filas únicas.
-    for r in contrato.reglas:
+    for r in reglas.values():
         g = fallas[check == r["id"]]
         if len(g):
             filas = [int(i) for i in pd.unique(g["index"].dropna())]
@@ -290,11 +348,20 @@ def _mensaje_lote(d: dict, observado: float) -> str:
 
 
 def advertencias(df: pd.DataFrame, contrato: Contrato | None = None) -> list[str]:
-    """Los checks de nivel 2 con ``severidad: advertencia`` que el lote no cumple. No bloquean: son heurísticas de
-    calidad sin una regla de negocio confirmada (p. ej. la tasa de retiro), y un dato real distinto del sintético
-    no es por eso un dato malo. Quien valida las muestra; ``validar`` no las cuenta como incumplimientos."""
+    """Los checks de nivel 2 y las reglas de nivel 3 con ``severidad: advertencia`` que el lote no cumple. No
+    bloquean: son heurísticas de calidad sin una regla de negocio confirmada (p. ej. la tasa de retiro) o errores
+    de digitación tolerados en un campo que no entra al modelo (la fecha de ingreso laboral). Quien valida las
+    muestra; ``validar`` no las cuenta como incumplimientos. Solo dicen cuántas filas, nunca cuáles."""
     contrato = contrato or cargar()
+    df = _normalizar(df, contrato)
     avisos = []
+    for r in [r for r in contrato.reglas if _severidad(r) == "advertencia"]:
+        try:
+            cumple = _o_vacio(REGLAS[r["id"]](df), *(df[c] for c in columnas_de_regla(r, contrato)))
+        except (KeyError, TypeError, ValueError):  # falta la columna o vino corrupta: ya lo reporta validar
+            continue
+        if n := int((~cumple.astype(bool)).sum()):
+            avisos.append(f"Nivel 3 · {r['id']}: {n} fila(s) no cumplen ({r['descripcion']}) [advertencia: no bloquea]")
     for d in [d for d in contrato.distribucion if _severidad(d) == "advertencia"]:
         medida, condicion = DISTRIBUCION[d["id"]]
         try:
@@ -337,8 +404,20 @@ def limpiar_extracto(df: pd.DataFrame, contrato: Contrato | None = None, *, verb
     - ``normalize_names=False``: los nombres del contrato no se tocan.
     - ``numeric_columns``: solo las que el contrato declara ``entero`` (los textos de dígitos siguen como texto).
     - ``drop_empty=False``: una columna opcional vacía sigue siendo parte del contrato.
+
+    Antes, lo que hace falta para leer el extracto real tal como llega: los ``alias`` del contrato pasan a su
+    nombre (``EDAD_AÑOS`` -> ``EDAD``), los códigos de texto quedan canónicos (``texto_canonico``) y las fechas
+    se leen sin ambigüedad (``fecha_canonica``).
     """
     contrato = contrato or cargar()
+    df = renombrar_alias(df, contrato).copy()
+    # Antes de clean_dataset, que vuelve texto todo lo que no sea numérico: una columna de fechas con una fecha
+    # digitada como texto quedaría toda en texto, y un estrato 1.0 quedaría como "1.0".
+    for c in contrato.columnas:
+        if c.nombre in df and c.tipo == "fecha":
+            df[c.nombre] = fecha_canonica(df[c.nombre])
+        elif c.nombre in df and c.tipo == "texto":
+            df[c.nombre] = texto_canonico(df[c.nombre])
     enteras = [c.nombre for c in contrato.columnas if c.tipo == "entero" and c.nombre in df]
     return clean_dataset(df, normalize_names=False, numeric_columns=enteras, drop_empty=False, verbose=verbose)
 
@@ -377,7 +456,9 @@ def _columnas_sql(contrato: Contrato) -> list[str]:
         if checks := _checks_sql(c):
             partes.append(f"check ({' and '.join(checks)})")
         cols.append(" ".join(partes))
-    return cols + [f"constraint {r['id']} check ({' '.join(r['sql'].split())})" for r in contrato.reglas]
+    # Las reglas de advertencia no son restricciones: la BD tolera lo mismo que el contrato.
+    errores = [r for r in contrato.reglas if _severidad(r) == "error"]
+    return cols + [f"constraint {r['id']} check ({' '.join(r['sql'].split())})" for r in errores]
 
 
 def sql_formulario(contrato: Contrato | None = None) -> str:
@@ -513,7 +594,8 @@ def js(contrato: Contrato | None = None) -> str:
     contrato = contrato or cargar()
     grupos: dict[str, list] = {}
     for c in contrato.columnas:
-        campo = {k: v for k, v in vars(c).items() if v is not None and v is not False and k not in ("grupo", "pii")}
+        omitir = ("grupo", "pii", "alias")
+        campo = {k: v for k, v in vars(c).items() if v is not None and v is not False and k not in omitir}
         grupos.setdefault(c.grupo, []).append({**campo, "db": c.db})
     data: dict[str, object] = {"nombre": contrato.nombre, "version": contrato.version, "tabla_db": contrato.tabla_db}
     data |= {"grupos": grupos}

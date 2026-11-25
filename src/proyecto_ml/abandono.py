@@ -99,8 +99,11 @@ CATEGORICAS = [
     "CODEMPRESA",
     "CODDEPENDENCIA",
     "TIPOCONTRATO",
-    "CARGO",
 ]
+# CARGO no entra al modelo: el fondo lo llena con la misma conversión que CODPROFESION (llegan idénticos). Repetido
+# no agrega información; partiría la importancia de la profesión entre dos columnas y le daría doble peso en los
+# modelos lineales. Sigue en el contrato porque el extracto lo trae.
+DUPLICADAS = ["CARGO"]
 # Lo mismo, con menos riesgo, para los atributos: el extracto trae su valor a la extracción (o al retiro), no a t0.
 # Un ascenso o un cambio de agencia entre t0 y el retiro se vería "antes" de tiempo. Se confirma con el fondo junto
 # con los conteos (TEMPORALIDAD_CONFIRMADA); SEXO no cambia.
@@ -108,6 +111,13 @@ ATRIBUTOS_SIN_FECHA = [c for c in ["SALARIO", *CATEGORICAS] if c != "SEXO"]
 # Las únicas que tiene sentido recortar (clip_outliers): continuas. Los conteos de COMPORTAMIENTO casi
 # siempre valen 0, su IQR queda en [0, 0] y recortarlos borraría a quienes sí tienen solicitudes.
 COLUMNAS_RECORTE = ["SALARIO", "EDAD", "ANTIGUEDAD_F_MESES", "ANTIGUEDAD_LA_MESES"]
+# Fuera de estos límites el dato no puede ser cierto y se trata como vacío (``valores_imposibles``).
+SALARIO_PLAUSIBLE = (1_000_000, 50_000_000)  # pesos mensuales; 987.654 es un relleno del extracto
+EDAD_MINIMA_LABORAL = 14
+# ESTRATO en blanco es una categoría, no un dato que rellenar con el estrato más común: en el extracto real lo
+# tienen sobre todo asociados recientes, con menos productos y con los datos actualizados hace más tiempo (un
+# perfil incompleto). Imputarlo con la moda borraría esa señal.
+ESTRATO_SIN_DATO = "SIN_DATO"
 
 # Señales que, sin mirar el objetivo, indican intención de irse (+) o de quedarse (-).
 # Se usan para decidir cuál de los dos grupos de KMeans es el de "riesgo".
@@ -155,6 +165,21 @@ def resumen_foto(df: pd.DataFrame, horizontes=(1, 3, 6, 12), corte: pd.Timestamp
     return pd.DataFrame(filas).set_index("horizonte_meses")
 
 
+def valores_imposibles(X: pd.DataFrame) -> pd.DataFrame:
+    """Vacía los valores que no pueden ser ciertos; el imputador del pipeline los trata como cualquier faltante.
+
+    Con el extracto real: salarios de relleno (987.654) o de miles de millones (errores de digitación) y
+    antigüedades laborales más largas que la vida laboral posible (una fecha de ingreso laboral de 1889). No es
+    recorte de atípicos (eso lo aprende ``clip_outliers`` con train): son reglas fijas, iguales al predecir.
+    """
+    X = X.copy()
+    bajo, alto = SALARIO_PLAUSIBLE
+    X.loc[~X["SALARIO"].between(bajo, alto), "SALARIO"] = np.nan
+    vida_laboral = (X["EDAD"] - EDAD_MINIMA_LABORAL).clip(lower=0) * 12
+    X.loc[X["ANTIGUEDAD_LA_MESES"] > vida_laboral, "ANTIGUEDAD_LA_MESES"] = np.nan
+    return X
+
+
 def preparar(df: pd.DataFrame) -> pd.DataFrame:
     """Selecciona y tipa las variables definitivas del modelo, sin identificadores ni columnas de fuga."""
     X = pd.DataFrame(index=df.index)
@@ -163,7 +188,8 @@ def preparar(df: pd.DataFrame) -> pd.DataFrame:
     for c in CATEGORICAS:
         # Los códigos (ciudad, agencia) son categorías, no cantidades. El vacío sigue vacío (no el texto "nan").
         X[c] = df[c].map(lambda v: np.nan if pd.isna(v) else str(v))
-    return X[NUMERICAS + CATEGORICAS]
+    X["ESTRATO"] = X["ESTRATO"].fillna(ESTRATO_SIN_DATO)
+    return valores_imposibles(X)[NUMERICAS + CATEGORICAS]
 
 
 def objetivo_binario(datos: pd.DataFrame | pd.Series) -> pd.Series:
