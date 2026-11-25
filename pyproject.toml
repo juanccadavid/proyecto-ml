@@ -45,6 +45,7 @@ dev = [
     "ipykernel>=6.29",
     "nbformat>=5.10",
     "mypy>=1.13",
+    "nbclient>=0.10",
 ]
 
 [build-system]
@@ -77,7 +78,10 @@ select = ["E", "F", "I", "B", "UP", "SIM", "PD", "NPY"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
-markers = ["integration: pruebas de punta a punta (más lentas)"]
+markers = [
+    "integration: pruebas de punta a punta (más lentas)",
+    "notebook: ejecuta los notebooks de sesiones/ (minutos; trabajo aparte en el CI)",
+]
 filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::FutureWarning",

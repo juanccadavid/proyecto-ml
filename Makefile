@@ -36,7 +36,7 @@ ARGS ?=
 
 .PHONY: help setup setup-hf demo-data demo train train-hf abandono campeon tecnicas validacion regresion segmentos predecir pipeline \n        segmentos-real regresion-real predecir-real real pycaret afinar optuna mlflow-ui app \
         simulador ejemplo datos-desarrollo contrato contrato-ml anonimizar contrato-sql contrato-web supabase-subir supabase-bajar supabase-crear formulario \
-        test test-fast cov lint tipos format check hooks secrets up docker-campeon down logs salt bundle clean clean-all
+        test test-fast notebooks cov lint tipos format check hooks secrets up docker-campeon down logs salt bundle clean clean-all
 
 # ==============================================================================
 help: ## Muestra los objetivos disponibles
@@ -184,8 +184,11 @@ formulario: ## Abre el formulario web en el navegador
 test: ## Corre todas las pruebas
 	$(RUN) pytest
 
-test-fast: ## Corre las pruebas sin las de integración
-	$(RUN) pytest -m "not integration"
+test-fast: ## Corre las pruebas sin las de integración ni los notebooks
+	$(RUN) pytest -m "not integration and not notebook"
+
+notebooks: ## Ejecuta los notebooks 02 y 03 de principio a fin (unos 10 minutos)
+	$(RUN) pytest -m notebook
 
 cov: ## Pruebas con reporte de cobertura
 	$(RUN) pytest --cov --cov-report=term-missing
