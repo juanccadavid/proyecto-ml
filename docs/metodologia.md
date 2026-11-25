@@ -115,9 +115,11 @@ make ejemplo ARGS="--rows 2000 --seed 7 --output-dir data/processed --nombre aso
 make abandono DATA=data/processed/asociados_2000.parquet ARGS="--horizonte 3"
 ```
 
-Ojo: los conteos de solicitudes (`ULT3MESES`...) se toman como vienen. Si el extracto los mide a la fecha de
-extracción y no a t0, para los retirados incluyen lo que pasó después de irse (fuga). Hay que confirmarlo con
-el fondo. EDA de la foto: [`sesiones/02_juan_eda_foto_asociado.ipynb`](../sesiones/02_juan_eda_foto_asociado.ipynb).
+Ojo: el fondo confirmó que los conteos de solicitudes (`ULT3MES`...) se miden al corte y cubren los tres meses
+anteriores. Sirven para puntuar a los activos de hoy, pero una etiqueta armada con retiros dentro de esa misma
+ventana tendría fuga: la etiqueta válida tiene que venir de los meses siguientes al corte. El experimento de la
+sección 7 de [`sesiones/03_sebastian_feature_engineering.ipynb`](../sesiones/03_sebastian_feature_engineering.ipynb)
+mide cuánto infla las cifras. EDA de la foto: [`sesiones/02_juan_eda_foto_asociado.ipynb`](../sesiones/02_juan_eda_foto_asociado.ipynb).
 
 ## El modelo campeón: `make campeon`
 
@@ -309,8 +311,10 @@ Cada punto se verificó en el código y tiene una prueba que impide que vuelva a
 
 **Riesgos que dependen de los datos reales (por confirmar con el fondo):**
 
-- **Conteos medidos después de t0.** Si el extracto mide los conteos "ULT3MESES" a la fecha de extracción y no a
-  t0, para los retirados incluyen lo que pasó después: fuga. `make campeon` lo advierte en modo real.
+- **Conteos medidos al corte.** El fondo confirmó que los conteos `ULT3MES` se miden al corte. Si algún día se
+  arma una etiqueta con retiros dentro de esos mismos tres meses, incluirían lo que pasó antes de irse: fuga. La
+  etiqueta tiene que registrar los retiros posteriores al corte; mientras no exista, `make campeon` se detiene en
+  modo real.
 - **Optuna se afina con los mismos datos** con que compite (`--optuna`): su PR-AUC de validación cruzada es algo
   optimista.
 - **Otras distribuciones.** El contrato detiene cambios de esquema y rangos, no cambios de distribución: con el
