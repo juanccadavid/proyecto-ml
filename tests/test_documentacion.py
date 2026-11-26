@@ -22,7 +22,8 @@ def cifra(valor: float, decimales: int = 3) -> str:
 
 
 def cargar(tipo: str) -> dict:
-    nombre = next(n for n in CITADOS if n.startswith(f"{tipo}_"))
+    """El JSON citado más reciente de ``tipo`` (el de Optuna de antes de la corrección también se cita)."""
+    nombre = max(n for n in CITADOS if n.startswith(f"{tipo}_"))
     return json.loads((RAIZ / "reports" / "metrics" / nombre).read_text(encoding="utf-8"))
 
 
@@ -107,3 +108,11 @@ def test_sensibilidad_de_las_tecnicas_a_la_semilla_coincide_con_sus_json():
             pr_auc.setdefault(fila["tecnica"], []).append(fila["pr_auc"])
     for tecnica in ("base", "sin balancear", "target", "normalizer"):
         assert "/".join(cifra(v) for v in pr_auc[tecnica]) in DOC, tecnica
+
+
+def test_antes_y_despues_de_la_prevalencia_de_los_nuevos():
+    """Mismos modelos, nuevos al 30 % (antes) y al 10 % (después): la PR-AUC cambia por la prevalencia."""
+    antes, despues = sorted(n for n in CITADOS if n.startswith("optuna_"))
+    for nombre in (antes, despues):
+        nuevos = json.loads((RAIZ / "reports" / "metrics" / nombre).read_text(encoding="utf-8"))["nuevos (n=1000)"]
+        assert faltan([nuevos["random_forest"]["pr_auc"], nuevos["hist_gb"]["pr_auc"]]) == []

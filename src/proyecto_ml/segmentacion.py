@@ -41,7 +41,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.cluster import DBSCAN, KMeans
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
-from sklearn.metrics import adjusted_rand_score, silhouette_score
+from sklearn.metrics import adjusted_rand_score, calinski_harabasz_score, davies_bouldin_score, silhouette_score
 from sklearn.neighbors import NearestNeighbors
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -109,7 +109,8 @@ def escalador(modo: str = "comportamiento") -> Pipeline:
 
 
 def tabla_k(Z: np.ndarray, rango=RANGO_K, random_state: int = 42) -> pd.DataFrame:
-    """Silueta (más alta = grupos más separados) e inercia (para el codo) de KMeans con cada ``k``.
+    """Silueta (más alta = grupos más separados), inercia (para el codo), Calinski-Harabasz (más alto = mejor) y
+    Davies-Bouldin (más bajo = mejor) de KMeans con cada ``k``: si no coinciden, no hay un k "natural".
 
     La silueta compara todos contra todos: con más de ``MUESTRA_SILUETA`` asociados (el extracto real) se mide en
     una muestra fija de ese tamaño; la inercia y KMeans sí usan a todos.
@@ -119,7 +120,15 @@ def tabla_k(Z: np.ndarray, rango=RANGO_K, random_state: int = 42) -> pd.DataFram
     for k in rango:
         km = KMeans(n_clusters=k, n_init=10, random_state=random_state).fit(Z)
         silueta = silhouette_score(Z, km.labels_, sample_size=muestra, random_state=random_state)
-        filas.append({"k": k, "silueta": float(silueta), "inercia": float(km.inertia_)})
+        filas.append(
+            {
+                "k": k,
+                "silueta": float(silueta),
+                "inercia": float(km.inertia_),
+                "calinski_harabasz": float(calinski_harabasz_score(Z, km.labels_)),
+                "davies_bouldin": float(davies_bouldin_score(Z, km.labels_)),
+            }
+        )
     return pd.DataFrame(filas).set_index("k")
 
 

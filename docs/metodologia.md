@@ -31,7 +31,8 @@ Para validar, se generan asociados **que los modelos nunca vieron** (`generador.
 otra semilla y la **misma tasa de retiro** que los datos de desarrollo; con otra prevalencia, la precisión, la PR-AUC
 y el umbral fijo de 0,5 no se podrían comparar con la validación cruzada ni con `make campeon`). Hasta el 25-nov-2026
 `make abandono`, `afinar`, `optuna` y `pycaret` los generaban con 30 % de retiros: con los mismos modelos, la PR-AUC
-sobre nuevos daba ~0,79 (Random Forest 0,788; HistGB 0,784) y con la tasa de desarrollo da ~0,58 (0,584; 0,586).
+sobre nuevos daba ~0,79 (Random Forest 0,788; HistGB 0,784; `reports/metrics/optuna_20261125_184525.json`, antes de
+la corrección) y con la tasa de desarrollo da ~0,58 (0,584; 0,586; `reports/metrics/optuna_20261125_185402.json`).
 La diferencia la explica la prevalencia, no el modelo:
 
 ```bash
@@ -412,7 +413,7 @@ modelo (ROC-AUC fuera de partición; 0,5 = indistinguibles). Lo imprime `make pr
 
 | Comparación | ROC-AUC | Lectura |
 |---|---|---|
-| Sintéticos frente a otros sintéticos (control; 3 semillas) | ROC-AUC 0,501–0,506; comportamiento 0,485–0,492 | control cercano al azar tras normalizar ambos lotes con el mismo contrato |
+| Sintéticos frente a otros sintéticos (control; 3 semillas, `validacion.control_desplazamiento`) | ROC-AUC 0,500–0,504; comportamiento 0,497–0,503 | lo que da la prueba sin desplazamiento; `make predecir-real` lo imprime junto al resultado real |
 | Sintéticos frente al extracto real, todas las variables | ROC-AUC 1,00 | dominios claramente separables; no mide abandono |
 | … solo variables de comportamiento | ROC-AUC ≈ 0,60 | desplazamiento moderado; no es una métrica del clasificador de abandono |
 | … variables que distinguen | geografía ROC-AUC 1,00; empresa 1,00; profesión ≈ 0,95 | categorías principales fuera del soporte sintético |
@@ -575,7 +576,7 @@ perfil; solo agregados). Las filas de modelo nulo, semillas y bootstrap las repr
 
 | Prueba | Resultado | Lectura |
 |---|---|---|
-| Índices por k (3 a 7) | silueta 0,175–0,197; Calinski-Harabasz máximo en k = 3; Davies-Bouldin baja al subir k | ningún índice elige k = 5; no hay un número "natural" de grupos |
+| Índices por k (2 a 8; `segmentacion.tabla_k`) | silueta 0,172–0,194 entre k = 3 y 7; Calinski-Harabasz máximo en k = 2 (entre 3 y 7, en k = 3); Davies-Bouldin baja al subir k (2,18 → 1,40) | ningún índice elige k = 5; no hay un número "natural" de grupos |
 | Modelo nulo: cada columna desordenada por separado (mismas distribuciones, sin relación entre variables), 5 veces | silueta 0,179 frente a 0,161 de media (máximo 0,168) | hay estructura conjunta más allá de las distribuciones de cada variable, pero débil: la silueta supera al nulo por 0,011–0,018 |
 | 10 semillas (`n_init` = 20) | ARI con la base ≥ 0,998 | la solución con k = 5 no depende del inicio |
 | Bootstrap 80 % × 20 (Jaccard por segmento, criterio de Hennig) | Jaccard medio 0,953–0,995 en los cinco; retiro parcial y los tres grandes nunca se disuelven (mínimo 0,81–0,95); cancelación (305 asociados, el 2 %) se disuelve en 1 de 20 submuestras (mínimo 0,06) | los cinco son estables en el sentido de Hennig (medio > 0,85); el de cancelación, por pequeño, a veces se funde con otro |

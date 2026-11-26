@@ -234,6 +234,28 @@ def _normalizar_dominio(df: pd.DataFrame) -> pd.DataFrame:
     return limpio
 
 
+SEMILLAS_CONTROL = (42, 2026, 99)
+
+
+def control_desplazamiento(referencia: pd.DataFrame, semillas=SEMILLAS_CONTROL, folds: int = 5) -> list[dict]:
+    """``desplazamiento`` entre ``referencia`` y lotes del MISMO generador (otras semillas, mismo tamaño y tasa).
+
+    Es el control de la validación adversaria: lo que da cuando no hay desplazamiento. Sin él, un ROC-AUC de 0,60
+    con el extracto real no se sabe si es mucho o poco. Ambos lotes pasan por la misma limpieza del contrato.
+    """
+    from proyecto_ml import contrato
+    from proyecto_ml.generador import DESARROLLO, GeneradorAsociados
+
+    salida = []
+    for semilla in semillas:
+        generador = GeneradorAsociados(len(referencia), seed=semilla, tasa_retiro=DESARROLLO["tasa_retiro"])
+        d = desplazamiento(referencia, contrato.limpiar_extracto(generador.generar_extracto()), folds=folds)
+        salida.append(
+            {"semilla": semilla, "roc_auc": d["roc_auc"], "roc_auc_comportamiento": d["roc_auc_comportamiento"]}
+        )
+    return salida
+
+
 def desplazamiento(referencia: pd.DataFrame, lote: pd.DataFrame, folds: int = 5, random_state: int = 42) -> dict:
     """¿Se parece ``lote`` (p. ej. el extracto real) a ``referencia`` (los sintéticos con que se entrenó el campeón)?
 

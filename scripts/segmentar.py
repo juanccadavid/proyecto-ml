@@ -71,7 +71,7 @@ def main() -> None:
 
     seg = s.Segmentacion(k=args.k, eps=args.eps, modo=modo).fit(df)
     if seg.tabla_k_ is not None:
-        print("\n=== KMeans: silueta e inercia según k ===")
+        print("\n=== KMeans según k: silueta, inercia, Calinski-Harabasz (más alto) y Davies-Bouldin (más bajo) ===")
         print(seg.tabla_k_.round(3).T.to_string())
     kmeans, dbscan = seg.kmeans(df), seg.dbscan(df)
     auditoria = seg.auditar(df) if args.auditar else None
@@ -116,6 +116,7 @@ def main() -> None:
     resultado = {
         **params,
         "silueta": seg.tabla_k_["silueta"].to_dict() if seg.tabla_k_ is not None else None,
+        "indices_k": seg.tabla_k_.to_dict(orient="index") if seg.tabla_k_ is not None else None,
         "kmeans": s.perfil(df, kmeans).reset_index().to_dict(orient="records"),
         "dbscan": s.perfil(df, dbscan).reset_index().to_dict(orient="records"),
         "comparacion": comparacion.reset_index(names="metodo").to_dict(orient="records"),

@@ -104,3 +104,13 @@ def test_desplazamiento_distingue_un_lote_distinto_y_no_uno_igual():
     duplicado = pd.concat([referencia, referencia.iloc[[0]]], ignore_index=True)
     with pytest.raises(ValueError, match="duplicados"):
         v.desplazamiento(duplicado, igual, folds=3)
+
+
+def test_control_de_desplazamiento_queda_cerca_del_azar():
+    """El control de la validación adversaria: otros sintéticos del mismo generador no se distinguen."""
+    from proyecto_ml import contrato
+
+    referencia = contrato.limpiar_extracto(GeneradorAsociados(n=400, seed=1, tasa_retiro=0.1).generar_extracto())
+    control = v.control_desplazamiento(referencia, semillas=(5, 6), folds=3)
+    assert [fila["semilla"] for fila in control] == [5, 6]
+    assert all(fila["roc_auc"] < 0.65 and fila["roc_auc_comportamiento"] < 0.65 for fila in control)
