@@ -75,8 +75,9 @@ make predecir-real        # puntúa a cada asociado con el campeón entrenado co
 Estos objetivos ponen `ORIGEN_DATOS=real_anonimizado` sin tocar el `.env`; los resultados quedan en
 `reports/` (ignorado por Git), en experimentos de MLflow con sufijo `_real` y, las predicciones, en
 `data/processed/predicciones.csv`. Con datos reales, MLflow recibe solo agregados: la figura de la regresión es
-por tramos (`regresion.figura_por_tramo`, sin salarios individuales) y el mapa de segmentos, que tiene una
-coordenada por asociado, se queda en `reports/` sin subirse.
+por tramos (`regresion.figura_por_tramo`, sin salarios individuales) y el mapa de segmentos, que con datos reales
+solo dibuja el centro y la elipse de cada segmento (sin celdas de menos de 10 asociados), se queda en `reports/` sin
+subirse.
 
 | Componente | Con qué se entrena | Con qué se evalúa | Qué se puede afirmar |
 |---|---|---|---|

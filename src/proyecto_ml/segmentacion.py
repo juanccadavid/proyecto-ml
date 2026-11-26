@@ -61,6 +61,7 @@ RANGO_K = range(2, 9)
 SALIDA = [v for v, peso in a.SENAL_RIESGO.items() if peso > 0]
 VINCULO = [v for v in VARIABLES if v not in SALIDA]
 CUANTIL_EPS = 0.9  # eps = distancia al vecino min_samples que solo supera el 10 % de los asociados
+CELDA_MINIMA = 10  # con datos reales no se dibuja un segmento más chico: su centro casi sería un asociado
 MUESTRA_SILUETA = 5000  # la silueta es cuadrática: con más asociados se mide en una muestra fija
 ATIPICO = -1
 # Paleta de referencia en orden fijo; el gris queda para los atípicos de DBSCAN.
@@ -186,6 +187,65 @@ class Segmentacion:
     def transform(self, df: pd.DataFrame) -> np.ndarray:
         return self.escalador_.transform(df)
 
+    def auditar(
+        self, df: pd.DataFrame, repeticiones: int = 20, fraccion: float = 0.8, nulos: int = 5, semillas: int = 10
+    ) -> dict:
+        """¿Los segmentos de KMeans reflejan estructura de los datos o solo una partición cómoda? Solo agregados.
+
+        - **Modelo nulo:** la silueta con ``k_`` frente a la de los mismos datos con cada columna desordenada por
+          separado (mismas distribuciones, sin relación entre variables), ``nulos`` veces. Si la real no la supera,
+          los segmentos no reflejan estructura conjunta.
+        - **Estabilidad (Hennig, 2007):** en ``repeticiones`` submuestras del ``fraccion`` se vuelve a segmentar (con el
+          mismo procedimiento que la solución: ``n_init`` = 20) y, para cada segmento, se toma el mejor Jaccard con
+          algún segmento nuevo. Medio > 0,85: estable; Jaccard ≤ 0,5 en una submuestra: ahí el segmento se disolvió.
+        - **Semillas:** ARI entre la solución y la de ``semillas`` inicios distintos.
+        """
+        Z = self.transform(df)
+        base = self.kmeans_.labels_
+        rng = np.random.default_rng(self.random_state)
+        muestra = MUESTRA_SILUETA if len(Z) > MUESTRA_SILUETA else None
+
+        def silueta(datos: np.ndarray, semilla: int) -> float:
+            etiquetas = KMeans(n_clusters=self.k_, n_init=20, random_state=semilla).fit_predict(datos)
+            return float(silhouette_score(datos, etiquetas, sample_size=muestra, random_state=semilla))
+
+        real = float(silhouette_score(Z, base, sample_size=muestra, random_state=self.random_state))
+        nula = [silueta(np.column_stack([rng.permutation(col) for col in Z.T]), i) for i in range(nulos)]
+
+        jaccard: dict[int, list[float]] = {s: [] for s in range(self.k_)}
+        for i in range(repeticiones):
+            filas = rng.choice(len(Z), int(fraccion * len(Z)), replace=False)
+            nuevo = KMeans(n_clusters=self.k_, n_init=20, random_state=i).fit_predict(Z[filas])
+            for s in range(self.k_):
+                original = base[filas] == s
+                jaccard[s].append(
+                    max(
+                        (original & (nuevo == t)).sum() / max((original | (nuevo == t)).sum(), 1)
+                        for t in range(self.k_)
+                    )
+                )
+        ari = [
+            adjusted_rand_score(base, KMeans(n_clusters=self.k_, n_init=20, random_state=100 + i).fit_predict(Z))
+            for i in range(semillas)
+        ]
+        estabilidad = pd.DataFrame(
+            {
+                "asociados": [int((base == s).sum()) for s in range(self.k_)],
+                "jaccard_medio": [float(np.mean(jaccard[s])) for s in range(self.k_)],
+                "jaccard_min": [float(np.min(jaccard[s])) for s in range(self.k_)],
+                "disuelto": [int(np.sum(np.asarray(jaccard[s]) <= 0.5)) for s in range(self.k_)],
+            },
+            index=pd.Index([self.renombrar_[s] for s in range(self.k_)], name="segmento"),
+        ).sort_index()
+        return {
+            "k": self.k_,
+            "silueta": real,
+            "silueta_nula_media": float(np.mean(nula)),
+            "silueta_nula_max": float(np.max(nula)),
+            "ari_semillas_min": float(np.min(ari)),
+            "estabilidad": estabilidad,
+        }
+
     def kmeans(self, df: pd.DataFrame) -> np.ndarray:
         """Segmento de KMeans (1 = más señales de salida) de cada asociado."""
         return np.vectorize(self.renombrar_.get)(self.kmeans_.predict(self.transform(df)))
@@ -268,6 +328,17 @@ def _contorno(puntos: np.ndarray, nucleo: float = 0.85) -> np.ndarray:
     return np.vstack([casco, casco[:1]])
 
 
+def _elipse(puntos: np.ndarray, escala: float = 2.0, lados: int = 60) -> np.ndarray:
+    """Elipse de la media ± ``escala`` desviaciones (covarianza) del segmento: un AGREGADO, sin ningún punto de un
+    asociado, para el mapa con datos reales (a diferencia de ``_contorno``, cuyos vértices son asociados)."""
+    centro = puntos.mean(axis=0)
+    covarianza = np.cov(puntos, rowvar=False) if len(puntos) > 2 else np.eye(2) * 1e-3
+    valores, vectores = np.linalg.eigh(np.atleast_2d(covarianza))
+    angulo = np.linspace(0, 2 * np.pi, lados + 1)
+    circulo = np.column_stack([np.cos(angulo), np.sin(angulo)])
+    return centro + escala * circulo * np.sqrt(np.clip(valores, 0, None)) @ vectores.T
+
+
 def _nombre_segmento(metodo: str, segmento: int, k: int) -> str:
     if metodo == "DBSCAN":
         return "atípicos" if segmento == ATIPICO else f"grupo denso {segmento + 1}"
@@ -288,8 +359,10 @@ def figura_mapa(
     Cada segmento es un color con su contorno; al pasar el mouse sale el segmento, su tasa del evento sintético y el
     comportamiento del asociado. Con ``asociado`` (una fila) se marca dónde cae, con una estrella.
 
-    ``detalle_individual=False`` (datos reales): el mouse muestra solo el segmento y su tasa (agregados), no los
-    conteos ni si esa persona se retiró.
+    ``detalle_individual=False`` (datos reales): el mapa lleva solo AGREGADOS. Cada segmento es un círculo en su
+    centro (tamaño según cuántos asociados tiene) y la elipse de su dispersión (``_elipse``): ni un punto ni un
+    vértice corresponde a un asociado, así que el HTML no guarda coordenadas individuales. Los segmentos de menos de
+    ``CELDA_MINIMA`` asociados no se dibujan: con uno solo, su centro sería la coordenada de esa persona.
     """
     import plotly.graph_objects as go
 
@@ -316,6 +389,40 @@ def figura_mapa(
             color = _GRIS if s == ATIPICO else _COLORES[i % len(_COLORES)]
             tasa = f" · se retira el {retiro[en].mean():.1%}" if retiro is not None else ""
             visible = metodo == "KMeans"
+            if not detalle_individual:  # datos reales: centro y elipse del segmento, ningún punto individual
+                if en.sum() < CELDA_MINIMA:
+                    continue
+                if s != ATIPICO:
+                    borde = _elipse(plano[en])
+                    fig.add_scatter(
+                        x=borde[:, 0],
+                        y=borde[:, 1],
+                        mode="lines",
+                        line={"color": color, "width": 3},
+                        hoverinfo="skip",
+                        showlegend=False,
+                        visible=visible,
+                    )
+                    for m in visibles:
+                        visibles[m].append(m == metodo)
+                centro = plano[en].mean(axis=0)
+                fig.add_scatter(
+                    x=[centro[0]],
+                    y=[centro[1]],
+                    mode="markers",
+                    name=f"{nombre} ({int(en.sum())}{tasa})",
+                    marker={
+                        "size": float(10 + 40 * np.sqrt(en.mean())),
+                        "color": color,
+                        "opacity": 0.8,
+                        "symbol": "x" if s == ATIPICO else "circle",
+                    },
+                    hovertemplate=f"<b>{nombre}</b>: {int(en.sum())} asociados{tasa}<extra></extra>",
+                    visible=visible,
+                )
+                for m in visibles:
+                    visibles[m].append(m == metodo)
+                continue
             if s != ATIPICO and en.sum() >= 3:  # contorno del segmento (los atípicos no forman grupo)
                 borde = _contorno(plano[en])
                 fig.add_scatter(
@@ -341,13 +448,11 @@ def figura_mapa(
                     "symbol": "x" if s == ATIPICO else "circle",
                     "line": {"color": "#fcfcfb", "width": 0.5},
                 },
-                customdata=detalle[en] if detalle_individual else None,
+                customdata=detalle[en],
                 hovertemplate=(
                     f"<b>{nombre}</b>{tasa}<br>retiros parciales: %{{customdata[0]}}"
                     "<br>cancelaciones de ahorros: %{customdata[1]}<br>disminuciones de cuotas: %{customdata[2]}"
                     + ("<br>se retiró: %{customdata[3]}" if retiro is not None else "")
-                    if detalle_individual
-                    else f"<b>{nombre}</b>{tasa}"
                 )
                 + "<extra></extra>",
                 visible=visible,

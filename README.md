@@ -79,7 +79,7 @@ make tipos                   # mypy sobre src/proyecto_ml (también en el CI)
 make check                   # lint + tipos + pruebas, antes de abrir un PR
 ```
 
-**Pruebas** (`tests/`, pytest): `make test` corre todas (unas 235; con cobertura, unos 5 minutos en un
+**Pruebas** (`tests/`, pytest): `make test` corre todas (unas 245; con cobertura, unos 6 minutos en un
 portátil). Cubren contrato de datos, anonimización y PII, la foto y la fuga de información, el pipeline, el campeón
 y sus umbrales, la partición temporal sintética, la segmentación, la regresión, la predicción, MLflow, el simulador
 (Streamlit `AppTest`) y los scripts. Para una sola: `uv run pytest -q tests/test_campeon.py`.

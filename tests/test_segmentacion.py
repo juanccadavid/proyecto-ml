@@ -125,3 +125,25 @@ def test_predecir_con_el_campeon_guardado(tmp_path, datos):
 def test_predecir_sin_campeon(tmp_path):
     with pytest.raises(FileNotFoundError, match="make campeon"):
         p.predecir(GeneradorAsociados(n=5, seed=1).generar(), tmp_path)
+
+
+def _con_conteos(conteos: np.ndarray) -> pd.DataFrame:
+    df = GeneradorAsociados(n=len(conteos), seed=4).generar()
+    df[s.VARIABLES] = conteos
+    return df
+
+
+def test_auditoria_distingue_grupos_reales_de_ruido():
+    """Con dos grupos de verdad, la silueta supera de lejos a la del modelo nulo y los segmentos son estables; con
+    conteos independientes, la silueta real no supera a la nula: los segmentos serían una partición cómoda."""
+    rng = np.random.default_rng(0)
+    n, m = 400, len(s.VARIABLES)
+    grupos = np.vstack([rng.poisson(0.1, (n // 2, m)), rng.poisson(5.0, (n // 2, m))])
+    ruido = rng.poisson(1.0, (n, m))
+    opciones = {"repeticiones": 5, "nulos": 3, "semillas": 3}
+    claro = s.Segmentacion(k=2).fit(df := _con_conteos(grupos)).auditar(df, **opciones)
+    assert claro["silueta"] > claro["silueta_nula_max"] + 0.2
+    assert claro["estabilidad"]["jaccard_min"].min() > 0.95 and claro["ari_semillas_min"] > 0.95
+    assert list(claro["estabilidad"].index) == [1, 2] and claro["estabilidad"]["asociados"].sum() == n
+    sin_estructura = s.Segmentacion(k=2).fit(df := _con_conteos(ruido)).auditar(df, **opciones)
+    assert sin_estructura["silueta"] < sin_estructura["silueta_nula_max"] + 0.05

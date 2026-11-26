@@ -18,14 +18,18 @@ pero el extracto y sus predicciones individuales nunca se adjuntan.
 - Leer el extracto no reescribe datos: los `alias` del contrato solo renombran columnas y la normalización de
   códigos (`2` → `'2'`, `'O  '` → `'O'`) no cambia su significado. Los valores imposibles (salario de relleno,
   antigüedad laboral imposible) se tratan como vacíos dentro del modelo, sin tocar el archivo.
-- El mapa de segmentos con datos reales muestra solo agregados por segmento, no el detalle de cada asociado.
+- El mapa de segmentos con datos reales lleva solo agregados: el centro de cada segmento (tamaño según cuántos
+  asociados tiene) y la elipse de su dispersión. Ni un punto ni un vértice del HTML es un asociado, y los segmentos
+  de menos de 10 asociados no se dibujan (`segmentacion.CELDA_MINIMA`): con uno solo, su centro sería esa persona
+  (`test_mapa_sin_detalle_individual_con_datos_reales`).
 - **MLflow con datos reales recibe solo agregados.** De cada dataset registra la huella, el esquema y el número de
   filas (`registro.registrar_datos`), nunca las filas. La figura de la regresión real es por quintiles
-  (`regresion.figura_por_tramo`), sin salarios individuales; el mapa de segmentos real, que tiene una coordenada
-  por asociado, se queda en `reports/` (ignorado por Git) y no se sube como artefacto.
-- **Riesgos que quedan, en local:** `reports/figures/segmentos.html` y `data/processed/predicciones.csv` tienen una
-  fila por asociado (sin identificadores) y existen solo en el equipo del custodio. `docker-compose.yml` monta
-  `./data` en solo lectura; no compartir el contenedor ni su volumen de MLflow.
+  (`regresion.figura_por_tramo`), sin salarios individuales; el mapa de segmentos real (agregado) se queda en
+  `reports/` (ignorado por Git) y no se sube como artefacto.
+- **Lo que queda, en local y por diseño:** `data/processed/predicciones.csv` tiene una fila por asociado (posición,
+  puntaje y zona; sin identificadores), porque el uso del modelo es saber a quién llamar. Existe solo en el equipo
+  del custodio y `data/` no va a Git. `docker-compose.yml` monta `./data` en solo lectura; no compartir el
+  contenedor ni su volumen de MLflow.
 - **Los contenedores no reciben secretos.** `docker-compose.yml` ya no carga el `.env` completo (`env_file`): cada
   servicio recibe solo las variables de datos que lee (`ORIGEN_DATOS`, `FECHA_CORTE`...). `SUPABASE_SECRET_KEY`,
   `SUPABASE_DB_URL`, `ANON_SALT` y los tokens no entran a ningún contenedor, y `.dockerignore` deja el `.env` fuera

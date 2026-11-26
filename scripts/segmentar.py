@@ -51,6 +51,9 @@ def main() -> None:
     parser.add_argument(
         "--perfil", action="store_true", help="Agrupar también por edad, antigüedad, salario y estrato faltante"
     )
+    parser.add_argument(
+        "--auditar", action="store_true", help="Modelo nulo, estabilidad por bootstrap (Jaccard) y semillas de KMeans"
+    )
     parser.add_argument("--sin-mlflow", action="store_true", help="No registrar en MLflow")
     args = parser.parse_args()
 
@@ -71,6 +74,16 @@ def main() -> None:
         print("\n=== KMeans: silueta e inercia según k ===")
         print(seg.tabla_k_.round(3).T.to_string())
     kmeans, dbscan = seg.kmeans(df), seg.dbscan(df)
+    auditoria = seg.auditar(df) if args.auditar else None
+    if auditoria:
+        print(
+            f"\n=== ¿Estructura o partición cómoda? (k = {auditoria['k']}) ===\n"
+            f"Silueta {auditoria['silueta']:.3f} frente a {auditoria['silueta_nula_media']:.3f} con las columnas "
+            f"desordenadas (máximo {auditoria['silueta_nula_max']:.3f}) · ARI entre semillas ≥ "
+            f"{auditoria['ari_semillas_min']:.3f}"
+        )
+        print("Estabilidad por bootstrap (80 % × 20; mejor Jaccard con un segmento nuevo; disuelto: Jaccard ≤ 0,5):")
+        print(auditoria["estabilidad"].round(3).to_string())
     with pd.option_context("display.width", 220, "display.max_columns", None):
         print(f"\n=== KMeans (k = {seg.k_}): perfil de cada segmento; la tasa de retiro no la vio ===")
         print(s.perfil(df, kmeans).round(3).to_string())
@@ -107,6 +120,11 @@ def main() -> None:
         "dbscan": s.perfil(df, dbscan).reset_index().to_dict(orient="records"),
         "comparacion": comparacion.reset_index(names="metodo").to_dict(orient="records"),
     }
+    if auditoria:  # agregados: silueta, Jaccard por segmento y ARI; ningún asociado
+        resultado["auditoria"] = {
+            **{k: v for k, v in auditoria.items() if k != "estabilidad"},
+            "estabilidad": auditoria["estabilidad"].reset_index().to_dict(orient="records"),
+        }
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     metricas = METRICS_DIR / f"segmentos_{stamp}.json"
     texto = json.dumps(resultado, ensure_ascii=False, indent=2, default=float) + "\n"
@@ -121,8 +139,8 @@ def main() -> None:
         for metodo, fila in comparacion.iterrows()
         for m in ("tasa_retiro", "precision", "recall", "ari")
     }
-    # Con datos reales el mapa tiene una coordenada por asociado: se queda en reports/ (local, fuera de Git) y no
-    # se copia a MLflow, que solo recibe los agregados del JSON (docs/privacidad.md).
+    # Con datos reales el mapa ya es agregado (centro y elipse por segmento), pero se queda en reports/ (local, fuera
+    # de Git) y no se copia a MLflow, que solo recibe los agregados del JSON (docs/privacidad.md).
     artefactos = [metricas, figura] if es_experimental() else [metricas]
     with r.corrida("segmentos", params, propias, artefactos=artefactos):
         r.registrar_datos(df, fuente, "eleccion", fuente)

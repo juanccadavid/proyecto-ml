@@ -217,7 +217,9 @@ make simulador                                   # usa el campeón
   | alerta: precisión / recall | 0,306 / 0,716 | **0,284 / 0,724** | 0,277 / 0,701 |
   | se retira: precisión / recall (pedida 0,80) | 0,801 / 0,416 | **0,793 / 0,396** | 0,744 / 0,410 |
 
-- **Sensibilidad a semillas y baseline.** En semillas 7/42/2026, la PR-AUC base fue 0,531/0,509/0,529;
+- **Sensibilidad a semillas y baseline.** Con los datos de desarrollo generados con las semillas 7/42/2026
+  (`reports/metrics/tecnicas_20261125_180351.json`, `reports/metrics/tecnicas_20261125_195011.json` y
+  `reports/metrics/tecnicas_20261125_195110.json`), la PR-AUC base fue 0,531/0,509/0,529;
   sin balancear, 0,541/0,516/0,542; TargetEncoder, 0,552/0,505/0,555; Normalizer, 0,544/0,554/0,547.
   El DummyClassifier de prior obtuvo AP igual a la prevalencia (0,094–0,101) y ROC-AUC 0,5. Sin balancear
   fue positivo en los tres seeds, aunque los intervalos pareados no lo respaldan en todos; TargetEncoder
@@ -568,20 +570,25 @@ cancelaciones hechas. `segmentacion.perfil` describe cada segmento con medianas 
 (edad, antigüedad, salario, % sin estrato, % sin movimientos).
 
 **Por qué k = 5: decisión exploratoria, no estadística.** Auditoría sobre el extracto real (KMeans del modo
-perfil; solo agregados):
+perfil; solo agregados). Las filas de modelo nulo, semillas y bootstrap las reproduce `make segmentos-real`
+(`Segmentacion.auditar`, con el mismo `n_init` = 20 que la solución); quedan en el JSON local de segmentos:
 
 | Prueba | Resultado | Lectura |
 |---|---|---|
 | Índices por k (3 a 7) | silueta 0,175–0,197; Calinski-Harabasz máximo en k = 3; Davies-Bouldin baja al subir k | ningún índice elige k = 5; no hay un número "natural" de grupos |
-| 10 semillas (`n_init` = 20) | ARI con la base ≥ 0,99 | la solución con k = 5 no depende del inicio |
-| Bootstrap 80 % × 20 (Jaccard por segmento, criterio de Hennig) | solicitudes de cancelación y de retiro parcial: Jaccard mínimo ≥ 0,97; los tres grandes: Jaccard medio ≈ 0,96, pero en 1 de 20 submuestras se reorganizan (Jaccard mínimo 0,33–0,58) | los dos segmentos de salida son robustos; los tres de perfil son estables casi siempre, no siempre |
+| Modelo nulo: cada columna desordenada por separado (mismas distribuciones, sin relación entre variables), 5 veces | silueta 0,179 frente a 0,161 de media (máximo 0,168) | hay estructura conjunta más allá de las distribuciones de cada variable, pero débil: la silueta supera al nulo por 0,011–0,018 |
+| 10 semillas (`n_init` = 20) | ARI con la base ≥ 0,998 | la solución con k = 5 no depende del inicio |
+| Bootstrap 80 % × 20 (Jaccard por segmento, criterio de Hennig) | Jaccard medio 0,953–0,995 en los cinco; retiro parcial y los tres grandes nunca se disuelven (mínimo 0,81–0,95); cancelación (305 asociados, el 2 %) se disuelve en 1 de 20 submuestras (mínimo 0,06) | los cinco son estables en el sentido de Hennig (medio > 0,85); el de cancelación, por pequeño, a veces se funde con otro |
 | Silueta por segmento | veteranos 0,08; los demás 0,19–0,23 | los veteranos son un extremo de un continuo de edad y antigüedad, no un grupo separado |
 | k = 4 y k = 6 | con k = 4 el segmento de cancelación se reparte; con k = 6 se parten los nuevos con estrato | k = 5 es el menor k en el que las dos solicitudes de salida quedan en segmentos propios |
 | Interpretabilidad de las variables | `SIN_ESTRATO` (binaria) separa por sí sola los nuevos sin estrato (100 %) de los nuevos con estrato (0 %) | uno de los cinco segmentos lo define un dato faltante: describe un perfil incompleto, no una condición económica |
 
 Conclusión: los cinco segmentos son una **segmentación exploratoria orientada a la interpretación del negocio**, no
-grupos que los datos impongan. Los dos segmentos de solicitudes de salida son estables y son los que sirven para
-actuar; los de perfil describen a la mayoría de los asociados y se leen como tendencias, no como fronteras.
+grupos que los datos impongan: la estructura supera al modelo nulo, pero por poco, y ningún índice elige k = 5. Son
+estables (no dependen de la semilla ni, casi nunca, de la muestra), así que sirven para describir. El de solicitudes
+de cancelación, el más útil para actuar, es pequeño y en 1 de 20 submuestras se funde con otro: conviene leerlo junto
+con su conteo de solicitudes, no solo como etiqueta de segmento. Una auditoría anterior, hecha a mano y sin código,
+reportaba lo contrario (segmentos de salida robustos y grandes inestables); no se pudo reproducir y se reemplazó.
 
 ```bash
 make segmentos                                   # k por silueta, eps por vecinos

@@ -94,3 +94,16 @@ def test_importancias_y_regresion_coinciden_con_sus_json():
     intervalo = cargar("regresion")["intervalo"]
     assert f"{intervalo['cobertura'] * 100:.1f} %".replace(".", ",") in DOC
     assert all(cifra(intervalo[k], 2) in DOC for k in ("factor_min", "factor_max"))
+
+
+def test_sensibilidad_de_las_tecnicas_a_la_semilla_coincide_con_sus_json():
+    """Semillas 7/42/2026 de los datos de desarrollo: un JSON por semilla, en ese orden (por fecha)."""
+    nombres = [n for n in CITADOS if n.startswith("tecnicas_")]
+    assert len(nombres) == 3
+    pr_auc: dict[str, list[float]] = {}
+    for nombre in nombres:
+        datos = json.loads((RAIZ / "reports" / "metrics" / nombre).read_text(encoding="utf-8"))
+        for fila in datos["tecnicas"]:
+            pr_auc.setdefault(fila["tecnica"], []).append(fila["pr_auc"])
+    for tecnica in ("base", "sin balancear", "target", "normalizer"):
+        assert "/".join(cifra(v) for v in pr_auc[tecnica]) in DOC, tecnica
