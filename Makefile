@@ -37,7 +37,8 @@ ARGS ?=
 .PHONY: help setup setup-hf demo-data demo train train-hf abandono campeon tecnicas validacion regresion segmentos predecir pipeline \
         segmentos-real regresion-real predecir-real real pycaret afinar optuna mlflow-ui app \
         simulador ejemplo datos-desarrollo contrato contrato-ml anonimizar contrato-sql contrato-web supabase-subir supabase-bajar supabase-crear formulario \
-        test test-fast cov lint tipos format check hooks secrets up docker-campeon down logs salt bundle clean clean-all
+        test test-fast cov lint tipos format check hooks notebooks secrets up docker-campeon down logs salt bundle \
+        clean clean-all
 
 # ==============================================================================
 help: ## Muestra los objetivos disponibles
@@ -203,6 +204,9 @@ tipos: ## Revisa los tipos del paquete con mypy (src/proyecto_ml)
 	$(RUN) mypy
 
 check: lint tipos test ## Lint + tipos + pruebas (lo mínimo antes de abrir un PR)
+
+notebooks: ## Ejecuta los notebooks y comprueba que sus cifras escritas salgan de sus resultados (lo hace el CI)
+	$(PY) scripts/verificar_notebooks.py $(ARGS)
 
 hooks: ## Corre todos los hooks de pre-commit sobre el repo completo
 	$(RUN) pre-commit run --all-files

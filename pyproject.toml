@@ -45,6 +45,7 @@ dev = [
     "ipykernel>=6.29",
     "nbformat>=5.10",
     "mypy>=1.13",
+    "nbclient>=0.10",
 ]
 
 [build-system]

@@ -4,11 +4,13 @@ Si alguien vuelve a correr un experimento y cambia la cita sin actualizar el tex
 pruebas fallan. No vuelven a correr los experimentos: comprueban que el documento dice lo que dicen sus evidencias.
 """
 
+import importlib.util
 import json
 import re
 import subprocess
 from pathlib import Path
 
+import nbformat
 import pytest
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -116,3 +118,18 @@ def test_antes_y_despues_de_la_prevalencia_de_los_nuevos():
     for nombre in (antes, despues):
         nuevos = json.loads((RAIZ / "reports" / "metrics" / nombre).read_text(encoding="utf-8"))["nuevos (n=1000)"]
         assert faltan([nuevos["random_forest"]["pr_auc"], nuevos["hist_gb"]["pr_auc"]]) == []
+
+
+def test_el_verificador_de_notebooks_detecta_cifras_viejas():
+    """scripts/verificar_notebooks.py: una cifra del texto que no sale de las salidas se marca; el redondeo, los
+    porcentajes y el signo ("resta 0,052" frente a -0.052) no."""
+    spec = importlib.util.spec_from_file_location("verificar_notebooks", RAIZ / "scripts" / "verificar_notebooks.py")
+    assert spec and spec.loader
+    verificador = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(verificador)
+    texto = "PR-AUC 0,542; quitarla resta 0,052; la tasa sube a 6,4 %; antes decía 0,492."
+    salida = nbformat.v4.new_output("stream", text="pr_auc 0.5418  dif -0.052  tasa 0.064")
+    nb = nbformat.v4.new_notebook(
+        cells=[nbformat.v4.new_markdown_cell(texto), nbformat.v4.new_code_cell("tabla", outputs=[salida])]
+    )
+    assert verificador.cifras_sin_respaldo(nb, verificador.numeros_de_salidas(nb)) == [(0, "0,492")]

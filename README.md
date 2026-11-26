@@ -111,6 +111,9 @@ el comando `uv run ...` equivalente.
    `validacion` y `regresion`, con un MLflow local del runner.
    - En la pestaña *Summary* de la corrida aparece el resumen del campeón: PR-AUC, recall, MCC y las zonas.
    - Las figuras, las métricas y el campeón quedan en el artefacto **resultados** (14 días).
+3. **notebooks** (si la primera pasa): `make notebooks` ejecuta los notebooks de `sesiones/` y falla si una cifra
+   escrita en su texto no sale de sus resultados (`scripts/verificar_notebooks.py`): un notebook puede correr sin
+   errores y seguir contando conclusiones viejas.
 
 Todo corre con datos generados (semilla fija): el extracto real nunca va a GitHub. Si haces otro push a la
 misma rama mientras corre, se cancela la corrida vieja. Lo mismo se corre en local con `make pipeline`.
@@ -197,7 +200,7 @@ quedan en local y no se publican. Ver [docs/datos_reales.md](docs/datos_reales.m
 │   └── app_abandono.py   Simulador Streamlit del abandono con el campeón (make simulador)
 ├── scripts/              Ingesta, anonimización, generadores, contrato, modelo de abandono
 ├── streamlit_app.py      Entrada de Streamlit Community Cloud (abre el simulador)
-├── .github/workflows/    ci.yml (lint, mypy, pruebas, pre-commit, Docker y make pipeline en cada push) y formulario.yml
+├── .github/workflows/    ci.yml (lint, mypy, pruebas, pre-commit, Docker, notebooks y make pipeline en cada push) y formulario.yml
 ├── contratos/            Contratos de datos (YAML)
 ├── supabase/             SQL de la tabla y migraciones
 ├── web/                  Formulario para enviar asociados a Supabase
