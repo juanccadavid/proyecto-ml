@@ -205,8 +205,10 @@ tipos: ## Revisa los tipos del paquete con mypy (src/proyecto_ml)
 
 check: lint tipos test ## Lint + tipos + pruebas (lo mínimo antes de abrir un PR)
 
+# 01_plantilla_eda lee DATA_PATH (datos locales, fuera de Git): no corre en el CI. 02 y 03 generan sus datos.
+NOTEBOOKS := sesiones/02_juan_eda_foto_asociado.ipynb sesiones/03_sebastian_feature_engineering.ipynb
 notebooks: ## Ejecuta los notebooks y comprueba que sus cifras escritas salgan de sus resultados (lo hace el CI)
-	$(PY) scripts/verificar_notebooks.py $(ARGS)
+	$(PY) scripts/verificar_notebooks.py $(or $(NB),$(NOTEBOOKS)) $(ARGS)
 
 hooks: ## Corre todos los hooks de pre-commit sobre el repo completo
 	$(RUN) pre-commit run --all-files

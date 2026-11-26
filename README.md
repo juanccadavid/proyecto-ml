@@ -111,9 +111,9 @@ el comando `uv run ...` equivalente.
    `validacion` y `regresion`, con un MLflow local del runner.
    - En la pestaña *Summary* de la corrida aparece el resumen del campeón: PR-AUC, recall, MCC y las zonas.
    - Las figuras, las métricas y el campeón quedan en el artefacto **resultados** (14 días).
-3. **notebooks** (si la primera pasa): `make notebooks` ejecuta los notebooks de `sesiones/` y falla si una cifra
-   escrita en su texto no sale de sus resultados (`scripts/verificar_notebooks.py`): un notebook puede correr sin
-   errores y seguir contando conclusiones viejas.
+3. **notebooks** (si la primera pasa): `make notebooks` ejecuta los notebooks 02 y 03 (la plantilla 01 lee datos
+   locales) y falla si una cifra escrita en su texto no sale de sus resultados (`scripts/verificar_notebooks.py`):
+   un notebook puede correr sin errores y seguir contando conclusiones viejas.
 
 Todo corre con datos generados (semilla fija): el extracto real nunca va a GitHub. Si haces otro push a la
 misma rama mientras corre, se cancela la corrida vieja. Lo mismo se corre en local con `make pipeline`.
