@@ -3,7 +3,8 @@
 import numpy as np
 import optuna
 import pytest
-from sklearn.metrics import average_precision_score, cohen_kappa_score, matthews_corrcoef
+from sklearn.base import clone
+from sklearn.metrics import average_precision_score, brier_score_loss, cohen_kappa_score, matthews_corrcoef
 
 from proyecto_ml import abandono as a
 from proyecto_ml import busqueda_optuna as bo
@@ -86,6 +87,45 @@ def test_time_series_split_prueba_con_los_mas_nuevos():
         assert fechas.iloc[entrena].max() <= fechas.iloc[prueba].min()
 
 
+# ---------------------------------------------------------------- campeón: otra tasa de retiro (prevalencia)
+
+
+def test_pesos_de_prevalencia_y_umbrales_sin_cambio_a_la_misma_tasa(campeon):
+    y, puntaje = campeon.y, campeon.candidatos[campeon.nombre].promedio
+    peso = c.pesos_prevalencia(y, 0.05)
+    assert np.sum(peso * y) / np.sum(peso) == pytest.approx(0.05)
+    assert c.elegir_umbrales(y, puntaje, prevalencia=float(np.mean(y))) == pytest.approx(c.elegir_umbrales(y, puntaje))
+    with pytest.raises(ValueError):
+        c.pesos_prevalencia(y, 0.0)
+    tabla = c.sensibilidad_prevalencia(y, puntaje, campeon.umbral, campeon.umbral_alto)
+    assert [f["prevalencia"] for f in tabla] == list(c.PREVALENCIAS)
+    precision = [f["precision_alerta"] for f in tabla]
+    assert precision == sorted(precision)  # con menos retiros, la misma alerta acierta menos
+    assert len({round(f["recall_alerta"], 9) for f in tabla}) == 1  # el recall no depende de la tasa
+
+
+@pytest.mark.integration
+def test_precision_esperada_a_otra_tasa_coincide_con_la_medida():
+    """El generador a otra tasa es un cambio de prevalencia puro: el perfil de cada clase no cambia. Reponderar la
+    validación cruzada al 30 % predice la precisión medida al 30 %; sin reponderar, se equivoca por ~0,3."""
+    X, y = a.separar(GeneradorAsociados(n=2000, seed=1, tasa_retiro=0.1).generar())
+    Xp, yp = a.separar(GeneradorAsociados(n=4000, seed=101, tasa_retiro=0.3).generar())
+    modelo = c.lista_candidatos()["logreg"]
+    candidato = c.evaluar("logreg", modelo, X, y, folds=5, repeticiones=1)
+    umbral = candidato.umbrales["umbral"]
+    medida = yp[a.puntaje(clone(modelo).fit(X, y), Xp) >= umbral].mean()
+    esperada = c.precision_esperada(y, candidato.promedio, umbral, float(yp.mean()))["precision"]
+    assert esperada == pytest.approx(medida, abs=0.05)
+    assert abs(candidato.umbrales["precision"] - medida) > 0.2  # la precisión al 10 % no sirve al 30 %
+    # La probabilidad CALIBRADA (sin balancear) se lleva a la nueva tasa con la fórmula de Saerens.
+    calibrado = c.lista_candidatos()["logreg_sin_balancear"].fit(X, y)
+    cruda = calibrado.predict_proba(Xp)[:, 1]
+    ajustada = c.ajustar_probabilidad(cruda, float(y.mean()), float(yp.mean()))
+    assert ajustada.mean() == pytest.approx(yp.mean(), abs=0.03)
+    assert brier_score_loss(yp, ajustada) < brier_score_loss(yp, cruda)
+    assert (np.argsort(ajustada) == np.argsort(cruda)).all()  # el orden de los asociados no cambia
+
+
 # ---------------------------------------------------------------- regresión: MAE, MSE, RMSE, R²
 
 
@@ -140,6 +180,36 @@ def test_error_por_tramo_y_figura_agregada_sin_salarios_individuales():
     fig = g.figura_por_tramo(tabla, "prueba")
     # La figura de los datos reales lleva un valor por tramo, nunca uno por asociado.
     assert all(len(traza.y) == len(tabla) for traza in fig.data)
+
+
+def test_intervalo_por_tramo_cubre_lo_prometido_donde_el_global_no():
+    """El error RELATIVO crece con el salario, como en el extracto real. Un solo factor cubre ~80 % en promedio pero
+    no en los salarios altos; uno por tramo (Mondrian) cubre ~80 % en cada quintil. Se calibra con una mitad y se
+    mide en la otra, como la reserva."""
+    rng = np.random.default_rng(1)
+    x = rng.uniform(0, 1, 8000)
+    prediccion = np.exp(15 + x)
+    y = prediccion * np.exp(rng.normal(0, 0.1 + 0.4 * x))
+    calibrar, medir = slice(0, 4000), slice(4000, None)
+    global_ = g.calibrar_intervalo(y[calibrar], prediccion[calibrar], tramos=1)
+    por_tramo = g.calibrar_intervalo(y[calibrar], prediccion[calibrar])
+    assert g.cobertura(y[medir], prediccion[medir], global_)["cobertura"] == pytest.approx(0.8, abs=0.03)
+    assert g.error_por_tramo(y[medir], prediccion[medir], intervalo=global_)["cobertura"].iloc[-1] < 0.74
+    tabla = g.error_por_tramo(y[medir], prediccion[medir], intervalo=por_tramo)
+    assert tabla["cobertura"].between(0.74, 0.86).all()
+    assert tabla["factor"].is_monotonic_increasing  # más incertidumbre relativa en los salarios altos
+    inferior, superior = por_tramo.limites(prediccion)
+    assert (inferior < prediccion).all() and (superior > prediccion).all()
+    assert g.amplitud_conformal(y[:3], prediccion[:3], nivel=0.9) == np.inf  # con 3 datos no hay garantía
+    assert all(len(traza.y) == len(tabla) for traza in g.figura_por_tramo(tabla, "prueba").data)
+
+
+def test_modelos_en_logaritmo_devuelven_pesos(datos):
+    X, y = g.separar(datos[0])
+    for nombre in ("ridge_log", "hist_gb_log"):
+        prediccion = g.modelos()[nombre].fit(X, y).predict(X)
+        assert (prediccion > 0).all()
+        assert np.median(prediccion) == pytest.approx(np.median(y), rel=0.3)  # en pesos, no en logaritmo
 
 
 # ---------------------------------------------------------------- Optuna: hiperparámetros comunes del bosque

@@ -83,8 +83,18 @@ def main() -> None:
         + f" a predecir siempre el promedio (MAE ${en_reserva[mejor]['MAE']:,.0f} frente a "
         f"${en_reserva['media']['MAE']:,.0f})."
     )
-    tramos = g.error_por_tramo(y_reserva, en_reserva_pred[mejor])
-    print("\n=== Error en la reserva por tramo de salario predicho (quintiles; agregados) ===")
+    # Intervalo de predicción: se calibra con los errores fuera de partición de la parte de elección (nunca con la
+    # reserva) y la reserva mide si cubre lo prometido, en total y por tramo.
+    fuera_de_particion = g.prediccion_fuera_de_particion(candidatos[mejor], X, y, folds=args.folds)
+    calibrado = g.calibrar_intervalo(y, fuera_de_particion)
+    intervalo = g.cobertura(y_reserva, en_reserva_pred[mejor], calibrado)
+    print(
+        f"Intervalo de predicción al {intervalo['nivel']:.0%}: [estimado ÷ f, estimado × f], con f entre "
+        f"{intervalo['factor_min']:.2f} y {intervalo['factor_max']:.2f} según el tramo (calibrado fuera de "
+        f"partición); en la reserva cubre el {intervalo['cobertura']:.1%} de los salarios reales."
+    )
+    tramos = g.error_por_tramo(y_reserva, en_reserva_pred[mejor], intervalo=calibrado)
+    print("\n=== Error y cobertura en la reserva por tramo de salario predicho (quintiles; agregados) ===")
     with pd.option_context("display.float_format", "{:,.3f}".format):
         print(tramos.to_string())
 
@@ -112,7 +122,7 @@ def main() -> None:
     figura = FIGURES_DIR / "regresion_salario.html"
     veredicto = "le gana al promedio" if gana else "NO le gana al promedio"
     if es_experimental():  # sintéticos: un punto por asociado (predicción fuera de partición)
-        prediccion = g.prediccion_fuera_de_particion(candidatos[mejor], X, y, folds=args.folds)
+        prediccion = fuera_de_particion
         titulo = (
             f"Salario real vs. predicho (fuera de partición) · {g.TITULOS[mejor]} · "
             f"R² en la reserva {en_reserva[mejor]['R2']:.3f} · {veredicto}"
@@ -137,6 +147,7 @@ def main() -> None:
         "supera_referencia": bool(gana),  # en la reserva: si el elegido le gana a predecir el promedio (MAE)
         "cv": tabla.reset_index(names="modelo").to_dict(orient="records"),  # la elección (optimista para el mejor)
         "reserva": en_reserva,
+        "intervalo": intervalo,  # nivel prometido, cobertura en la reserva y factor multiplicativo
         "reserva_por_tramo": tramos.reset_index().to_dict(orient="records"),  # agregados por quintil
         "nuevos": en_nuevos,
     }
@@ -160,6 +171,8 @@ def main() -> None:
             propias = r.con_prefijo("cv", fila.to_dict())
             if nombre in en_reserva:
                 propias |= r.con_prefijo("reserva", en_reserva[nombre])
+            if nombre == mejor:
+                propias |= r.con_prefijo("intervalo", intervalo)
             if nombre in en_nuevos:
                 propias |= r.con_prefijo("nuevos", en_nuevos[nombre])
             with r.corrida(nombre, {**params, "modelo": nombre}, propias, anidada=True):

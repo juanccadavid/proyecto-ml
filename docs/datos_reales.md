@@ -75,14 +75,15 @@ make predecir-real        # puntúa a cada asociado con el campeón entrenado co
 Estos objetivos ponen `ORIGEN_DATOS=real_anonimizado` sin tocar el `.env`; los resultados quedan en
 `reports/` (ignorado por Git), en experimentos de MLflow con sufijo `_real` y, las predicciones, en
 `data/processed/predicciones.csv`. Con datos reales, MLflow recibe solo agregados: la figura de la regresión es
-por tramos (`regresion.figura_por_tramo`, sin salarios individuales) y el mapa de segmentos, que tiene una
-coordenada por asociado, se queda en `reports/` sin subirse.
+por tramos (`regresion.figura_por_tramo`, sin salarios individuales) y el mapa de segmentos, que con datos reales
+solo dibuja el centro y la elipse de cada segmento (sin celdas de menos de 10 asociados), se queda en `reports/` sin
+subirse.
 
 | Componente | Con qué se entrena | Con qué se evalúa | Qué se puede afirmar |
 |---|---|---|---|
 | Clasificación de abandono (`make campeon`) | solo sintéticos | solo sintéticos (validación cruzada, nuevos del generador, escenarios) | que el pipeline recupera la regla del generador; nada sobre el fondo |
 | Segmentación (`segmentos-real`) | extracto real | estabilidad (semillas, bootstrap, k); sin etiqueta externa | segmentos exploratorios que describen el extracto (ver metodología) |
-| Regresión del salario (`regresion-real`) | extracto real | reserva del 20 % que no se usa para elegir, frente a `DummyRegressor`; error relativo (MdAPE) y error por quintil | asociación transversal en el corte, no pronóstico ni causalidad |
+| Regresión del salario (`regresion-real`) | extracto real | reserva del 20 % que no se usa para elegir, frente a `DummyRegressor`; error relativo (MdAPE), error por quintil e intervalo del 80 % con su cobertura por quintil | asociación transversal en el corte, no pronóstico ni causalidad |
 | Predicción (`predecir-real`) | campeón entrenado con sintéticos | **sin validación** contra retiros reales; solo su parecido con los sintéticos (validación adversaria) | un orden de revisión según la regla del generador, no una probabilidad de retiro del fondo |
 
 `predecir-real` aplica a los asociados reales el campeón entrenado con los sintéticos. El puntaje ordena por las

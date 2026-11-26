@@ -3,6 +3,7 @@
 import ast
 import json
 import os
+import re
 import runpy
 from collections import Counter
 from pathlib import Path
@@ -278,3 +279,13 @@ def test_mapa_sin_detalle_individual_con_datos_reales():
     puntos = [t for t in sin.data if t.mode == "markers"]
     assert puntos and all(t.customdata is None and "se retiró" not in t.hovertemplate for t in puntos)
     assert any(t.customdata is not None for t in con.data if t.mode == "markers")
+    # Con datos reales, ni un punto ni un vértice es de un asociado: un centro por segmento y elipses agregadas.
+    assert all(len(t.x) == 1 for t in puntos)
+    assert all(len(t.x) == 61 for t in sin.data if t.mode == "lines")
+    individuales = {
+        (round(x, 9), round(y, 9)) for t in con.data if t.mode == "markers" for x, y in zip(t.x, t.y, strict=True)
+    }
+    dibujados = {(round(x, 9), round(y, 9)) for t in sin.data for x, y in zip(t.x, t.y, strict=True)}
+    assert individuales.isdisjoint(dibujados)
+    tamanos = [int(re.search(r": (\d+) asociados", t.hovertemplate).group(1)) for t in puntos]
+    assert min(tamanos) >= sg.CELDA_MINIMA  # sin celdas pequeñas

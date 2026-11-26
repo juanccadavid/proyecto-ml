@@ -6,7 +6,7 @@
 >
 > **Vigencia de las cifras.** Las cifras sintéticas de esta página se recalcularon el 25-nov-2026 con el generador
 > actual: 5.000 asociados, 503 etiquetas sintéticas (10,1 %), corte 31-mar-2026 y evento en
-> (31-mar, 30-jun-2026]. Experimento principal: `reports/metrics/campeon_20261125_181558.json`; técnicas:
+> (31-mar, 30-jun-2026]. Experimento principal: `reports/metrics/campeon_20261125_193634.json`; técnicas:
 > `reports/metrics/tecnicas_20261125_180351.json`. Son experimentos reproducibles del generador, no validación
 > del fondo. Los `campeon_*.json` no se versionan por defecto (los regenera cada `make pipeline`): el que se cita
 > aquí se fija a propósito con `git add -f`, como indica [reports/README.md](../reports/README.md). Con el
@@ -31,7 +31,8 @@ Para validar, se generan asociados **que los modelos nunca vieron** (`generador.
 otra semilla y la **misma tasa de retiro** que los datos de desarrollo; con otra prevalencia, la precisión, la PR-AUC
 y el umbral fijo de 0,5 no se podrían comparar con la validación cruzada ni con `make campeon`). Hasta el 25-nov-2026
 `make abandono`, `afinar`, `optuna` y `pycaret` los generaban con 30 % de retiros: con los mismos modelos, la PR-AUC
-sobre nuevos daba ~0,79 (Random Forest 0,788; HistGB 0,784) y con la tasa de desarrollo da ~0,58 (0,584; 0,586).
+sobre nuevos daba ~0,79 (Random Forest 0,788; HistGB 0,784; `reports/metrics/optuna_20261125_184525.json`, antes de
+la corrección) y con la tasa de desarrollo da ~0,58 (0,584; 0,586; `reports/metrics/optuna_20261125_185402.json`).
 La diferencia la explica la prevalencia, no el modelo:
 
 ```bash
@@ -58,7 +59,7 @@ Además, para el Random Forest, `reports/figures/abandono_importancia_rf.html` e
 (Plotly: al pasar el mouse muestra variable e importancia) con su `feature_importances_` por columna ya
 transformada, con el prefijo de su rama (`num__`, `clip__`, `cat__SEXO_F`...). Es la importancia propia del
 bosque (cuánto reduce la impureza): favorece a las continuas, que admiten muchos cortes. En
-`reports/metrics/abandono_20261125_184901.json`, `EDAD` y las dos antigüedades tienen 0,067–0,071 de MDI cada una y no
+`reports/metrics/abandono_20261125_184901.json`, `EDAD` y las dos antigüedades tienen 0,066–0,071 de MDI cada una y no
 aparecen entre las 5 primeras por permutación. `SALARIO` sí aporta en las dos (MDI 0,095; permutación 0,037 en el
 bosque), porque el generador lo hace depender de la etiqueta sintética. En código:
 `figura_importancia_interactiva(importancia_arbol(rf), "titulo")`.
@@ -217,7 +218,9 @@ make simulador                                   # usa el campeón
   | alerta: precisión / recall | 0,306 / 0,716 | **0,284 / 0,724** | 0,277 / 0,701 |
   | se retira: precisión / recall (pedida 0,80) | 0,801 / 0,416 | **0,793 / 0,396** | 0,744 / 0,410 |
 
-- **Sensibilidad a semillas y baseline.** En semillas 7/42/2026, la PR-AUC base fue 0,531/0,509/0,529;
+- **Sensibilidad a semillas y baseline.** Con los datos de desarrollo generados con las semillas 7/42/2026
+  (`reports/metrics/tecnicas_20261125_180351.json`, `reports/metrics/tecnicas_20261125_195011.json` y
+  `reports/metrics/tecnicas_20261125_195110.json`), la PR-AUC base fue 0,531/0,509/0,529;
   sin balancear, 0,541/0,516/0,542; TargetEncoder, 0,552/0,505/0,555; Normalizer, 0,544/0,554/0,547.
   El DummyClassifier de prior obtuvo AP igual a la prevalencia (0,094–0,101) y ROC-AUC 0,5. Sin balancear
   fue positivo en los tres seeds, aunque los intervalos pareados no lo respaldan en todos; TargetEncoder
@@ -339,7 +342,7 @@ Cada punto se verificó en el código y tiene una prueba que impide que vuelva a
 **Qué del campeón sale directamente de la lógica sintética.** El generador hace depender de la etiqueta solo
 siete variables (`generador.PRODUCTOS`, `DISMINUCION_CUOTAS` y un factor sobre el salario); las demás se sortean
 sin relación con ella. La importancia SHAP del campeón (`shap_nuevos` en
-`reports/metrics/campeon_20261125_181558.json`, 100 asociados nuevos) reproduce esa construcción:
+`reports/metrics/campeon_20261125_193634.json`, 100 asociados nuevos) reproduce esa construcción:
 
 | Variable | ¿Depende de la etiqueta en el generador? | |contribución| SHAP promedio |
 |---|---|---|
@@ -376,6 +379,29 @@ Las dos primeras filas difieren solo en la prevalencia: con el mismo modelo y la
 0,563 a 0,760 y la precisión de 0,277 a 0,604. Por eso la PR-AUC solo se compara a igual tasa de retiro, y los
 asociados nuevos de todos los scripts salen con la de desarrollo (`generador.asociados_nuevos`).
 
+**Si la tasa de retiro del fondo no es 10 %.** Los umbrales salen de la prevalencia sintética. Reponderar las
+predicciones fuera de partición (`campeon.sensibilidad_prevalencia`: positivos × π'/π, negativos × (1 − π')/(1 − π))
+da la precisión esperada a otra tasa sin etiquetas individuales: basta la tasa trimestral de retiro del fondo, un
+agregado. Supone que cambia **cuántos** se retiran y no **cómo es** quien se retira (cambio de prevalencia); sin
+etiquetas reales ese supuesto no se puede comprobar con el fondo. Campeón actual (`campeon.json`, clave
+`prevalencia`):
+
+| Tasa trimestral de retiro | Precisión de la alerta (umbral 0,117) | Precisión de "se retira" (umbral 0,410) | Umbral alto para 80 % |
+|---|---:|---:|---:|
+| 2 % | 0,075 | 0,423 | 0,757 |
+| 5 % | 0,172 | 0,654 | 0,572 |
+| 10 % (sintética) | 0,305 | 0,800 | 0,411 |
+| 20 % | 0,497 | 0,900 | 0,270 |
+| 30 % | 0,629 | 0,939 | 0,197 |
+
+El recall (0,716) no cambia: depende solo de quienes se retiran. **Comprobación** con el escenario del generador al
+29,1 %, que es un cambio de prevalencia puro: precisión esperada 0,619, medida 0,604. Con una tasa real del 2 %, los
+umbrales actuales prometerían que 8 de cada 10 asociados en "se retira" se van, y serían 4. Para una probabilidad
+calibrada, `campeon.ajustar_probabilidad` (Saerens, Latinne y Decaestecker, 2002) la lleva a la nueva tasa; el
+campeón usa `class_weight="balanced"` y su puntaje no es una probabilidad calibrada, así que con él se usan los
+umbrales recalculados. Las dos funciones tienen pruebas con el generador a otra tasa
+(`test_precision_esperada_a_otra_tasa_coincide_con_la_medida`).
+
 El deterioro al debilitar la señal ilustra la dependencia del modelo respecto a las reglas programadas. No permite
 acotar el rendimiento real: la tasa real futura tampoco está disponible y no hay etiquetas con las que calibrar
 umbrales o probabilidades.
@@ -387,7 +413,7 @@ modelo (ROC-AUC fuera de partición; 0,5 = indistinguibles). Lo imprime `make pr
 
 | Comparación | ROC-AUC | Lectura |
 |---|---|---|
-| Sintéticos frente a otros sintéticos (control; 3 semillas) | ROC-AUC 0,501–0,506; comportamiento 0,485–0,492 | control cercano al azar tras normalizar ambos lotes con el mismo contrato |
+| Sintéticos frente a otros sintéticos (control; 3 semillas, `validacion.control_desplazamiento`) | ROC-AUC 0,500–0,504; comportamiento 0,497–0,503 | lo que da la prueba sin desplazamiento; `make predecir-real` lo imprime junto al resultado real |
 | Sintéticos frente al extracto real, todas las variables | ROC-AUC 1,00 | dominios claramente separables; no mide abandono |
 | … solo variables de comportamiento | ROC-AUC ≈ 0,60 | desplazamiento moderado; no es una métrica del clasificador de abandono |
 | … variables que distinguen | geografía ROC-AUC 1,00; empresa 1,00; profesión ≈ 0,95 | categorías principales fuera del soporte sintético |
@@ -438,8 +464,8 @@ se aprenden) y se valida con **KFold**, porque en regresión no hay clases que e
 predictor (`test_regresion_sin_fuga_y_referencia`).
 
 **Elección y evaluación separadas.** Antes de elegir se aparta una **reserva** del 20 %. La validación cruzada
-compara la referencia (`DummyRegressor`, predecir el promedio) con Ridge, Random Forest y HistGB sobre el resto y
-elige por R²; ese R² es optimista para el elegido, porque es el mejor de varios sobre las mismas particiones. La
+compara la referencia (`DummyRegressor`, predecir el promedio) con Ridge, Random Forest, HistGB y dos modelos que
+aprenden el logaritmo del salario (Ridge y HistGB en logaritmo) sobre el resto, y elige por R²; ese R² es optimista para el elegido, porque es el mejor de varios sobre las mismas particiones. La
 cifra que se reporta es la de la **reserva**: el elegido y la referencia, entrenados sin ella, medidos una sola vez
 (`supera_referencia` se decide ahí). En los datos sintéticos, Ridge no supera al promedio en la reserva. En el
 extracto real, HistGradientBoosting sí supera al promedio para **estimar salario** en esa reserva; esto no valida
@@ -447,8 +473,14 @@ el clasificador de abandono.
 
 **Error relativo y por tramo.** Además de MAE, RMSE y R², se reporta `MdAPE` (mediana del error relativo) y el error
 por quintil del salario predicho (`regresion.error_por_tramo`). Con el extracto real el error es **heterocedástico**:
-crece con el salario y el error relativo casi se duplica en el quintil más alto, donde el modelo además se aleja
-del promedio real. Un MAE global promedia errores muy distintos; para salarios altos la estimación es poco útil.
+crece con el salario, y con el HistGB en pesos el error relativo casi se duplicaba en el quintil más alto. Por eso
+compiten los modelos en logaritmo: el error que minimizan es relativo, como en la ecuación de salarios de Mincer.
+
+**Intervalo de predicción por tramo.** Cada estimación lleva un intervalo multiplicativo [ŷ ÷ f, ŷ × f] que debería
+contener 8 de cada 10 salarios reales (`regresion.calibrar_intervalo`). f se calibra con los errores relativos
+**fuera de partición** de la parte de elección (conformal con corrección de muestra finita), nunca con la reserva, y
+hay **un f por quintil** del salario predicho (conformal "Mondrian"). La reserva mide la cobertura en total y por
+quintil: un intervalo que cubre el 80 % en promedio pero no en los salarios altos no sirve para esos asociados.
 
 **Es una estimación transversal.** Salario y predictores se miden en el mismo corte: el modelo describe cómo van
 juntos en esa foto y sirve para estimar el salario de quien no lo reporta en ese corte. No pronostica salarios
@@ -456,19 +488,36 @@ futuros ni mide efectos causales.
 
 CV sintética del 80 % de elección (5 folds; valores de consola del `make pipeline` del 25-nov):
 
-| Métrica | Referencia (promedio) | Ridge | Random Forest | HistGB |
-|---|---:|---:|---:|---:|
-| MAE | 1.170 M | 1.195 M | 1.217 M | 1.278 M |
-| RMSE | 1.924 M | 1.945 M | 1.963 M | 2.021 M |
-| R² | −0,001 | −0,023 | −0,042 | −0,103 |
+| Métrica | Referencia (promedio) | Ridge | Ridge en log | Random Forest | HistGB en log | HistGB |
+|---|---:|---:|---:|---:|---:|---:|
+| MAE | 1.170 M | 1.195 M | 1.096 M | 1.217 M | 1.154 M | 1.278 M |
+| RMSE | 1.924 M | 1.945 M | 1.957 M | 1.963 M | 1.992 M | 2.021 M |
+| R² | −0,001 | −0,023 | −0,035 | −0,042 | −0,073 | −0,103 |
 
-En la reserva sintética, Ridge obtiene R² −0,022 y MAE mayor que la referencia (1,252 M frente a 1,234 M);
-en 5.000 asociados nuevos, R² es −0,016 frente a −0,003 del promedio. No supera el baseline. El generador
+En la reserva sintética, Ridge obtiene R² −0,022 y MAE mayor que la referencia (1,252 M frente a 1,234 M); en
+1.000 asociados nuevos (952 con salario), R² es −0,016 frente a −0,003 del promedio. No supera el baseline. El
+intervalo del 80 % cubre el 78,1 % de la reserva y entre 74,0 % y 83,5 % por quintil (200 asociados por quintil),
+con f de 1,61 a 1,70 (`reports/metrics/regresion_20261125_192920.json`). El generador
 muestrea el salario mediante cuantiles y aplica además un factor sintético asociado a la etiqueta; por tanto, no es
 correcto describirlo como lognormal independiente ni usarlo como evidencia de una relación real.
 
-En `make real`, HistGradientBoosting obtiene R² 0,190 y MdAPE 0,159 en la reserva real, frente a R² 0,000 y
-MdAPE 0,210 del promedio. Es evidencia agregada para estimación transversal del salario, no predicción de retiro.
+En `make real`, la validación cruzada elige **HistGB en logaritmo** (R² 0,222 frente a 0,216 del HistGB en pesos; la
+diferencia es menor que la desviación entre particiones, 0,02). Sobre la misma reserva real (2.891 asociados):
+
+| En la reserva real | Promedio (referencia) | HistGB en pesos (antes) | HistGB en logaritmo (ahora) |
+|---|---:|---:|---:|
+| R² | 0,000 | 0,190 | 0,189 |
+| MAE frente al promedio | — | −16 % | −21 % |
+| MdAPE | 0,210 | 0,159 | 0,148 |
+| MdAPE en el quintil más alto | — | 0,280 | 0,225 |
+| Intervalo del 80 %: cobertura total | — | — | 79,8 % |
+| Cobertura por quintil (un f para todos → un f por quintil) | — | — | 66,8 %–88,8 % → 78,2 %–82,2 % |
+
+El R² no cambia; lo que mejora es el error relativo, sobre todo en los salarios altos (MAE 5,7 % menor que el del
+HistGB en pesos). Con un solo f (1,37), el intervalo cubría el 80 % en promedio pero el 66,8 % en el quintil más
+alto; con un f por quintil (de 1,30 a 1,60), todos los quintiles quedan entre 78,2 % y 82,2 %. En los salarios más
+altos la estimación sigue siendo la menos precisa: su intervalo va de ÷1,60 a ×1,60. Es evidencia agregada para
+estimación transversal del salario, no predicción de retiro.
 No se publican salarios absolutos del extracto. Resultados completos locales en `reports/metrics/` y
 `reports/figures/regresion_salario.html`.
 
@@ -522,20 +571,25 @@ cancelaciones hechas. `segmentacion.perfil` describe cada segmento con medianas 
 (edad, antigüedad, salario, % sin estrato, % sin movimientos).
 
 **Por qué k = 5: decisión exploratoria, no estadística.** Auditoría sobre el extracto real (KMeans del modo
-perfil; solo agregados):
+perfil; solo agregados). Las filas de modelo nulo, semillas y bootstrap las reproduce `make segmentos-real`
+(`Segmentacion.auditar`, con el mismo `n_init` = 20 que la solución); quedan en el JSON local de segmentos:
 
 | Prueba | Resultado | Lectura |
 |---|---|---|
-| Índices por k (3 a 7) | silueta 0,175–0,197; Calinski-Harabasz máximo en k = 3; Davies-Bouldin baja al subir k | ningún índice elige k = 5; no hay un número "natural" de grupos |
-| 10 semillas (`n_init` = 20) | ARI con la base ≥ 0,99 | la solución con k = 5 no depende del inicio |
-| Bootstrap 80 % × 20 (Jaccard por segmento, criterio de Hennig) | solicitudes de cancelación y de retiro parcial: Jaccard mínimo ≥ 0,97; los tres grandes: Jaccard medio ≈ 0,96, pero en 1 de 20 submuestras se reorganizan (Jaccard mínimo 0,33–0,58) | los dos segmentos de salida son robustos; los tres de perfil son estables casi siempre, no siempre |
+| Índices por k (2 a 8; `segmentacion.tabla_k`) | silueta 0,172–0,194 entre k = 3 y 7; Calinski-Harabasz máximo en k = 2 (entre 3 y 7, en k = 3); Davies-Bouldin baja al subir k (2,18 → 1,40) | ningún índice elige k = 5; no hay un número "natural" de grupos |
+| Modelo nulo: cada columna desordenada por separado (mismas distribuciones, sin relación entre variables), 5 veces | silueta 0,179 frente a 0,161 de media (máximo 0,168) | hay estructura conjunta más allá de las distribuciones de cada variable, pero débil: la silueta supera al nulo por 0,011–0,018 |
+| 10 semillas (`n_init` = 20) | ARI con la base ≥ 0,998 | la solución con k = 5 no depende del inicio |
+| Bootstrap 80 % × 20 (Jaccard por segmento, criterio de Hennig) | Jaccard medio 0,953–0,995 en los cinco; retiro parcial y los tres grandes nunca se disuelven (mínimo 0,81–0,95); cancelación (305 asociados, el 2 %) se disuelve en 1 de 20 submuestras (mínimo 0,06) | los cinco son estables en el sentido de Hennig (medio > 0,85); el de cancelación, por pequeño, a veces se funde con otro |
 | Silueta por segmento | veteranos 0,08; los demás 0,19–0,23 | los veteranos son un extremo de un continuo de edad y antigüedad, no un grupo separado |
 | k = 4 y k = 6 | con k = 4 el segmento de cancelación se reparte; con k = 6 se parten los nuevos con estrato | k = 5 es el menor k en el que las dos solicitudes de salida quedan en segmentos propios |
 | Interpretabilidad de las variables | `SIN_ESTRATO` (binaria) separa por sí sola los nuevos sin estrato (100 %) de los nuevos con estrato (0 %) | uno de los cinco segmentos lo define un dato faltante: describe un perfil incompleto, no una condición económica |
 
 Conclusión: los cinco segmentos son una **segmentación exploratoria orientada a la interpretación del negocio**, no
-grupos que los datos impongan. Los dos segmentos de solicitudes de salida son estables y son los que sirven para
-actuar; los de perfil describen a la mayoría de los asociados y se leen como tendencias, no como fronteras.
+grupos que los datos impongan: la estructura supera al modelo nulo, pero por poco, y ningún índice elige k = 5. Son
+estables (no dependen de la semilla ni, casi nunca, de la muestra), así que sirven para describir. El de solicitudes
+de cancelación, el más útil para actuar, es pequeño y en 1 de 20 submuestras se funde con otro: conviene leerlo junto
+con su conteo de solicitudes, no solo como etiqueta de segmento. Una auditoría anterior, hecha a mano y sin código,
+reportaba lo contrario (segmentos de salida robustos y grandes inestables); no se pudo reproducir y se reemplazó.
 
 ```bash
 make segmentos                                   # k por silueta, eps por vecinos

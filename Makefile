@@ -37,7 +37,8 @@ ARGS ?=
 .PHONY: help setup setup-hf demo-data demo train train-hf abandono campeon tecnicas validacion regresion segmentos predecir pipeline \
         segmentos-real regresion-real predecir-real real pycaret afinar optuna mlflow-ui app \
         simulador ejemplo datos-desarrollo contrato contrato-ml anonimizar contrato-sql contrato-web supabase-subir supabase-bajar supabase-crear formulario \
-        test test-fast cov lint tipos format check hooks secrets up docker-campeon down logs salt bundle clean clean-all
+        test test-fast cov lint tipos format check hooks notebooks secrets up docker-campeon down logs salt bundle \
+        clean clean-all
 
 # ==============================================================================
 help: ## Muestra los objetivos disponibles
@@ -113,7 +114,7 @@ pipeline: ## Corre todo el flujo: campeón, predicción, segmentos, validación 
 # Extracto real (ORIGEN_DATOS=real_anonimizado sin tocar el .env; DATA=... para otro archivo)
 # ==============================================================================
 segmentos-real: ## Segmenta el extracto real por comportamiento y perfil (k = 5; no necesita etiqueta)
-	$(PY_REAL) scripts/segmentar.py --datos $(or $(DATA),$(REAL)) --perfil $(ARGS)
+	$(PY_REAL) scripts/segmentar.py --datos $(or $(DATA),$(REAL)) --perfil --auditar $(ARGS)
 
 regresion-real: ## Estima el SALARIO con el extracto real (no necesita etiqueta)
 	$(PY_REAL) scripts/regresion_salario.py --datos $(or $(DATA),$(REAL)) $(ARGS)
@@ -203,6 +204,11 @@ tipos: ## Revisa los tipos del paquete con mypy (src/proyecto_ml)
 	$(RUN) mypy
 
 check: lint tipos test ## Lint + tipos + pruebas (lo mínimo antes de abrir un PR)
+
+# 01_plantilla_eda lee DATA_PATH (datos locales, fuera de Git): no corre en el CI. 02 y 03 generan sus datos.
+NOTEBOOKS := sesiones/02_juan_eda_foto_asociado.ipynb sesiones/03_sebastian_feature_engineering.ipynb
+notebooks: ## Ejecuta los notebooks y comprueba que sus cifras escritas salgan de sus resultados (lo hace el CI)
+	$(PY) scripts/verificar_notebooks.py $(or $(NB),$(NOTEBOOKS)) $(ARGS)
 
 hooks: ## Corre todos los hooks de pre-commit sobre el repo completo
 	$(RUN) pre-commit run --all-files

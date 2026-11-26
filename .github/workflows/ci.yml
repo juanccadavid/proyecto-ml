@@ -95,6 +95,23 @@ jobs:
         if: always()
         run: docker compose --profile pipeline down -v
 
+  notebooks:
+    # Los notebooks de sesiones/ se ejecutan y las cifras de su texto deben salir de sus resultados: un notebook puede
+    # correr sin errores y contar conclusiones viejas (scripts/verificar_notebooks.py).
+    needs: calidad
+    runs-on: ubuntu-latest
+    env:
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Instalar dependencias (versiones exactas de uv.lock)
+        run: uv sync --locked
+      - name: Ejecutar los notebooks y verificar sus cifras
+        run: make notebooks
+
   ejecutar:
     needs: calidad
     runs-on: ubuntu-latest

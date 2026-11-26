@@ -402,9 +402,89 @@ def validacion_fuera_de_tiempo(
     }
 
 
-def elegir_umbrales(y, puntaje, beta: float = BETA, precision_min: float = PRECISION_MIN) -> dict:
-    """``umbral`` (máximo F-beta) y ``umbral_alto`` (precisión >= precision_min), con sus métricas."""
-    precision, recall, cortes = precision_recall_curve(y, puntaje)
+PREVALENCIAS = (0.02, 0.05, 0.10, 0.20, 0.30)  # tasas trimestrales de retiro para la tabla de sensibilidad
+
+
+def pesos_prevalencia(y, prevalencia: float) -> np.ndarray:
+    """Pesos que llevan las etiquetas ``y`` a otra ``prevalencia`` sin cambiar el perfil de cada clase.
+
+    Positivos π'/π y negativos (1 − π')/(1 − π). Con estos pesos, la precisión y el F-beta de las predicciones fuera
+    de partición son los esperados si la tasa de retiro fuera ``prevalencia``. El recall no cambia. Supone **cambio de
+    prevalencia** (label shift): cambia cuántos se retiran, no cómo es quien se retira. Sin etiquetas reales ese
+    supuesto no se puede comprobar con el fondo.
+    """
+    y = np.asarray(y).astype(int)
+    origen = y.mean()
+    if not (0 < prevalencia < 1 and 0 < origen < 1):
+        raise ValueError("prevalencia y tasa de las etiquetas deben estar entre 0 y 1 (sin incluirlos)")
+    return np.where(y == 1, prevalencia / origen, (1 - prevalencia) / (1 - origen))
+
+
+def ajustar_probabilidad(probabilidad, prevalencia_origen: float, prevalencia_destino: float) -> np.ndarray:
+    """La probabilidad de un modelo entrenado con ``prevalencia_origen`` llevada a ``prevalencia_destino``
+    (Saerens, Latinne y Decaestecker, 2002): p' = r₁p / (r₁p + r₀(1 − p)), con r₁ = π'/π y r₀ = (1 − π')/(1 − π).
+    Conserva el orden de los asociados; solo cambia la escala. Con el mismo supuesto que ``pesos_prevalencia``.
+
+    Solo vale para una probabilidad **calibrada** (``etiqueta_puntaje`` = "Probabilidad de retiro"). Con
+    ``class_weight="balanced"`` el modelo aprende como si la tasa fuera 50 % y el ajuste desde la tasa de los datos
+    exagera el riesgo; para esos modelos se usan los umbrales recalculados (``sensibilidad_prevalencia``), que no
+    necesitan calibración."""
+    p = np.clip(np.asarray(probabilidad, dtype=float), 1e-12, 1 - 1e-12)
+    r1 = prevalencia_destino / prevalencia_origen
+    r0 = (1 - prevalencia_destino) / (1 - prevalencia_origen)
+    return r1 * p / (r1 * p + r0 * (1 - p))
+
+
+def precision_esperada(y, puntaje, umbral: float, prevalencia: float) -> dict[str, float]:
+    """Precisión y recall de ``puntaje >= umbral`` si la tasa de retiro fuera ``prevalencia``."""
+    y, alerta = np.asarray(y).astype(int), np.asarray(puntaje) >= umbral
+    peso = pesos_prevalencia(y, prevalencia)
+    verdaderos, falsos = peso[alerta & (y == 1)].sum(), peso[alerta & (y == 0)].sum()
+    precision = verdaderos / (verdaderos + falsos) if verdaderos + falsos > 0 else float("nan")
+    return {"precision": float(precision), "recall": float(alerta[y == 1].mean())}
+
+
+def sensibilidad_prevalencia(
+    y,
+    puntaje,
+    umbral: float,
+    umbral_alto: float | None,
+    prevalencias=PREVALENCIAS,
+    beta: float = BETA,
+    precision_min: float = PRECISION_MIN,
+) -> list[dict]:
+    """Para cada tasa de retiro posible: qué precisión tendrían los umbrales actuales y qué umbrales se elegirían.
+
+    Los umbrales del campeón salen de la prevalencia sintética (10 %). Si el fondo conoce su tasa trimestral de
+    retiro (un solo número agregado, sin etiquetas individuales), esta tabla dice cómo cambian. No valida el modelo:
+    el ordenamiento de los asociados sigue siendo el aprendido del generador.
+    """
+    filas = []
+    for prevalencia in prevalencias:
+        actual = precision_esperada(y, puntaje, umbral, prevalencia)
+        nuevos = elegir_umbrales(y, puntaje, beta, precision_min, prevalencia=prevalencia)
+        fila = {
+            "prevalencia": float(prevalencia),
+            "precision_alerta": actual["precision"],
+            "recall_alerta": actual["recall"],
+            "precision_alto": None,
+            "umbral_recalculado": nuevos["umbral"],
+            "umbral_alto_recalculado": nuevos["umbral_alto"],
+        }
+        if umbral_alto is not None:
+            fila["precision_alto"] = precision_esperada(y, puntaje, umbral_alto, prevalencia)["precision"]
+        filas.append(fila)
+    return filas
+
+
+def elegir_umbrales(
+    y, puntaje, beta: float = BETA, precision_min: float = PRECISION_MIN, prevalencia: float | None = None
+) -> dict:
+    """``umbral`` (máximo F-beta) y ``umbral_alto`` (precisión >= precision_min), con sus métricas.
+
+    Con ``prevalencia``, las métricas son las esperadas a esa tasa de retiro (``pesos_prevalencia``)."""
+    peso = None if prevalencia is None else pesos_prevalencia(y, prevalencia)
+    precision, recall, cortes = precision_recall_curve(y, puntaje, sample_weight=peso)
     precision, recall = precision[:-1], recall[:-1]  # el último punto (recall 0) no tiene corte
     fbeta = (1 + beta**2) * precision * recall / np.maximum(beta**2 * precision + recall, 1e-12)
     i = int(np.argmax(fbeta))

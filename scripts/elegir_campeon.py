@@ -187,10 +187,20 @@ def main() -> None:
             f"{hon['particiones_sin_alto']} particiones sin zona 'se retira'"
         )
 
+    # Los umbrales salen de la tasa sintética (10 %). Si el fondo conoce su tasa trimestral de retiro (un agregado),
+    # esta tabla dice qué precisión tendrían los umbrales actuales y cuáles se elegirían (c.sensibilidad_prevalencia).
+    puntaje_cv = campeon.candidatos[campeon.nombre].promedio
+    sensibilidad = c.sensibilidad_prevalencia(
+        campeon.y, puntaje_cv, campeon.umbral, campeon.umbral_alto, beta=args.beta, precision_min=args.precision_min
+    )
+    print("\n=== Si la tasa de retiro no fuera la sintética: precisión esperada y umbrales recalculados ===")
+    print(pd.DataFrame(sensibilidad).set_index("prevalencia").round(3).to_string())
+
     # Todos los candidatos entrenados con todo, cada uno con su umbral, para nuevos y escenarios.
     entrenados = {n: clone(cand.modelo).fit(X, y) for n, cand in campeon.candidatos.items()}
     umbrales = {n: cand.umbrales["umbral"] for n, cand in campeon.candidatos.items()}
     nuevos, en_nuevos, por_zona, resultados, escenarios = None, {}, None, None, None
+    comprobacion: dict | None = None
     if experimental:  # nuevos y escenarios salen del generador: solo tienen sentido con datos sintéticos
         nuevos = asociados_nuevos(args.nuevos, args.semilla_nuevos)
         nuevos = a.foto(nuevos, h) if h else nuevos
@@ -216,6 +226,24 @@ def main() -> None:
         print("\n=== Escenarios: ¿cuánto se degrada cada candidato si el fondo real no es como el generador? ===")
         with pd.option_context("display.width", 200, "display.max_columns", None):
             print(escenarios.round(2).to_string())
+        # El escenario al 30 % con la señal del generador es un cambio de prevalencia puro: comprueba la tabla anterior.
+        del_campeon = resultados["modelo"] == campeon.nombre
+        otra_tasa = resultados[del_campeon & resultados["escenario"].str.startswith("tasa 30")]
+        if len(otra_tasa):
+            fila = otra_tasa.iloc[0]
+            esperada = c.precision_esperada(campeon.y, puntaje_cv, campeon.umbral, float(fila["base_rate"]))
+            comprobacion = {
+                "escenario": fila["escenario"],
+                "prevalencia": float(fila["base_rate"]),
+                "precision_esperada": esperada["precision"],
+                "precision_medida": float(fila["precision"]),
+                "recall_esperado": esperada["recall"],
+                "recall_medido": float(fila["recall"]),
+            }
+            print(
+                f"Precisión al {fila['base_rate']:.1%} de retiro: esperada {esperada['precision']:.3f} "
+                f"(reponderando la validación cruzada) · medida en el escenario {fila['precision']:.3f}"
+            )
     else:
         print("\nDatos reales: sin asociados nuevos ni escenarios del generador (serían de otro origen).")
     print("\nValidación temporal: no disponible con un único corte y sin fecha de retiro.")
@@ -280,7 +308,9 @@ def main() -> None:
             "nuevos": {"asociados": len(nuevos), **en_nuevos[campeon.nombre]},
             "zonas_nuevos": por_zona.reset_index().to_dict(orient="records"),
             "escenarios": resultados.to_dict(orient="records"),
+            "prevalencia_comprobacion": comprobacion,
         }
+    extra["prevalencia"] = sensibilidad
     if explicaciones:
         extra["shap_nuevos"] = {k: float(val) for k, val in explicaciones[1].items()}
     rutas = c.guardar(campeon, MODELS_DIR, extra)

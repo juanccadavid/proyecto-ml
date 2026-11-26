@@ -119,10 +119,16 @@ def resumen_desplazamiento(lote: pd.DataFrame, top: int = 5) -> str:
     referencia, _ = c.datos_eleccion(origen=ORIGEN_SINTETICO)  # los de make campeon por defecto
     d = v.desplazamiento(referencia, lote)
     distinguen = ", ".join(f"{col} {auc:.2f}" for col, auc in list(d["por_variable"].items())[:top])
+    control = v.control_desplazamiento(referencia)  # sin desplazamiento: otros sintéticos del mismo generador
+    rango = {
+        m: f"{min(x[m] for x in control):.3f}–{max(x[m] for x in control):.3f}"
+        for m in ("roc_auc", "roc_auc_comportamiento")
+    }
     return (
         "Parecido con los sintéticos de entrenamiento (validación adversaria, ROC-AUC: 0,5 = indistinguibles, "
         f"1 = fuera de lo que vio el modelo): todas las variables {d['roc_auc']:.2f}; solo comportamiento "
-        f"{d['roc_auc_comportamiento']:.2f}. Las que más distinguen: {distinguen}."
+        f"{d['roc_auc_comportamiento']:.2f}. Las que más distinguen: {distinguen}. Control (otros sintéticos, "
+        f"{len(control)} semillas): todas {rango['roc_auc']}; comportamiento {rango['roc_auc_comportamiento']}."
     )
 
 
