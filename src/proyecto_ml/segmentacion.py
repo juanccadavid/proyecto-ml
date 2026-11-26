@@ -22,9 +22,11 @@ Dos modos (``Segmentacion(modo=...)``):
   todos en 0, separa sobre todo por qué productos tiene cada uno.
 - ``"perfil"``: los conteos en escala logarítmica (``log1p``, para que un conteo raro no domine la distancia) más
   quién es el asociado: ``EDAD``, la antigüedad en el fondo (log), el salario (log) y si le falta el estrato. Da
-  segmentos que se le pueden contar al fondo (nuevos con y sin estrato, veteranos, los que retiran o cancelan
-  ahorros). Con variables mixtas la silueta queda plana para todo ``k`` y no sirve para elegirlo: ``k`` se fija en
-  ``K_PERFIL`` (se puede cambiar con ``k``).
+  segmentos que se le pueden contar al fondo (nuevos con y sin estrato, veteranos, los que registran solicitudes
+  de retiro parcial o de cancelación de ahorros; una solicitud no es una operación completada). Con variables
+  mixtas la silueta queda plana para todo ``k`` y ningún índice favorece un ``k``: ``K_PERFIL`` = 5 es una decisión
+  exploratoria, el menor ``k`` en el que las dos solicitudes de salida quedan en segmentos propios (estabilidad en
+  docs/metodologia.md). Se puede cambiar con ``k``.
 
 ``perfil`` describe cada segmento con medianas y porcentajes que se leen sin estandarizar.
 """

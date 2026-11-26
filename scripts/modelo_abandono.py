@@ -35,7 +35,8 @@ from sklearn.model_selection import StratifiedKFold, cross_val_predict
 from proyecto_ml import abandono as a
 from proyecto_ml import registro as r
 from proyecto_ml.campeon import DatosInvalidos, datos_exploracion
-from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, get_settings
+from proyecto_ml.config import FIGURES_DIR, METRICS_DIR
+from proyecto_ml.datos_campeon import nombre_fuente
 from proyecto_ml.evaluate import (
     COLUMNAS_COMPARATIVA,
     compute_metrics,
@@ -48,7 +49,7 @@ from proyecto_ml.evaluate import (
     top_importancia,
 )
 from proyecto_ml.features import pagina_pipelines
-from proyecto_ml.generador import FALTANTES, GeneradorAsociados
+from proyecto_ml.generador import FALTANTES, asociados_nuevos
 
 
 def _tabla(columnas: dict[str, dict]) -> str:
@@ -58,7 +59,10 @@ def _tabla(columnas: dict[str, dict]) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument(
-        "--datos", type=Path, default=get_settings().datos_asociados, help="Por defecto DATOS_ASOCIADOS del .env"
+        "--datos",
+        type=Path,
+        default=None,
+        help="Por defecto los datos de desarrollo de make campeon (make datos-desarrollo o en memoria)",
     )
     parser.add_argument("--alpha", type=float, default=1.0, help="Regularización de Ridge (más alto = más simple)")
     parser.add_argument("--nuevos", type=int, default=1000, help="Asociados nuevos para validar")
@@ -79,8 +83,8 @@ def main() -> None:
         "--horizonte",
         type=int,
         metavar="MESES",
-        help="Foto del asociado en t0 = corte - MESES: activos en t0, objetivo = se retira entre t0 y el corte.\n"
-        "Sin la opción, todos los asociados al corte (como antes). Con los 50 de ejemplo quedan muy pocos retiros",
+        help="Anota la foto del asociado: t0 = corte (ahí se miden las variables) y evento en (t0, t0 + MESES].\n"
+        "No filtra filas ni cambia la etiqueta sintética (que es a 3 meses).",
     )
     parser.add_argument("--sin-mlflow", action="store_true", help="No registrar los modelos en MLflow")
     parser.add_argument(
@@ -97,9 +101,9 @@ def main() -> None:
         validar = datos_exploracion(args.validar, "make abandono", limpiar) if args.validar else None
     except DatosInvalidos as error:
         raise SystemExit(str(error)) from None
-    validaciones = {f"nuevos (n={args.nuevos})": GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos).generar()}
+    validaciones = {f"nuevos (n={args.nuevos})": asociados_nuevos(args.nuevos, args.semilla_nuevos)}
     if args.faltantes:
-        sucios = GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos, faltantes=FALTANTES).generar()
+        sucios = asociados_nuevos(args.nuevos, args.semilla_nuevos, faltantes=FALTANTES)
         validaciones["nuevos con vacíos"] = sucios
     if args.validar:
         validaciones[args.validar.name] = validar
@@ -108,7 +112,7 @@ def main() -> None:
         next(iter(validaciones.values())).to_parquet(args.exportar_nuevos, index=False)
         print(f"Asociados nuevos guardados en {args.exportar_nuevos}")
     if args.horizonte:
-        print(f"Foto del asociado (corte {a.FECHA_CORTE.date()}), según el horizonte:")
+        print(f"Foto del asociado (t0 = corte {a.FECHA_CORTE.date()}):")
         print(a.resumen_foto(train).round(3).to_string() + "\n")
         train = a.foto(train, args.horizonte)
         validaciones = {nombre: a.foto(df, args.horizonte) for nombre, df in validaciones.items()}
@@ -118,8 +122,11 @@ def main() -> None:
                 f"Con --horizonte {args.horizonte} la clase minoritaria tiene {minimo} asociados (mínimo 5). "
                 'Usa más filas (make ejemplo ARGS="--rows 2000 ...") o un horizonte mayor.'
             )
-        print(f"Horizonte: {args.horizonte} meses (t0 = {a.fecha_observacion(args.horizonte).date()})")
-    print(f"Entrenamiento: {args.datos} ({len(train)} filas, {a.objetivo_binario(train).mean():.0%} abandono)")
+        print(f"Horizonte: evento en ({a.fecha_observacion().date()}, {a.fin_horizonte(args.horizonte).date()}]")
+    print(
+        f"Entrenamiento: {nombre_fuente(args.datos)} ({len(train)} filas, "
+        f"{a.objetivo_binario(train).mean():.0%} abandono)"
+    )
     if limpiar:
         print(
             f"Limpieza: extracto (limpiar_extracto) + ColumnDropper (> {a.MAX_NULOS:.0%} vacíos o constantes)"
@@ -195,7 +202,7 @@ def main() -> None:
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     salida = METRICS_DIR / f"abandono_{stamp}.json"
     resumen = {
-        "datos": str(args.datos.name),
+        "datos": nombre_fuente(args.datos),
         "alpha": args.alpha,
         "limpieza": limpiar,
         "horizonte_meses": args.horizonte,
@@ -223,7 +230,7 @@ def main() -> None:
         return r.unir(*({"m": r.con_prefijo(prefijos[k], m)} for k, m in por_conjunto.items()))["m"]
 
     metricas = {n: con_prefijos(m) for n, m in m_supervisados.items()} | {"kmeans": con_prefijos(m_kmeans)}
-    params = {"datos": args.datos.name, "filas": len(train), "limpieza": limpiar, "clip_outliers": clip}
+    params = {"datos": nombre_fuente(args.datos), "filas": len(train), "limpieza": limpiar, "clip_outliers": clip}
     params |= {"max_nulos": max_nulos, "horizonte_meses": args.horizonte, "alpha": args.alpha}
     r.configurar()
     artefactos = [salida, grafico, tabla_html, importancia_png, importancia_rf_html, diagramas]

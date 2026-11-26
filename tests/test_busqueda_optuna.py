@@ -13,7 +13,9 @@ optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 @pytest.fixture(scope="module")
 def datos():
-    df = GeneradorAsociados(n=150, seed=1).generar()
+    # 400 y no 150: con 10 % de retiro y señales casi siempre en 0 (la forma del extracto), 150 filas dejan unos 15
+    # positivos, muy pocos para esperar que el modelo afinado generalice (AUC > 0,8 en nuevos).
+    df = GeneradorAsociados(n=400, seed=1).generar()
     return a.preparar(df), a.objetivo_binario(df)
 
 

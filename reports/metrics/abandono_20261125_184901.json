@@ -1,0 +1,1378 @@
+{
+  "datos": "asociados_desarrollo.parquet",
+  "alpha": 1.0,
+  "limpieza": true,
+  "horizonte_meses": null,
+  "clip_outliers": "iqr",
+  "max_nulos": 0.5,
+  "ridge": {
+    "entrenamiento": {
+      "base_rate": 0.1006,
+      "roc_auc": 0.873934953764184,
+      "pr_auc": 0.5648955170126668,
+      "precision": 0.272608125819135,
+      "recall": 0.827037773359841,
+      "f1": 0.41005421389847213,
+      "f2": 0.5879027699265121,
+      "specificity": 0.7531687791861241,
+      "balanced_accuracy": 0.7901032762729825,
+      "mcc": 0.37899710416768523,
+      "kappa": 0.30486545400822596,
+      "recall_at_10pct": 0.5228628230616302,
+      "precision_at_10pct": 0.526,
+      "brier": NaN
+    },
+    "validación cruzada (5)": {
+      "base_rate": 0.1006,
+      "roc_auc": 0.8333481432949998,
+      "pr_auc": 0.5038381615403937,
+      "precision": 0.24966622162883845,
+      "recall": 0.7435387673956262,
+      "f1": 0.37381309345327335,
+      "f2": 0.5327635327635327,
+      "specificity": 0.7500555926173004,
+      "balanced_accuracy": 0.7467971800064632,
+      "mcc": 0.32411687831069574,
+      "kappa": 0.26276875109143183,
+      "recall_at_10pct": 0.4671968190854871,
+      "precision_at_10pct": 0.47,
+      "brier": NaN
+    },
+    "nuevos (n=1000)": {
+      "base_rate": 0.09,
+      "roc_auc": 0.8488644688644689,
+      "pr_auc": 0.5210032612541413,
+      "precision": 0.2585551330798479,
+      "recall": 0.7555555555555555,
+      "f1": 0.38526912181303113,
+      "f2": 0.5457463884430177,
+      "specificity": 0.7857142857142857,
+      "balanced_accuracy": 0.7706349206349206,
+      "mcc": 0.3518391495371284,
+      "kappa": 0.2900608519269777,
+      "recall_at_10pct": 0.5,
+      "precision_at_10pct": 0.45,
+      "brier": NaN
+    }
+  },
+  "logreg": {
+    "entrenamiento": {
+      "base_rate": 0.1006,
+      "roc_auc": 0.8795331192741261,
+      "pr_auc": 0.5795783373883395,
+      "precision": 0.2804123711340206,
+      "recall": 0.8111332007952287,
+      "f1": 0.4167517875383044,
+      "f2": 0.5884049610614364,
+      "specificity": 0.7671781187458305,
+      "balanced_accuracy": 0.7891556597705296,
+      "mcc": 0.3829724321783944,
+      "kappa": 0.31421873179707116,
+      "recall_at_10pct": 0.5288270377733598,
+      "precision_at_10pct": 0.532,
+      "brier": 0.13732686183933435
+    },
+    "validación cruzada (5)": {
+      "base_rate": 0.1006,
+      "roc_auc": 0.8464821478069541,
+      "pr_auc": 0.5373278329788551,
+      "precision": 0.25863284002818887,
+      "recall": 0.7296222664015904,
+      "f1": 0.38189386056191466,
+      "f2": 0.5348294957738269,
+      "specificity": 0.7660662663998221,
+      "balanced_accuracy": 0.7478442664007063,
+      "mcc": 0.3307203738254435,
+      "kappa": 0.2740592528969801,
+      "recall_at_10pct": 0.5009940357852882,
+      "precision_at_10pct": 0.504,
+      "brier": 0.14300918158596568
+    },
+    "nuevos (n=1000)": {
+      "base_rate": 0.09,
+      "roc_auc": 0.8592429792429793,
+      "pr_auc": 0.5550306763244319,
+      "precision": 0.2809917355371901,
+      "recall": 0.7555555555555555,
+      "f1": 0.40963855421686746,
+      "f2": 0.5647840531561462,
+      "specificity": 0.8087912087912088,
+      "balanced_accuracy": 0.7821733821733822,
+      "mcc": 0.3770905981567129,
+      "kappa": 0.3204825960338372,
+      "recall_at_10pct": 0.5333333333333333,
+      "precision_at_10pct": 0.48,
+      "brier": 0.1316862150821814
+    }
+  },
+  "random_forest": {
+    "entrenamiento": {
+      "base_rate": 0.1006,
+      "roc_auc": 1.0,
+      "pr_auc": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "f2": 1.0,
+      "specificity": 1.0,
+      "balanced_accuracy": 1.0,
+      "mcc": 1.0,
+      "kappa": 1.0,
+      "recall_at_10pct": 0.9940357852882704,
+      "precision_at_10pct": 1.0,
+      "brier": 0.008386073333333334
+    },
+    "validación cruzada (5)": {
+      "base_rate": 0.1006,
+      "roc_auc": 0.8492005494274734,
+      "pr_auc": 0.5716407217700368,
+      "precision": 0.847926267281106,
+      "recall": 0.3658051689860835,
+      "f1": 0.5111111111111111,
+      "f2": 0.4127411395244504,
+      "specificity": 0.9926617745163442,
+      "balanced_accuracy": 0.6792334717512138,
+      "mcc": 0.529193488535053,
+      "kappa": 0.4795513969609351,
+      "recall_at_10pct": 0.5069582504970179,
+      "precision_at_10pct": 0.51,
+      "brier": 0.06171649333333334
+    },
+    "nuevos (n=1000)": {
+      "base_rate": 0.09,
+      "roc_auc": 0.86490231990232,
+      "pr_auc": 0.5839408281457108,
+      "precision": 0.8222222222222222,
+      "recall": 0.4111111111111111,
+      "f1": 0.5481481481481482,
+      "f2": 0.4567901234567901,
+      "specificity": 0.9912087912087912,
+      "balanced_accuracy": 0.7011599511599511,
+      "mcc": 0.55539955234444,
+      "kappa": 0.5193065405831363,
+      "recall_at_10pct": 0.5444444444444444,
+      "precision_at_10pct": 0.49,
+      "brier": 0.0547858
+    }
+  },
+  "hist_gb": {
+    "entrenamiento": {
+      "base_rate": 0.1006,
+      "roc_auc": 0.9968019324568489,
+      "pr_auc": 0.9633659045987867,
+      "precision": 0.6957123098201936,
+      "recall": 1.0,
+      "f1": 0.8205546492659054,
+      "f2": 0.9195612431444241,
+      "specificity": 0.9510784967756282,
+      "balanced_accuracy": 0.975539248387814,
+      "mcc": 0.813435318763631,
+      "kappa": 0.7963966651994887,
+      "recall_at_10pct": 0.9165009940357853,
+      "precision_at_10pct": 0.922,
+      "brier": 0.039410966785937834
+    },
+    "validación cruzada (5)": {
+      "base_rate": 0.1006,
+      "roc_auc": 0.8498946282279638,
+      "pr_auc": 0.5711229450638958,
+      "precision": 0.44212218649517687,
+      "recall": 0.5467196819085487,
+      "f1": 0.4888888888888889,
+      "f2": 0.5220197418375095,
+      "specificity": 0.9228374471870135,
+      "balanced_accuracy": 0.7347785645477811,
+      "mcc": 0.4279576597988786,
+      "kappa": 0.4249158076742434,
+      "recall_at_10pct": 0.5049701789264414,
+      "precision_at_10pct": 0.508,
+      "brier": 0.08234856337070391
+    },
+    "nuevos (n=1000)": {
+      "base_rate": 0.09,
+      "roc_auc": 0.8416483516483516,
+      "pr_auc": 0.5860495183142734,
+      "precision": 0.44166666666666665,
+      "recall": 0.5888888888888889,
+      "f1": 0.5047619047619047,
+      "f2": 0.5520833333333334,
+      "specificity": 0.9263736263736264,
+      "balanced_accuracy": 0.7576312576312576,
+      "mcc": 0.45377288472299765,
+      "kappa": 0.44798301486199577,
+      "recall_at_10pct": 0.5555555555555556,
+      "precision_at_10pct": 0.5,
+      "brier": 0.07651335373230568
+    }
+  },
+  "kmeans": {
+    "entrenamiento": {
+      "base_rate": 0.1006,
+      "pct_en_grupo_riesgo": 0.0186,
+      "precision": 0.8602150537634409,
+      "recall": 0.15904572564612326,
+      "accuracy": 0.9128,
+      "ari": 0.2206073720263063,
+      "silhouette": 0.6657076786123259
+    },
+    "nuevos (n=1000)": {
+      "base_rate": 0.09,
+      "pct_en_grupo_riesgo": 0.015,
+      "precision": 0.8666666666666667,
+      "recall": 0.14444444444444443,
+      "accuracy": 0.921,
+      "ari": 0.20767606369593594,
+      "silhouette": 0.6921111037901868
+    }
+  },
+  "comparativa": {
+    "hist_gb": {
+      "Model": "HistGradientBoostingClassifier",
+      "Accuracy": 0.885,
+      "AUC": 0.8497833735075397,
+      "Recall": 0.5466534653465347,
+      "Prec.": 0.4428785041085107,
+      "F1": 0.489009414204623,
+      "Kappa": 0.42507479265143144,
+      "MCC": 0.42823985022812094,
+      "TT (Sec)": 0.5901413440704346
+    },
+    "random_forest": {
+      "Model": "RandomForestClassifier",
+      "Accuracy": 0.9294,
+      "AUC": 0.8493334953028118,
+      "Recall": 0.3638019801980198,
+      "Prec.": 0.8464785111100627,
+      "F1": 0.5085289053258868,
+      "Kappa": 0.4770109872819086,
+      "MCC": 0.526958814893128,
+      "TT (Sec)": 0.6846128463745117
+    },
+    "logreg": {
+      "Model": "LogisticRegression",
+      "Accuracy": 0.7624000000000001,
+      "AUC": 0.8463970624248187,
+      "Recall": 0.7296633663366336,
+      "Prec.": 0.2584464932872029,
+      "F1": 0.38167087326018617,
+      "Kappa": 0.2738211528769008,
+      "MCC": 0.33061866550089236,
+      "TT (Sec)": 0.10959377288818359
+    },
+    "ridge": {
+      "Model": "RidgeClassifier",
+      "Accuracy": 0.7494,
+      "AUC": 0.8333621102043465,
+      "Recall": 0.7435247524752475,
+      "Prec.": 0.24981151203879332,
+      "F1": 0.37394131294475585,
+      "Kappa": 0.26291782151246085,
+      "MCC": 0.3242108694891009,
+      "TT (Sec)": 0.08774843215942382
+    }
+  },
+  "importancia": [
+    {
+      "modelo": "ridge",
+      "variable": "#SOLICITUDCREDITOS_ULT3MES",
+      "importancia": 0.022018315018315016,
+      "std": 0.008890753822933611
+    },
+    {
+      "modelo": "ridge",
+      "variable": "#SOLICITUD_CANCELACIONAHORROS",
+      "importancia": 0.024420024420024465,
+      "std": 0.003943917107126961
+    },
+    {
+      "modelo": "ridge",
+      "variable": "#SOLICITUD_RETIROPARCIALAHORROS",
+      "importancia": 0.047490842490842455,
+      "std": 0.005086695336453537
+    },
+    {
+      "modelo": "ridge",
+      "variable": "#CANTIDAD_AHORROSALAVISTA",
+      "importancia": 0.0007094017094016802,
+      "std": 0.0007017613566067208
+    },
+    {
+      "modelo": "ridge",
+      "variable": "#CANTIDAD_AHORROSCONTRACTUALES",
+      "importancia": 0.10403663003663004,
+      "std": 0.01461022551019281
+    },
+    {
+      "modelo": "ridge",
+      "variable": "#CANTIDAD_SERVICIOS",
+      "importancia": 0.05133821733821735,
+      "std": 0.012788634359459107
+    },
+    {
+      "modelo": "ridge",
+      "variable": "#RETIROS",
+      "importancia": 0.0028119658119657885,
+      "std": 0.002250885532008956
+    },
+    {
+      "modelo": "ridge",
+      "variable": "SALARIO",
+      "importancia": 0.012242979242979212,
+      "std": 0.003545044313740915
+    },
+    {
+      "modelo": "ridge",
+      "variable": "EDAD",
+      "importancia": 0.0005885225885225887,
+      "std": 0.0005155980366898075
+    },
+    {
+      "modelo": "ridge",
+      "variable": "ANTIGUEDAD_F_MESES",
+      "importancia": 0.00020879120879120362,
+      "std": 0.0008968409812869546
+    },
+    {
+      "modelo": "ridge",
+      "variable": "ANTIGUEDAD_LA_MESES",
+      "importancia": 0.0002771672771672451,
+      "std": 0.00039026415671068184
+    },
+    {
+      "modelo": "ridge",
+      "variable": "#SOLICITUD_DISMINUCIONCUOTAS",
+      "importancia": 0.008461538461538475,
+      "std": 0.0021211500857060885
+    },
+    {
+      "modelo": "ridge",
+      "variable": "TIPOIDENTIFICACION",
+      "importancia": 0.0006080586080586037,
+      "std": 0.0007772476020439412
+    },
+    {
+      "modelo": "ridge",
+      "variable": "CODPAISCEDULA",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "ridge",
+      "variable": "CODPAISRESIDENCIA",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "ridge",
+      "variable": "CODDEPARTAMENTORESIDENCIA",
+      "importancia": -1.831501831501825e-05,
+      "std": 4.7681621953037594e-05
+    },
+    {
+      "modelo": "ridge",
+      "variable": "CODCIUDADRESIDENCIA",
+      "importancia": -1.831501831501825e-05,
+      "std": 4.7681621953037594e-05
+    },
+    {
+      "modelo": "ridge",
+      "variable": "RELACION",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "ridge",
+      "variable": "SEXO",
+      "importancia": -0.0013809523809523495,
+      "std": 0.0007655677655677609
+    },
+    {
+      "modelo": "ridge",
+      "variable": "PAISNACE",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "ridge",
+      "variable": "DPTONACE",
+      "importancia": -1.831501831501825e-05,
+      "std": 4.7681621953037594e-05
+    },
+    {
+      "modelo": "ridge",
+      "variable": "CIUDADNACE",
+      "importancia": -1.831501831501825e-05,
+      "std": 4.7681621953037594e-05
+    },
+    {
+      "modelo": "ridge",
+      "variable": "ESTRATO",
+      "importancia": -0.0031550671550671593,
+      "std": 0.003387450866397816
+    },
+    {
+      "modelo": "ridge",
+      "variable": "ESTUDIOS",
+      "importancia": 0.0007338217338217268,
+      "std": 0.002111848244001102
+    },
+    {
+      "modelo": "ridge",
+      "variable": "CODPROFESION",
+      "importancia": -0.0038131868131868196,
+      "std": 0.0025526288437770356
+    },
+    {
+      "modelo": "ridge",
+      "variable": "ESTADOCIVIL",
+      "importancia": 0.001278388278388276,
+      "std": 0.002012771905497074
+    },
+    {
+      "modelo": "ridge",
+      "variable": "CODEMPRESA",
+      "importancia": 0.001180708180708201,
+      "std": 0.003352150058862247
+    },
+    {
+      "modelo": "ridge",
+      "variable": "CODDEPENDENCIA",
+      "importancia": 0.01038095238095238,
+      "std": 0.009038374921597167
+    },
+    {
+      "modelo": "ridge",
+      "variable": "TIPOCONTRATO",
+      "importancia": -0.0001623931623931818,
+      "std": 0.0020770307461976142
+    },
+    {
+      "modelo": "logreg",
+      "variable": "#SOLICITUDCREDITOS_ULT3MES",
+      "importancia": 0.029622710622710713,
+      "std": 0.010596953390993038
+    },
+    {
+      "modelo": "logreg",
+      "variable": "#SOLICITUD_CANCELACIONAHORROS",
+      "importancia": 0.03203907203907207,
+      "std": 0.004262875322002034
+    },
+    {
+      "modelo": "logreg",
+      "variable": "#SOLICITUD_RETIROPARCIALAHORROS",
+      "importancia": 0.05275335775335784,
+      "std": 0.004636829101792674
+    },
+    {
+      "modelo": "logreg",
+      "variable": "#CANTIDAD_AHORROSALAVISTA",
+      "importancia": 0.0003137973137974259,
+      "std": 0.0006741662903920008
+    },
+    {
+      "modelo": "logreg",
+      "variable": "#CANTIDAD_AHORROSCONTRACTUALES",
+      "importancia": 0.08838705738705752,
+      "std": 0.01595819210273224
+    },
+    {
+      "modelo": "logreg",
+      "variable": "#CANTIDAD_SERVICIOS",
+      "importancia": 0.038904761904761984,
+      "std": 0.012290291702174114
+    },
+    {
+      "modelo": "logreg",
+      "variable": "#RETIROS",
+      "importancia": 0.002616605616605705,
+      "std": 0.0021724013783441997
+    },
+    {
+      "modelo": "logreg",
+      "variable": "SALARIO",
+      "importancia": 0.01116605616605625,
+      "std": 0.002994159150735664
+    },
+    {
+      "modelo": "logreg",
+      "variable": "EDAD",
+      "importancia": 7.692307692318545e-05,
+      "std": 0.0005359360898051982
+    },
+    {
+      "modelo": "logreg",
+      "variable": "ANTIGUEDAD_F_MESES",
+      "importancia": 2.075702075710062e-05,
+      "std": 0.0003367418656642871
+    },
+    {
+      "modelo": "logreg",
+      "variable": "ANTIGUEDAD_LA_MESES",
+      "importancia": -4.151404151394589e-05,
+      "std": 5.5471632193412594e-05
+    },
+    {
+      "modelo": "logreg",
+      "variable": "#SOLICITUD_DISMINUCIONCUOTAS",
+      "importancia": 0.011418803418803459,
+      "std": 0.002209639806992809
+    },
+    {
+      "modelo": "logreg",
+      "variable": "TIPOIDENTIFICACION",
+      "importancia": 0.0008583638583639531,
+      "std": 0.0009275439266124374
+    },
+    {
+      "modelo": "logreg",
+      "variable": "CODPAISCEDULA",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "logreg",
+      "variable": "CODPAISRESIDENCIA",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "logreg",
+      "variable": "CODDEPARTAMENTORESIDENCIA",
+      "importancia": 6.715506715514463e-05,
+      "std": 0.0001627416459750521
+    },
+    {
+      "modelo": "logreg",
+      "variable": "CODCIUDADRESIDENCIA",
+      "importancia": 6.715506715514463e-05,
+      "std": 0.0001627416459750521
+    },
+    {
+      "modelo": "logreg",
+      "variable": "RELACION",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "logreg",
+      "variable": "SEXO",
+      "importancia": -0.0009328449328448674,
+      "std": 0.0006313698022548105
+    },
+    {
+      "modelo": "logreg",
+      "variable": "PAISNACE",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "logreg",
+      "variable": "DPTONACE",
+      "importancia": 6.715506715514463e-05,
+      "std": 0.0001627416459750521
+    },
+    {
+      "modelo": "logreg",
+      "variable": "CIUDADNACE",
+      "importancia": 6.715506715514463e-05,
+      "std": 0.0001627416459750521
+    },
+    {
+      "modelo": "logreg",
+      "variable": "ESTRATO",
+      "importancia": 0.00010622710622717468,
+      "std": 0.0030475175404184487
+    },
+    {
+      "modelo": "logreg",
+      "variable": "ESTUDIOS",
+      "importancia": 0.0002942612942613554,
+      "std": 0.0019274922663497774
+    },
+    {
+      "modelo": "logreg",
+      "variable": "CODPROFESION",
+      "importancia": -0.0036068376068375207,
+      "std": 0.0022379470210915787
+    },
+    {
+      "modelo": "logreg",
+      "variable": "ESTADOCIVIL",
+      "importancia": 0.0024261294261295197,
+      "std": 0.0021491498003317704
+    },
+    {
+      "modelo": "logreg",
+      "variable": "CODEMPRESA",
+      "importancia": 0.00251648351648357,
+      "std": 0.003262091403158246
+    },
+    {
+      "modelo": "logreg",
+      "variable": "CODDEPENDENCIA",
+      "importancia": 0.007532356532356577,
+      "std": 0.006261778190522389
+    },
+    {
+      "modelo": "logreg",
+      "variable": "TIPOCONTRATO",
+      "importancia": -0.00048351648351641074,
+      "std": 0.0021778513816310867
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "#SOLICITUDCREDITOS_ULT3MES",
+      "importancia": 0.016442612942613045,
+      "std": 0.007892816739026677
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "#SOLICITUD_CANCELACIONAHORROS",
+      "importancia": 0.03651037851037862,
+      "std": 0.004625008700778891
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "#SOLICITUD_RETIROPARCIALAHORROS",
+      "importancia": 0.056875457875458016,
+      "std": 0.0047447420904883275
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "#CANTIDAD_AHORROSALAVISTA",
+      "importancia": -0.0006184371184370097,
+      "std": 0.0016902733395327497
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "#CANTIDAD_AHORROSCONTRACTUALES",
+      "importancia": 0.08015323565323576,
+      "std": 0.014388098938628321
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "#CANTIDAD_SERVICIOS",
+      "importancia": 0.03768376068376082,
+      "std": 0.012848341852768466
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "#RETIROS",
+      "importancia": 0.0045561660561661554,
+      "std": 0.000740580522910046
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "SALARIO",
+      "importancia": 0.036659951159951264,
+      "std": 0.006252674084041555
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "EDAD",
+      "importancia": 0.001187423687423772,
+      "std": 0.00428432108297654
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "ANTIGUEDAD_F_MESES",
+      "importancia": -0.004441391941391837,
+      "std": 0.003892938175880965
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "ANTIGUEDAD_LA_MESES",
+      "importancia": -0.006470085470085341,
+      "std": 0.003135597700311738
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "#SOLICITUD_DISMINUCIONCUOTAS",
+      "importancia": 0.016911477411477516,
+      "std": 0.0024957418029967057
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "TIPOIDENTIFICACION",
+      "importancia": 0.0001111111111112062,
+      "std": 0.00020833730266762976
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "CODPAISCEDULA",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "CODPAISRESIDENCIA",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "CODDEPARTAMENTORESIDENCIA",
+      "importancia": -0.0009627594627592995,
+      "std": 0.0016922787307213786
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "CODCIUDADRESIDENCIA",
+      "importancia": 0.0009004884004885194,
+      "std": 0.0012149798107218288
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "RELACION",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "SEXO",
+      "importancia": 0.0010317460317461724,
+      "std": 0.002662661861496755
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "PAISNACE",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "DPTONACE",
+      "importancia": -0.00239072039072028,
+      "std": 0.0014729172098981464
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "CIUDADNACE",
+      "importancia": -0.0018565323565322479,
+      "std": 0.0015758402069418079
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "ESTRATO",
+      "importancia": -0.0034151404151403055,
+      "std": 0.0031915628974215717
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "ESTUDIOS",
+      "importancia": -0.0011385836385835013,
+      "std": 0.0010696634490249216
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "CODPROFESION",
+      "importancia": 0.0005695970695971941,
+      "std": 0.006155136700394494
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "ESTADOCIVIL",
+      "importancia": 0.006596459096459217,
+      "std": 0.002903119131999979
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "CODEMPRESA",
+      "importancia": 0.0038388278388279294,
+      "std": 0.0032996186178123866
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "CODDEPENDENCIA",
+      "importancia": -0.0034890109890108765,
+      "std": 0.0018970941788233222
+    },
+    {
+      "modelo": "random_forest",
+      "variable": "TIPOCONTRATO",
+      "importancia": 0.0009493284493285903,
+      "std": 0.004340258546965964
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "#SOLICITUDCREDITOS_ULT3MES",
+      "importancia": 0.015048840048839962,
+      "std": 0.012722145158700928
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "#SOLICITUD_CANCELACIONAHORROS",
+      "importancia": 0.03368864468864463,
+      "std": 0.0059135232086284465
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "#SOLICITUD_RETIROPARCIALAHORROS",
+      "importancia": 0.05213431013431004,
+      "std": 0.00468436859851485
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "#CANTIDAD_AHORROSALAVISTA",
+      "importancia": -0.0008315018315018796,
+      "std": 0.001375862513081278
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "#CANTIDAD_AHORROSCONTRACTUALES",
+      "importancia": 0.07591697191697189,
+      "std": 0.011981138424037854
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "#CANTIDAD_SERVICIOS",
+      "importancia": 0.038487179487179425,
+      "std": 0.013214576943419045
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "#RETIROS",
+      "importancia": 0.003985347985347931,
+      "std": 0.0005512438514153789
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "SALARIO",
+      "importancia": 0.031999389499389484,
+      "std": 0.005578004296675395
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "EDAD",
+      "importancia": -0.008058608058608108,
+      "std": 0.004074318429627842
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "ANTIGUEDAD_F_MESES",
+      "importancia": -0.010056166056166105,
+      "std": 0.004722024545327296
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "ANTIGUEDAD_LA_MESES",
+      "importancia": -0.010893772893772913,
+      "std": 0.004951751747580065
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "#SOLICITUD_DISMINUCIONCUOTAS",
+      "importancia": 0.012951159951159964,
+      "std": 0.0028029574333288867
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "TIPOIDENTIFICACION",
+      "importancia": 0.0005702075702074483,
+      "std": 0.000952710409187545
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "CODPAISCEDULA",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "CODPAISRESIDENCIA",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "CODDEPARTAMENTORESIDENCIA",
+      "importancia": -0.003842490842490898,
+      "std": 0.0013474903313269537
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "CODCIUDADRESIDENCIA",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "RELACION",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "SEXO",
+      "importancia": -0.0021318681318681755,
+      "std": 0.0011357831852292963
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "PAISNACE",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "DPTONACE",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "CIUDADNACE",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "ESTRATO",
+      "importancia": -0.0009645909645909945,
+      "std": 0.002220497391773411
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "ESTUDIOS",
+      "importancia": -0.0013492063492063998,
+      "std": 0.0011787974787004995
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "CODPROFESION",
+      "importancia": -0.006293040293040309,
+      "std": 0.0030781932374595758
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "ESTADOCIVIL",
+      "importancia": -0.004575091575091639,
+      "std": 0.002625204020282335
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "CODEMPRESA",
+      "importancia": 0.0018315018315017805,
+      "std": 0.004631932142660245
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "CODDEPENDENCIA",
+      "importancia": -0.005622710622710647,
+      "std": 0.0017233276288559593
+    },
+    {
+      "modelo": "hist_gb",
+      "variable": "TIPOCONTRATO",
+      "importancia": -0.00042124542124547524,
+      "std": 0.000564975354063327
+    }
+  ],
+  "importancia_rf": [
+    {
+      "variable": "num__#CANTIDAD_AHORROSCONTRACTUALES",
+      "importancia": 0.09540217118542565
+    },
+    {
+      "variable": "clip__SALARIO",
+      "importancia": 0.09512622008274266
+    },
+    {
+      "variable": "num__#SOLICITUD_RETIROPARCIALAHORROS",
+      "importancia": 0.08776126016893787
+    },
+    {
+      "variable": "clip__ANTIGUEDAD_LA_MESES",
+      "importancia": 0.07050797642402047
+    },
+    {
+      "variable": "clip__ANTIGUEDAD_F_MESES",
+      "importancia": 0.06814240952931754
+    },
+    {
+      "variable": "clip__EDAD",
+      "importancia": 0.06648955978429628
+    },
+    {
+      "variable": "num__#SOLICITUD_CANCELACIONAHORROS",
+      "importancia": 0.055477418208696706
+    },
+    {
+      "variable": "num__#CANTIDAD_SERVICIOS",
+      "importancia": 0.05301822550779685
+    },
+    {
+      "variable": "num__#SOLICITUDCREDITOS_ULT3MES",
+      "importancia": 0.02644041327450774
+    },
+    {
+      "variable": "cat__#SOLICITUD_DISMINUCIONCUOTAS_SI",
+      "importancia": 0.020002095873189005
+    },
+    {
+      "variable": "cat__#SOLICITUD_DISMINUCIONCUOTAS_NO",
+      "importancia": 0.019970037062415093
+    },
+    {
+      "variable": "num__#CANTIDAD_AHORROSALAVISTA",
+      "importancia": 0.015386439064314694
+    },
+    {
+      "variable": "cat__ESTADOCIVIL_S",
+      "importancia": 0.012850049458315714
+    },
+    {
+      "variable": "cat__ESTRATO_1",
+      "importancia": 0.01248198713762673
+    },
+    {
+      "variable": "cat__ESTADOCIVIL_C",
+      "importancia": 0.012035038161475171
+    },
+    {
+      "variable": "cat__CODPROFESION_ADMINISTRACION DE EMPRESAS",
+      "importancia": 0.011913890403286354
+    },
+    {
+      "variable": "cat__CODDEPENDENCIA_infrequent_sklearn",
+      "importancia": 0.011868444233330566
+    },
+    {
+      "variable": "cat__ESTRATO_SIN_DATO",
+      "importancia": 0.011838252094176856
+    },
+    {
+      "variable": "cat__CODDEPENDENCIA_9999",
+      "importancia": 0.01137812613259789
+    },
+    {
+      "variable": "cat__CODEMPRESA_E01",
+      "importancia": 0.010816440793300292
+    },
+    {
+      "variable": "cat__SEXO_M",
+      "importancia": 0.010407363861807559
+    },
+    {
+      "variable": "cat__SEXO_F",
+      "importancia": 0.010360176450094375
+    },
+    {
+      "variable": "cat__ESTRATO_3",
+      "importancia": 0.009711984270272901
+    },
+    {
+      "variable": "cat__CODPROFESION_CONTADURIA PUBLICA",
+      "importancia": 0.009662818240897647
+    },
+    {
+      "variable": "cat__CODPROFESION_TECNICO /TECNOLOGO",
+      "importancia": 0.008505262124115008
+    },
+    {
+      "variable": "cat__CODPROFESION_SIN PROFESION",
+      "importancia": 0.008487364107424534
+    },
+    {
+      "variable": "cat__ESTADOCIVIL_V",
+      "importancia": 0.008322926451392307
+    },
+    {
+      "variable": "cat__TIPOCONTRATO_2",
+      "importancia": 0.007924576678653907
+    },
+    {
+      "variable": "cat__CODPROFESION_INGENIERIA INDUSTRIAL",
+      "importancia": 0.006630623306651731
+    },
+    {
+      "variable": "cat__CODPROFESION_INGENIERIA DE SISTEMAS",
+      "importancia": 0.006463450549218727
+    },
+    {
+      "variable": "cat__CODPROFESION_ECONOMIA",
+      "importancia": 0.006403698373490984
+    },
+    {
+      "variable": "cat__TIPOCONTRATO_1",
+      "importancia": 0.006381359652477697
+    },
+    {
+      "variable": "cat__CODPROFESION_DERECHO",
+      "importancia": 0.0062111451927444735
+    },
+    {
+      "variable": "cat__CODPROFESION_ADMINISTRACION FINANCIERA",
+      "importancia": 0.005753557764032166
+    },
+    {
+      "variable": "cat__TIPOCONTRATO_15",
+      "importancia": 0.005383788429824432
+    },
+    {
+      "variable": "cat__DPTONACE_11001",
+      "importancia": 0.004316717783865996
+    },
+    {
+      "variable": "cat__CODDEPARTAMENTORESIDENCIA_22002",
+      "importancia": 0.0042078255909160185
+    },
+    {
+      "variable": "cat__DPTONACE_22002",
+      "importancia": 0.004192594917066609
+    },
+    {
+      "variable": "cat__CODPROFESION_PSICOLOGIA",
+      "importancia": 0.0041754672008209705
+    },
+    {
+      "variable": "cat__CODPROFESION_JUBILADOS",
+      "importancia": 0.004170186402280379
+    },
+    {
+      "variable": "cat__CIUDADNACE_22002010",
+      "importancia": 0.004165280091370444
+    },
+    {
+      "variable": "cat__CODDEPARTAMENTORESIDENCIA_11001",
+      "importancia": 0.004065372266956036
+    },
+    {
+      "variable": "cat__CODCIUDADRESIDENCIA_11001010",
+      "importancia": 0.004061809257487746
+    },
+    {
+      "variable": "cat__CIUDADNACE_11001010",
+      "importancia": 0.004052953618532667
+    },
+    {
+      "variable": "cat__CODCIUDADRESIDENCIA_22002010",
+      "importancia": 0.0038426609058618845
+    },
+    {
+      "variable": "cat__CODPROFESION_EXEMPLEADO",
+      "importancia": 0.0037048343398338552
+    },
+    {
+      "variable": "cat__ESTUDIOS_O",
+      "importancia": 0.0034105096223962686
+    },
+    {
+      "variable": "cat__CODEMPRESA_E12",
+      "importancia": 0.0032874117495583226
+    },
+    {
+      "variable": "num__#RETIROS",
+      "importancia": 0.0031825378757287383
+    },
+    {
+      "variable": "cat__CODEMPRESA_E05",
+      "importancia": 0.003000184984426804
+    },
+    {
+      "variable": "cat__CODEMPRESA_E17",
+      "importancia": 0.0028298538901930744
+    },
+    {
+      "variable": "cat__ESTADOCIVIL_T",
+      "importancia": 0.0028228950957801513
+    },
+    {
+      "variable": "cat__ESTUDIOS_U",
+      "importancia": 0.002765911091421671
+    },
+    {
+      "variable": "cat__CODEMPRESA_E08",
+      "importancia": 0.002664132089144141
+    },
+    {
+      "variable": "cat__CODEMPRESA_E10",
+      "importancia": 0.002655388838653288
+    },
+    {
+      "variable": "cat__CODEMPRESA_E16",
+      "importancia": 0.0025928615072592157
+    },
+    {
+      "variable": "cat__CODEMPRESA_E06",
+      "importancia": 0.0024637677196006837
+    },
+    {
+      "variable": "cat__ESTADOCIVIL_U",
+      "importancia": 0.002303529251416954
+    },
+    {
+      "variable": "cat__CODEMPRESA_E04",
+      "importancia": 0.002239447617755607
+    },
+    {
+      "variable": "cat__CODDEPENDENCIA_1072",
+      "importancia": 0.002096401480233643
+    },
+    {
+      "variable": "cat__CODEMPRESA_E02",
+      "importancia": 0.002047272330372114
+    },
+    {
+      "variable": "cat__CODEMPRESA_E09",
+      "importancia": 0.0020281139095131412
+    },
+    {
+      "variable": "cat__CODEMPRESA_E11",
+      "importancia": 0.0018539157543610303
+    },
+    {
+      "variable": "cat__CODEMPRESA_E14",
+      "importancia": 0.0017621346091312082
+    },
+    {
+      "variable": "cat__CODEMPRESA_E15",
+      "importancia": 0.0017126024159520939
+    },
+    {
+      "variable": "cat__CODEMPRESA_E03",
+      "importancia": 0.001561802859658082
+    },
+    {
+      "variable": "cat__ESTADOCIVIL_D",
+      "importancia": 0.0015194465784965168
+    },
+    {
+      "variable": "cat__CODEMPRESA_E07",
+      "importancia": 0.001517323876146851
+    },
+    {
+      "variable": "cat__ESTUDIOS_G",
+      "importancia": 0.001502496295085926
+    },
+    {
+      "variable": "cat__CODDEPENDENCIA_1042",
+      "importancia": 0.001206742411310828
+    },
+    {
+      "variable": "cat__CODEMPRESA_E13",
+      "importancia": 0.0011657360537947986
+    },
+    {
+      "variable": "cat__ESTRATO_2",
+      "importancia": 0.0010356751819369206
+    },
+    {
+      "variable": "cat__TIPOIDENTIFICACION_DNI",
+      "importancia": 0.0008619300270525673
+    },
+    {
+      "variable": "cat__ESTRATO_5",
+      "importancia": 0.0008027205373590223
+    },
+    {
+      "variable": "cat__ESTRATO_4",
+      "importancia": 0.0007852269171578827
+    },
+    {
+      "variable": "cat__ESTUDIOS_E",
+      "importancia": 0.0007383495661481873
+    },
+    {
+      "variable": "cat__CODDEPENDENCIA_1152",
+      "importancia": 0.0007245732617356815
+    },
+    {
+      "variable": "cat__TIPOCONTRATO_O",
+      "importancia": 0.0007125291782587773
+    },
+    {
+      "variable": "cat__TIPOIDENTIFICACION_CI",
+      "importancia": 0.0007064112002145465
+    },
+    {
+      "variable": "cat__CODDEPENDENCIA_1089",
+      "importancia": 0.0006964098823042277
+    },
+    {
+      "variable": "cat__ESTADOCIVIL_F",
+      "importancia": 0.0005938953476091692
+    },
+    {
+      "variable": "cat__CODDEPENDENCIA_1141",
+      "importancia": 0.0005733524848454117
+    },
+    {
+      "variable": "cat__CODDEPENDENCIA_1037",
+      "importancia": 0.0004800052604391668
+    },
+    {
+      "variable": "cat__CODDEPENDENCIA_1158",
+      "importancia": 0.00047672360424187254
+    },
+    {
+      "variable": "cat__CODDEPENDENCIA_1011",
+      "importancia": 0.000404152105607404
+    },
+    {
+      "variable": "cat__CODDEPENDENCIA_1154",
+      "importancia": 0.00039928079532721745
+    },
+    {
+      "variable": "cat__CODDEPENDENCIA_1086",
+      "importancia": 0.00035375344312126895
+    },
+    {
+      "variable": "cat__CODDEPENDENCIA_1104",
+      "importancia": 0.0003271579557431196
+    },
+    {
+      "variable": "cat__ESTUDIOS_S",
+      "importancia": 0.0003205313700432729
+    },
+    {
+      "variable": "cat__CODDEPENDENCIA_1102",
+      "importancia": 0.00031123331296799555
+    },
+    {
+      "variable": "cat__ESTUDIOS_T",
+      "importancia": 0.00027503499972459153
+    },
+    {
+      "variable": "cat__CODDEPENDENCIA_1168",
+      "importancia": 0.00024418294739740165
+    },
+    {
+      "variable": "cat__CODDEPENDENCIA_1067",
+      "importancia": 0.00024390466444174148
+    },
+    {
+      "variable": "cat__ESTUDIOS_P",
+      "importancia": 0.00024065955696124235
+    },
+    {
+      "variable": "cat__ESTADOCIVIL_P",
+      "importancia": 0.0001940190501637913
+    },
+    {
+      "variable": "cat__CODDEPENDENCIA_1046",
+      "importancia": 0.00018580318673223632
+    },
+    {
+      "variable": "cat__CODDEPENDENCIA_1025",
+      "importancia": 0.00017778689752399865
+    },
+    {
+      "variable": "cat__CODDEPENDENCIA_1151",
+      "importancia": 0.0001775230693121956
+    },
+    {
+      "variable": "cat__ESTRATO_6",
+      "importancia": 0.00013458883382163147
+    },
+    {
+      "variable": "cat__CODDEPENDENCIA_1162",
+      "importancia": 0.0001182250347941332
+    },
+    {
+      "variable": "cat__TIPOCONTRATO_0",
+      "importancia": 3.968801176099349e-05
+    }
+  ]
+}

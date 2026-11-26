@@ -60,7 +60,10 @@ def main() -> None:
     if h:
         df = a.foto(df, h)
     variables = s.VARIABLES_PERFIL if args.perfil else s.VARIABLES
-    print(f"Datos: {fuente} · foto a {h or 0} meses · {len(df)} asociados · modo {modo} ({len(variables)} variables)")
+    print(
+        f"Datos: {fuente} · t0 = corte, horizonte {h or 0} meses · {len(df)} asociados · "
+        f"modo {modo} ({len(variables)} variables)"
+    )
     print(aviso_origen())
 
     seg = s.Segmentacion(k=args.k, eps=args.eps, modo=modo).fit(df)
@@ -118,9 +121,12 @@ def main() -> None:
         for metodo, fila in comparacion.iterrows()
         for m in ("tasa_retiro", "precision", "recall", "ari")
     }
-    with r.corrida("segmentos", params, propias, artefactos=[metricas, figura]):
+    # Con datos reales el mapa tiene una coordenada por asociado: se queda en reports/ (local, fuera de Git) y no
+    # se copia a MLflow, que solo recibe los agregados del JSON (docs/privacidad.md).
+    artefactos = [metricas, figura] if es_experimental() else [metricas]
+    with r.corrida("segmentos", params, propias, artefactos=artefactos):
         r.registrar_datos(df, fuente, "eleccion", fuente)
-    print(f"MLflow: experimento '{r.EXPERIMENTO}', corrida 'segmentos'. Ver con: make mlflow-ui")
+    print(f"MLflow: experimento '{r.con_origen(r.EXPERIMENTO)}', corrida 'segmentos'. Ver con: make mlflow-ui")
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ Uso:
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 import numpy as np
@@ -23,7 +24,7 @@ import pandas as pd
 from proyecto_ml import abandono as a
 from proyecto_ml import campeon as c
 from proyecto_ml import contrato as k
-from proyecto_ml.config import MODELS_DIR, ORIGEN_REAL, PROCESSED_DIR, origen_datos
+from proyecto_ml.config import MODELS_DIR, ORIGEN_REAL, ORIGEN_SINTETICO, PROCESSED_DIR, origen_datos
 
 SALIDA = PROCESSED_DIR / "predicciones.csv"  # data/ no va a Git: las predicciones son de asociados reales
 COLUMNAS = ["puntaje", "zona", "alerta", "grupo_kmeans"]
@@ -104,6 +105,40 @@ def main(argv: list[str] | None = None) -> None:
     print(f"{len(predicciones)} registros de {args.datos.name} ({fuera} excluidos):")
     print(conteo.to_string())
     print(f"Predicciones -> {args.salida}")
+    if aviso := aviso_campeon_sintetico(args.modelos):
+        print(aviso)
+        print(resumen_desplazamiento(df))
+
+
+def resumen_desplazamiento(lote: pd.DataFrame, top: int = 5) -> str:
+    """Qué tan distinto es ``lote`` de los sintéticos de desarrollo (``validacion.desplazamiento``): una línea con
+    los ROC-AUC de la validación adversaria y las variables que más distinguen. Solo agregados."""
+    from proyecto_ml import validacion as v
+    from proyecto_ml.config import ORIGEN_SINTETICO
+
+    referencia, _ = c.datos_eleccion(origen=ORIGEN_SINTETICO)  # los de make campeon por defecto
+    d = v.desplazamiento(referencia, lote)
+    distinguen = ", ".join(f"{col} {auc:.2f}" for col, auc in list(d["por_variable"].items())[:top])
+    return (
+        "Parecido con los sintéticos de entrenamiento (validación adversaria, ROC-AUC: 0,5 = indistinguibles, "
+        f"1 = fuera de lo que vio el modelo): todas las variables {d['roc_auc']:.2f}; solo comportamiento "
+        f"{d['roc_auc_comportamiento']:.2f}. Las que más distinguen: {distinguen}."
+    )
+
+
+def aviso_campeon_sintetico(carpeta: Path = MODELS_DIR) -> str | None:
+    """El aviso para cuando se puntúan datos reales con un campeón entrenado con sintéticos (``predecir-real``):
+    el puntaje sigue la regla del generador y no está validado contra retiros reales. None en los demás casos."""
+    if origen_datos() != ORIGEN_REAL:
+        return None
+    info = json.loads((carpeta / c.ARCHIVO_INFO).read_text(encoding="utf-8"))
+    if info.get("origen_datos", ORIGEN_SINTETICO) == ORIGEN_REAL:
+        return None
+    return (
+        "AVISO: el campeón se entrenó con datos SINTÉTICOS. Sobre el extracto real, el puntaje y las zonas ordenan "
+        "según la regla del generador y NO están validados contra retiros reales: no son una probabilidad de retiro "
+        "del fondo (docs/datos_reales.md)."
+    )
 
 
 if __name__ == "__main__":

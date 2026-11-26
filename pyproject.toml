@@ -87,3 +87,7 @@ filterwarnings = [
 [tool.coverage.run]
 source = ["src/proyecto_ml"]
 omit = ["src/proyecto_ml/app.py"]
+
+[tool.coverage.report]
+# Medida en local: 87 % (con las pruebas AppTest del simulador). El CI falla si baja de aquí.
+fail_under = 85

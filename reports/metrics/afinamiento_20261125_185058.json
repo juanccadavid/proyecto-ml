@@ -1,0 +1,1378 @@
+{
+  "datos": "asociados_desarrollo.parquet",
+  "metrica": "AUC",
+  "mejores": {
+    "ridge": "alpha=0.01, class_weight=None, clip_outliers=iqr, encoding=ordinal, numeric_strategy=median",
+    "pycaret_lr": "C=0.0316228, class_weight=None, l1_ratio=1, solver=liblinear, clip_outliers=iqr, encoding=onehot, numeric_strategy=median"
+  },
+  "top5": {
+    "ridge": [
+      {
+        "params": "alpha=0.01, class_weight=None, clip_outliers=iqr, encoding=ordinal, numeric_strategy=median",
+        "Accuracy": 0.9196,
+        "AUC": 0.8542374318855689,
+        "Recall": 0.2842970297029703,
+        "Prec.": 0.7760676260676261,
+        "F1": 0.41561683854062786,
+        "Kappa": 0.382241985400474,
+        "MCC": 0.43879873050009943,
+        "TT (Sec)": 0.10644040107727051
+      },
+      {
+        "params": "alpha=0.01, class_weight=None, clip_outliers=iqr, encoding=ordinal, numeric_strategy=mean",
+        "Accuracy": 0.9196,
+        "AUC": 0.8542374318855689,
+        "Recall": 0.2842970297029703,
+        "Prec.": 0.7760676260676261,
+        "F1": 0.41561683854062786,
+        "Kappa": 0.382241985400474,
+        "MCC": 0.43879873050009943,
+        "TT (Sec)": 0.09944562911987305
+      },
+      {
+        "params": "alpha=0.316228, class_weight=None, clip_outliers=iqr, encoding=ordinal, numeric_strategy=median",
+        "Accuracy": 0.9196,
+        "AUC": 0.8542352878825146,
+        "Recall": 0.2842970297029703,
+        "Prec.": 0.7760676260676261,
+        "F1": 0.41561683854062786,
+        "Kappa": 0.382241985400474,
+        "MCC": 0.43879873050009943,
+        "TT (Sec)": 0.13385701179504395
+      },
+      {
+        "params": "alpha=0.316228, class_weight=None, clip_outliers=iqr, encoding=ordinal, numeric_strategy=mean",
+        "Accuracy": 0.9196,
+        "AUC": 0.8542352878825146,
+        "Recall": 0.2842970297029703,
+        "Prec.": 0.7760676260676261,
+        "F1": 0.41561683854062786,
+        "Kappa": 0.382241985400474,
+        "MCC": 0.43879873050009943,
+        "TT (Sec)": 0.12558698654174805
+      },
+      {
+        "params": "alpha=0.001, class_weight=None, clip_outliers=iqr, encoding=ordinal, numeric_strategy=median",
+        "Accuracy": 0.9196,
+        "AUC": 0.8542352292181385,
+        "Recall": 0.2842970297029703,
+        "Prec.": 0.7760676260676261,
+        "F1": 0.41561683854062786,
+        "Kappa": 0.382241985400474,
+        "MCC": 0.43879873050009943,
+        "TT (Sec)": 0.09959769248962402
+      }
+    ],
+    "pycaret_lr": [
+      {
+        "params": "C=0.0316228, class_weight=None, l1_ratio=1, solver=liblinear, clip_outliers=iqr, encoding=onehot, numeric_strategy=median",
+        "Accuracy": 0.9224,
+        "AUC": 0.8622783939739913,
+        "Recall": 0.29219801980198024,
+        "Prec.": 0.8257724957555178,
+        "F1": 0.43080538129331236,
+        "Kappa": 0.3991671125167563,
+        "MCC": 0.4624417721849311,
+        "TT (Sec)": 0.1558154582977295
+      },
+      {
+        "params": "C=0.0316228, class_weight=None, l1_ratio=1, solver=liblinear, clip_outliers=iqr, encoding=onehot, numeric_strategy=mean",
+        "Accuracy": 0.9224,
+        "AUC": 0.8622783939739913,
+        "Recall": 0.29219801980198024,
+        "Prec.": 0.8257724957555178,
+        "F1": 0.43080538129331236,
+        "Kappa": 0.3991671125167563,
+        "MCC": 0.4624417721849311,
+        "TT (Sec)": 0.15939631462097167
+      },
+      {
+        "params": "C=0.0316228, class_weight=None, l1_ratio=1, solver=liblinear, clip_outliers=None, encoding=onehot, numeric_strategy=median",
+        "Accuracy": 0.9218,
+        "AUC": 0.861257301181731,
+        "Recall": 0.28621782178217825,
+        "Prec.": 0.826450613814894,
+        "F1": 0.4235037761133622,
+        "Kappa": 0.3919958090662243,
+        "MCC": 0.45703152204481273,
+        "TT (Sec)": 0.14666194915771485
+      },
+      {
+        "params": "C=0.0316228, class_weight=None, l1_ratio=1, solver=liblinear, clip_outliers=None, encoding=onehot, numeric_strategy=mean",
+        "Accuracy": 0.9218,
+        "AUC": 0.861257301181731,
+        "Recall": 0.28621782178217825,
+        "Prec.": 0.826450613814894,
+        "F1": 0.4235037761133622,
+        "Kappa": 0.3919958090662243,
+        "MCC": 0.45703152204481273,
+        "TT (Sec)": 0.15409603118896484
+      },
+      {
+        "params": "C=0.1, class_weight=None, l1_ratio=1, solver=liblinear, clip_outliers=iqr, encoding=onehot, numeric_strategy=median",
+        "Accuracy": 0.9244,
+        "AUC": 0.859375816816387,
+        "Recall": 0.31798019801980193,
+        "Prec.": 0.822301353094192,
+        "F1": 0.45763256091167237,
+        "Kappa": 0.4255084644809951,
+        "MCC": 0.48204403943773044,
+        "TT (Sec)": 0.16544170379638673
+      }
+    ]
+  },
+  "comparativa": {
+    "pycaret_lr_afinado": {
+      "Model": "LogisticRegression",
+      "Accuracy": 0.9224,
+      "AUC": 0.8622783939739913,
+      "Recall": 0.29219801980198024,
+      "Prec.": 0.8257724957555178,
+      "F1": 0.43080538129331236,
+      "Kappa": 0.3991671125167563,
+      "MCC": 0.4624417721849311,
+      "TT (Sec)": 0.11948566436767578
+    },
+    "ridge_afinado": {
+      "Model": "RidgeClassifier",
+      "Accuracy": 0.9196,
+      "AUC": 0.8542374318855689,
+      "Recall": 0.2842970297029703,
+      "Prec.": 0.7760676260676261,
+      "F1": 0.41561683854062786,
+      "Kappa": 0.382241985400474,
+      "MCC": 0.43879873050009943,
+      "TT (Sec)": 0.06830792427062989
+    },
+    "pycaret_lr": {
+      "Model": "LogisticRegression",
+      "Accuracy": 0.9244,
+      "AUC": 0.8498254218169314,
+      "Recall": 0.3258811881188119,
+      "Prec.": 0.8084696186166773,
+      "F1": 0.4633849712343151,
+      "Kappa": 0.43067965657640495,
+      "MCC": 0.4831120840096007,
+      "TT (Sec)": 0.3211064338684082
+    },
+    "ridge": {
+      "Model": "RidgeClassifier",
+      "Accuracy": 0.7494,
+      "AUC": 0.8333621102043465,
+      "Recall": 0.7435247524752475,
+      "Prec.": 0.24981151203879332,
+      "F1": 0.37394131294475585,
+      "Kappa": 0.26291782151246085,
+      "MCC": 0.3242108694891009,
+      "TT (Sec)": 0.10881342887878417
+    }
+  },
+  "importancia": [
+    {
+      "modelo": "ridge_afinado",
+      "variable": "TIPOIDENTIFICACION",
+      "importancia": 0.0004896214896214501,
+      "std": 0.0007599386438008597
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "NROIDENTIFICACION",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "CODPAISCEDULA",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "PRIMERAPELLIDO",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "SEGUNDOAPELLIDO",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "NOMBRES",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "SEGUNDONOMBRE",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "NOMBREINTEGRADO",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "DIRECCION",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "CODPAISRESIDENCIA",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "CODDEPARTAMENTORESIDENCIA",
+      "importancia": 0.00023321123321113913,
+      "std": 0.00013524483284516246
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "CODCIUDADRESIDENCIA",
+      "importancia": 0.00023321123321113913,
+      "std": 0.00013524483284516246
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "RELACION",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "SEXO",
+      "importancia": -0.0007765567765568249,
+      "std": 0.001126266245944558
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "EMAIL",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "FECHANACIMIENTO",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "EDAD",
+      "importancia": -5.0061050061112056e-05,
+      "std": 0.0009443708421169469
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "PAISNACE",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "DPTONACE",
+      "importancia": 0.00023321123321113913,
+      "std": 0.00013524483284516246
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "CIUDADNACE",
+      "importancia": 0.00023321123321113913,
+      "std": 0.00013524483284516246
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "FECHAULTACTUALIZACION",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "ESTADO",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "ESTRATO",
+      "importancia": 0.0011489621489620626,
+      "std": 0.0007604289344394508
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "CELULAR",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "ESTUDIOS",
+      "importancia": 0.0019377289377288443,
+      "std": 0.0012322322302683291
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "CODPROFESION",
+      "importancia": -0.0016874236874237724,
+      "std": 0.0003498035314871793
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "ESTADOCIVIL",
+      "importancia": 0.0010512820512820098,
+      "std": 0.002033789667351497
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "FECHAINGRESO",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "ANTIGUEDAD_F_MESES",
+      "importancia": 0.00019047619047611873,
+      "std": 0.0005956233686299085
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "CODEMPRESA",
+      "importancia": 0.000476190476190419,
+      "std": 0.0009282340064745981
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "CODDEPENDENCIA",
+      "importancia": 0.00013919413919405432,
+      "std": 0.0008021002276729297
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "SALARIO",
+      "importancia": 0.02179365079365071,
+      "std": 0.004142457680228358
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "FECHAINGRESOLABORA",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "ANTIGUEDAD_LA_MESES",
+      "importancia": 0.001096459096459046,
+      "std": 0.0007871017479676105
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "TIPOCONTRATO",
+      "importancia": 0.00042124542124535316,
+      "std": 0.00017347243518883916
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "CARGO",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "#SOLICITUDCREDITOS_ULT3MES",
+      "importancia": 0.02134676434676429,
+      "std": 0.007634357465658155
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "#CANTIDAD_AHORROSALAVISTA",
+      "importancia": 0.0007301587301586588,
+      "std": 0.0005547378221500476
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "#CANTIDAD_AHORROSCONTRACTUALES",
+      "importancia": 0.07680708180708173,
+      "std": 0.012296292531016542
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "#SOLICITUD_RETIROPARCIALAHORROS",
+      "importancia": 0.060655677655677566,
+      "std": 0.00449114739882258
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "#SOLICITUD_CANCELACIONAHORROS",
+      "importancia": 0.038031746031745986,
+      "std": 0.004849034755762079
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "#SOLICITUD_DISMINUCIONCUOTAS",
+      "importancia": 0.021148962148962093,
+      "std": 0.001901028321683468
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "#CANTIDAD_SERVICIOS",
+      "importancia": 0.041721611721611686,
+      "std": 0.014315269511632627
+    },
+    {
+      "modelo": "ridge_afinado",
+      "variable": "#RETIROS",
+      "importancia": 0.0033308913308912947,
+      "std": 0.001985625807515543
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "TIPOIDENTIFICACION",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "NROIDENTIFICACION",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "CODPAISCEDULA",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "PRIMERAPELLIDO",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "SEGUNDOAPELLIDO",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "NOMBRES",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "SEGUNDONOMBRE",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "NOMBREINTEGRADO",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "DIRECCION",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "CODPAISRESIDENCIA",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "CODDEPARTAMENTORESIDENCIA",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "CODCIUDADRESIDENCIA",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "RELACION",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "SEXO",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "EMAIL",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "FECHANACIMIENTO",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "EDAD",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "PAISNACE",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "DPTONACE",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "CIUDADNACE",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "FECHAULTACTUALIZACION",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "ESTADO",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "ESTRATO",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "CELULAR",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "ESTUDIOS",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "CODPROFESION",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "ESTADOCIVIL",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "FECHAINGRESO",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "ANTIGUEDAD_F_MESES",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "CODEMPRESA",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "CODDEPENDENCIA",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "SALARIO",
+      "importancia": 0.019935897435897475,
+      "std": 0.004178404840956391
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "FECHAINGRESOLABORA",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "ANTIGUEDAD_LA_MESES",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "TIPOCONTRATO",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "CARGO",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "#SOLICITUDCREDITOS_ULT3MES",
+      "importancia": 0.021689865689865695,
+      "std": 0.00941461176424946
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "#CANTIDAD_AHORROSALAVISTA",
+      "importancia": 0.0,
+      "std": 0.0
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "#CANTIDAD_AHORROSCONTRACTUALES",
+      "importancia": 0.09794261294261297,
+      "std": 0.021180995920322337
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "#SOLICITUD_RETIROPARCIALAHORROS",
+      "importancia": 0.051043345543345574,
+      "std": 0.0036457013521174085
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "#SOLICITUD_CANCELACIONAHORROS",
+      "importancia": 0.03375457875457878,
+      "std": 0.004401649282653421
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "#SOLICITUD_DISMINUCIONCUOTAS",
+      "importancia": 0.01413614163614164,
+      "std": 0.001672159389025918
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "#CANTIDAD_SERVICIOS",
+      "importancia": 0.042573260073260066,
+      "std": 0.015939699145518703
+    },
+    {
+      "modelo": "pycaret_lr_afinado",
+      "variable": "#RETIROS",
+      "importancia": 0.0006129426129426241,
+      "std": 0.001675921919792718
+    }
+  ],
+  "por_fold": [
+    {
+      "pipeline": "Ridge_median_onehot",
+      "fold": 1,
+      "Accuracy": 0.912,
+      "AUC": 0.8526777777777776
+    },
+    {
+      "pipeline": "Ridge_median_onehot",
+      "fold": 2,
+      "Accuracy": 0.915,
+      "AUC": 0.8571666666666667
+    },
+    {
+      "pipeline": "Ridge_median_onehot",
+      "fold": 3,
+      "Accuracy": 0.915,
+      "AUC": 0.8551746164605337
+    },
+    {
+      "pipeline": "Ridge_median_onehot",
+      "fold": 4,
+      "Accuracy": 0.916,
+      "AUC": 0.8542825361512791
+    },
+    {
+      "pipeline": "Ridge_median_onehot",
+      "fold": 5,
+      "Accuracy": 0.914,
+      "AUC": 0.8296126609323892
+    },
+    {
+      "pipeline": "Ridge_mean_onehot",
+      "fold": 1,
+      "Accuracy": 0.912,
+      "AUC": 0.8526777777777776
+    },
+    {
+      "pipeline": "Ridge_mean_onehot",
+      "fold": 2,
+      "Accuracy": 0.915,
+      "AUC": 0.8571666666666667
+    },
+    {
+      "pipeline": "Ridge_mean_onehot",
+      "fold": 3,
+      "Accuracy": 0.915,
+      "AUC": 0.8551746164605337
+    },
+    {
+      "pipeline": "Ridge_mean_onehot",
+      "fold": 4,
+      "Accuracy": 0.916,
+      "AUC": 0.8542825361512791
+    },
+    {
+      "pipeline": "Ridge_mean_onehot",
+      "fold": 5,
+      "Accuracy": 0.914,
+      "AUC": 0.8296126609323892
+    },
+    {
+      "pipeline": "Ridge_median_ordinal",
+      "fold": 1,
+      "Accuracy": 0.918,
+      "AUC": 0.8560000000000001
+    },
+    {
+      "pipeline": "Ridge_median_ordinal",
+      "fold": 2,
+      "Accuracy": 0.918,
+      "AUC": 0.8600111111111111
+    },
+    {
+      "pipeline": "Ridge_median_ordinal",
+      "fold": 3,
+      "Accuracy": 0.922,
+      "AUC": 0.8537208559565633
+    },
+    {
+      "pipeline": "Ridge_median_ordinal",
+      "fold": 4,
+      "Accuracy": 0.921,
+      "AUC": 0.8569367504047402
+    },
+    {
+      "pipeline": "Ridge_median_ordinal",
+      "fold": 5,
+      "Accuracy": 0.918,
+      "AUC": 0.8258240729523453
+    },
+    {
+      "pipeline": "Ridge_mean_ordinal",
+      "fold": 1,
+      "Accuracy": 0.918,
+      "AUC": 0.8560000000000001
+    },
+    {
+      "pipeline": "Ridge_mean_ordinal",
+      "fold": 2,
+      "Accuracy": 0.918,
+      "AUC": 0.8600111111111111
+    },
+    {
+      "pipeline": "Ridge_mean_ordinal",
+      "fold": 3,
+      "Accuracy": 0.922,
+      "AUC": 0.8537208559565633
+    },
+    {
+      "pipeline": "Ridge_mean_ordinal",
+      "fold": 4,
+      "Accuracy": 0.921,
+      "AUC": 0.8569367504047402
+    },
+    {
+      "pipeline": "Ridge_mean_ordinal",
+      "fold": 5,
+      "Accuracy": 0.918,
+      "AUC": 0.8258240729523453
+    },
+    {
+      "pipeline": "Ridge_median_onehot_iqr",
+      "fold": 1,
+      "Accuracy": 0.913,
+      "AUC": 0.8562333333333334
+    },
+    {
+      "pipeline": "Ridge_median_onehot_iqr",
+      "fold": 2,
+      "Accuracy": 0.916,
+      "AUC": 0.8601666666666667
+    },
+    {
+      "pipeline": "Ridge_median_onehot_iqr",
+      "fold": 3,
+      "Accuracy": 0.916,
+      "AUC": 0.8577847773653894
+    },
+    {
+      "pipeline": "Ridge_median_onehot_iqr",
+      "fold": 4,
+      "Accuracy": 0.916,
+      "AUC": 0.8550754964261721
+    },
+    {
+      "pipeline": "Ridge_median_onehot_iqr",
+      "fold": 5,
+      "Accuracy": 0.913,
+      "AUC": 0.8405819447350742
+    },
+    {
+      "pipeline": "Ridge_mean_onehot_iqr",
+      "fold": 1,
+      "Accuracy": 0.913,
+      "AUC": 0.8562333333333334
+    },
+    {
+      "pipeline": "Ridge_mean_onehot_iqr",
+      "fold": 2,
+      "Accuracy": 0.916,
+      "AUC": 0.8601666666666667
+    },
+    {
+      "pipeline": "Ridge_mean_onehot_iqr",
+      "fold": 3,
+      "Accuracy": 0.916,
+      "AUC": 0.8577847773653894
+    },
+    {
+      "pipeline": "Ridge_mean_onehot_iqr",
+      "fold": 4,
+      "Accuracy": 0.916,
+      "AUC": 0.8550754964261721
+    },
+    {
+      "pipeline": "Ridge_mean_onehot_iqr",
+      "fold": 5,
+      "Accuracy": 0.913,
+      "AUC": 0.8405819447350742
+    },
+    {
+      "pipeline": "Ridge_median_ordinal_iqr",
+      "fold": 1,
+      "Accuracy": 0.918,
+      "AUC": 0.8587444444444443
+    },
+    {
+      "pipeline": "Ridge_median_ordinal_iqr",
+      "fold": 2,
+      "Accuracy": 0.918,
+      "AUC": 0.8628111111111111
+    },
+    {
+      "pipeline": "Ridge_median_ordinal_iqr",
+      "fold": 3,
+      "Accuracy": 0.922,
+      "AUC": 0.856782563684622
+    },
+    {
+      "pipeline": "Ridge_median_ordinal_iqr",
+      "fold": 4,
+      "Accuracy": 0.922,
+      "AUC": 0.8559565633982753
+    },
+    {
+      "pipeline": "Ridge_median_ordinal_iqr",
+      "fold": 5,
+      "Accuracy": 0.918,
+      "AUC": 0.8368924767893919
+    },
+    {
+      "pipeline": "Ridge_mean_ordinal_iqr",
+      "fold": 1,
+      "Accuracy": 0.918,
+      "AUC": 0.8587444444444443
+    },
+    {
+      "pipeline": "Ridge_mean_ordinal_iqr",
+      "fold": 2,
+      "Accuracy": 0.918,
+      "AUC": 0.8628111111111111
+    },
+    {
+      "pipeline": "Ridge_mean_ordinal_iqr",
+      "fold": 3,
+      "Accuracy": 0.922,
+      "AUC": 0.856782563684622
+    },
+    {
+      "pipeline": "Ridge_mean_ordinal_iqr",
+      "fold": 4,
+      "Accuracy": 0.922,
+      "AUC": 0.8559565633982753
+    },
+    {
+      "pipeline": "Ridge_mean_ordinal_iqr",
+      "fold": 5,
+      "Accuracy": 0.918,
+      "AUC": 0.8368924767893919
+    },
+    {
+      "pipeline": "LogisticRegression_median_onehot",
+      "fold": 1,
+      "Accuracy": 0.917,
+      "AUC": 0.8582055555555557
+    },
+    {
+      "pipeline": "LogisticRegression_median_onehot",
+      "fold": 2,
+      "Accuracy": 0.922,
+      "AUC": 0.8733444444444445
+    },
+    {
+      "pipeline": "LogisticRegression_median_onehot",
+      "fold": 3,
+      "Accuracy": 0.922,
+      "AUC": 0.8593596845780239
+    },
+    {
+      "pipeline": "LogisticRegression_median_onehot",
+      "fold": 4,
+      "Accuracy": 0.925,
+      "AUC": 0.8649379398451524
+    },
+    {
+      "pipeline": "LogisticRegression_median_onehot",
+      "fold": 5,
+      "Accuracy": 0.923,
+      "AUC": 0.8504388814854789
+    },
+    {
+      "pipeline": "LogisticRegression_mean_onehot",
+      "fold": 1,
+      "Accuracy": 0.917,
+      "AUC": 0.8582055555555557
+    },
+    {
+      "pipeline": "LogisticRegression_mean_onehot",
+      "fold": 2,
+      "Accuracy": 0.922,
+      "AUC": 0.8733444444444445
+    },
+    {
+      "pipeline": "LogisticRegression_mean_onehot",
+      "fold": 3,
+      "Accuracy": 0.922,
+      "AUC": 0.8593596845780239
+    },
+    {
+      "pipeline": "LogisticRegression_mean_onehot",
+      "fold": 4,
+      "Accuracy": 0.925,
+      "AUC": 0.8649379398451524
+    },
+    {
+      "pipeline": "LogisticRegression_mean_onehot",
+      "fold": 5,
+      "Accuracy": 0.923,
+      "AUC": 0.8504388814854789
+    },
+    {
+      "pipeline": "LogisticRegression_median_ordinal",
+      "fold": 1,
+      "Accuracy": 0.707,
+      "AUC": 0.8534333333333334
+    },
+    {
+      "pipeline": "LogisticRegression_median_ordinal",
+      "fold": 2,
+      "Accuracy": 0.699,
+      "AUC": 0.8660222222222222
+    },
+    {
+      "pipeline": "LogisticRegression_median_ordinal",
+      "fold": 3,
+      "Accuracy": 0.698,
+      "AUC": 0.856286963512814
+    },
+    {
+      "pipeline": "LogisticRegression_median_ordinal",
+      "fold": 4,
+      "Accuracy": 0.714,
+      "AUC": 0.8587319243604005
+    },
+    {
+      "pipeline": "LogisticRegression_median_ordinal",
+      "fold": 5,
+      "Accuracy": 0.715,
+      "AUC": 0.8309012213790901
+    },
+    {
+      "pipeline": "LogisticRegression_mean_ordinal",
+      "fold": 1,
+      "Accuracy": 0.707,
+      "AUC": 0.8534333333333334
+    },
+    {
+      "pipeline": "LogisticRegression_mean_ordinal",
+      "fold": 2,
+      "Accuracy": 0.699,
+      "AUC": 0.8660222222222222
+    },
+    {
+      "pipeline": "LogisticRegression_mean_ordinal",
+      "fold": 3,
+      "Accuracy": 0.698,
+      "AUC": 0.856286963512814
+    },
+    {
+      "pipeline": "LogisticRegression_mean_ordinal",
+      "fold": 4,
+      "Accuracy": 0.714,
+      "AUC": 0.8587319243604005
+    },
+    {
+      "pipeline": "LogisticRegression_mean_ordinal",
+      "fold": 5,
+      "Accuracy": 0.715,
+      "AUC": 0.8309012213790901
+    },
+    {
+      "pipeline": "LogisticRegression_median_onehot_iqr",
+      "fold": 1,
+      "Accuracy": 0.918,
+      "AUC": 0.8579000000000001
+    },
+    {
+      "pipeline": "LogisticRegression_median_onehot_iqr",
+      "fold": 2,
+      "Accuracy": 0.923,
+      "AUC": 0.8737388888888888
+    },
+    {
+      "pipeline": "LogisticRegression_median_onehot_iqr",
+      "fold": 3,
+      "Accuracy": 0.923,
+      "AUC": 0.8622837255916914
+    },
+    {
+      "pipeline": "LogisticRegression_median_onehot_iqr",
+      "fold": 4,
+      "Accuracy": 0.927,
+      "AUC": 0.8644698730162228
+    },
+    {
+      "pipeline": "LogisticRegression_median_onehot_iqr",
+      "fold": 5,
+      "Accuracy": 0.921,
+      "AUC": 0.8529994823731538
+    },
+    {
+      "pipeline": "LogisticRegression_mean_onehot_iqr",
+      "fold": 1,
+      "Accuracy": 0.918,
+      "AUC": 0.8579000000000001
+    },
+    {
+      "pipeline": "LogisticRegression_mean_onehot_iqr",
+      "fold": 2,
+      "Accuracy": 0.923,
+      "AUC": 0.8737388888888888
+    },
+    {
+      "pipeline": "LogisticRegression_mean_onehot_iqr",
+      "fold": 3,
+      "Accuracy": 0.923,
+      "AUC": 0.8622837255916914
+    },
+    {
+      "pipeline": "LogisticRegression_mean_onehot_iqr",
+      "fold": 4,
+      "Accuracy": 0.927,
+      "AUC": 0.8644698730162228
+    },
+    {
+      "pipeline": "LogisticRegression_mean_onehot_iqr",
+      "fold": 5,
+      "Accuracy": 0.921,
+      "AUC": 0.8529994823731538
+    },
+    {
+      "pipeline": "LogisticRegression_median_ordinal_iqr",
+      "fold": 1,
+      "Accuracy": 0.735,
+      "AUC": 0.8556111111111111
+    },
+    {
+      "pipeline": "LogisticRegression_median_ordinal_iqr",
+      "fold": 2,
+      "Accuracy": 0.729,
+      "AUC": 0.8695333333333334
+    },
+    {
+      "pipeline": "LogisticRegression_median_ordinal_iqr",
+      "fold": 3,
+      "Accuracy": 0.738,
+      "AUC": 0.8584455775944668
+    },
+    {
+      "pipeline": "LogisticRegression_median_ordinal_iqr",
+      "fold": 4,
+      "Accuracy": 0.732,
+      "AUC": 0.8602958182358836
+    },
+    {
+      "pipeline": "LogisticRegression_median_ordinal_iqr",
+      "fold": 5,
+      "Accuracy": 0.74,
+      "AUC": 0.8385995440478419
+    },
+    {
+      "pipeline": "LogisticRegression_mean_ordinal_iqr",
+      "fold": 1,
+      "Accuracy": 0.735,
+      "AUC": 0.8556111111111111
+    },
+    {
+      "pipeline": "LogisticRegression_mean_ordinal_iqr",
+      "fold": 2,
+      "Accuracy": 0.729,
+      "AUC": 0.8695333333333334
+    },
+    {
+      "pipeline": "LogisticRegression_mean_ordinal_iqr",
+      "fold": 3,
+      "Accuracy": 0.738,
+      "AUC": 0.8584455775944668
+    },
+    {
+      "pipeline": "LogisticRegression_mean_ordinal_iqr",
+      "fold": 4,
+      "Accuracy": 0.732,
+      "AUC": 0.8602958182358836
+    },
+    {
+      "pipeline": "LogisticRegression_mean_ordinal_iqr",
+      "fold": 5,
+      "Accuracy": 0.74,
+      "AUC": 0.8385995440478419
+    }
+  ],
+  "preprocesamientos": {
+    "LogisticRegression_median_onehot_iqr": {
+      "Accuracy_mean": 0.9224,
+      "Accuracy_std": 0.0032863353450309665,
+      "Accuracy_nuevos": 0.93,
+      "AUC_mean": 0.8622783939739914,
+      "AUC_std": 0.007768752905079368,
+      "AUC_nuevos": 0.8726190476190476
+    },
+    "LogisticRegression_mean_onehot_iqr": {
+      "Accuracy_mean": 0.9224,
+      "Accuracy_std": 0.0032863353450309665,
+      "Accuracy_nuevos": 0.93,
+      "AUC_mean": 0.8622783939739914,
+      "AUC_std": 0.007768752905079368,
+      "AUC_nuevos": 0.8726190476190476
+    },
+    "LogisticRegression_mean_onehot": {
+      "Accuracy_mean": 0.9218,
+      "Accuracy_std": 0.0029495762407505724,
+      "Accuracy_nuevos": 0.931,
+      "AUC_mean": 0.861257301181731,
+      "AUC_std": 0.008508796008981436,
+      "AUC_nuevos": 0.8717399267399267
+    },
+    "LogisticRegression_median_onehot": {
+      "Accuracy_mean": 0.9218,
+      "Accuracy_std": 0.0029495762407505724,
+      "Accuracy_nuevos": 0.931,
+      "AUC_mean": 0.861257301181731,
+      "AUC_std": 0.008508796008981436,
+      "AUC_nuevos": 0.8717399267399267
+    },
+    "LogisticRegression_mean_ordinal_iqr": {
+      "Accuracy_mean": 0.7348,
+      "Accuracy_std": 0.004438468204234424,
+      "Accuracy_nuevos": 0.755,
+      "AUC_mean": 0.8564970768645275,
+      "AUC_std": 0.01128359085200806,
+      "AUC_nuevos": 0.8660683760683761
+    },
+    "LogisticRegression_median_ordinal_iqr": {
+      "Accuracy_mean": 0.7348,
+      "Accuracy_std": 0.004438468204234424,
+      "Accuracy_nuevos": 0.755,
+      "AUC_mean": 0.8564970768645275,
+      "AUC_std": 0.01128359085200806,
+      "AUC_nuevos": 0.8660683760683761
+    },
+    "Ridge_median_ordinal_iqr": {
+      "Accuracy_mean": 0.9196,
+      "Accuracy_std": 0.002190890230020684,
+      "Accuracy_nuevos": 0.929,
+      "AUC_mean": 0.8542374318855689,
+      "AUC_std": 0.010051140656528467,
+      "AUC_nuevos": 0.8789499389499389
+    },
+    "Ridge_mean_ordinal_iqr": {
+      "Accuracy_mean": 0.9196,
+      "Accuracy_std": 0.002190890230020684,
+      "Accuracy_nuevos": 0.929,
+      "AUC_mean": 0.8542374318855689,
+      "AUC_std": 0.010051140656528467,
+      "AUC_nuevos": 0.8789499389499389
+    },
+    "Ridge_mean_onehot_iqr": {
+      "Accuracy_mean": 0.9148000000000002,
+      "Accuracy_std": 0.001643167672515485,
+      "Accuracy_nuevos": 0.93,
+      "AUC_mean": 0.8539684437053271,
+      "AUC_std": 0.007722305612926848,
+      "AUC_nuevos": 0.8751159951159952
+    },
+    "Ridge_median_onehot_iqr": {
+      "Accuracy_mean": 0.9148000000000002,
+      "Accuracy_std": 0.001643167672515485,
+      "Accuracy_nuevos": 0.93,
+      "AUC_mean": 0.8539684437053271,
+      "AUC_std": 0.007722305612926848,
+      "AUC_nuevos": 0.8751159951159952
+    },
+    "LogisticRegression_mean_ordinal": {
+      "Accuracy_mean": 0.7065999999999999,
+      "Accuracy_std": 0.008018728078691821,
+      "Accuracy_nuevos": 0.718,
+      "AUC_mean": 0.853075132961572,
+      "AUC_std": 0.013245309803068508,
+      "AUC_nuevos": 0.8581929181929181
+    },
+    "LogisticRegression_median_ordinal": {
+      "Accuracy_mean": 0.7065999999999999,
+      "Accuracy_std": 0.008018728078691821,
+      "Accuracy_nuevos": 0.718,
+      "AUC_mean": 0.853075132961572,
+      "AUC_std": 0.013245309803068508,
+      "AUC_nuevos": 0.8581929181929181
+    },
+    "Ridge_mean_ordinal": {
+      "Accuracy_mean": 0.9194000000000001,
+      "Accuracy_std": 0.001949358868961814,
+      "Accuracy_nuevos": 0.929,
+      "AUC_mean": 0.8504985580849521,
+      "AUC_std": 0.013976929819342808,
+      "AUC_nuevos": 0.8718803418803419
+    },
+    "Ridge_median_ordinal": {
+      "Accuracy_mean": 0.9194000000000001,
+      "Accuracy_std": 0.001949358868961814,
+      "Accuracy_nuevos": 0.929,
+      "AUC_mean": 0.8504985580849521,
+      "AUC_std": 0.013976929819342808,
+      "AUC_nuevos": 0.8718803418803419
+    },
+    "Ridge_mean_onehot": {
+      "Accuracy_mean": 0.9144,
+      "Accuracy_std": 0.0015165750888103252,
+      "Accuracy_nuevos": 0.93,
+      "AUC_mean": 0.8497828515977293,
+      "AUC_std": 0.011391402497647054,
+      "AUC_nuevos": 0.8697191697191696
+    },
+    "Ridge_median_onehot": {
+      "Accuracy_mean": 0.9144,
+      "Accuracy_std": 0.0015165750888103252,
+      "Accuracy_nuevos": 0.93,
+      "AUC_mean": 0.8497828515977293,
+      "AUC_std": 0.011391402497647054,
+      "AUC_nuevos": 0.8697191697191696
+    }
+  },
+  "nuevos (n=1000)": {
+    "ridge": {
+      "base_rate": 0.09,
+      "roc_auc": 0.8488644688644689,
+      "pr_auc": 0.5210032612541413,
+      "precision": 0.2585551330798479,
+      "recall": 0.7555555555555555,
+      "f1": 0.38526912181303113,
+      "f2": 0.5457463884430177,
+      "specificity": 0.7857142857142857,
+      "balanced_accuracy": 0.7706349206349206,
+      "mcc": 0.3518391495371284,
+      "kappa": 0.2900608519269777,
+      "recall_at_10pct": 0.5,
+      "precision_at_10pct": 0.45,
+      "brier": NaN
+    },
+    "ridge_afinado": {
+      "base_rate": 0.09,
+      "roc_auc": 0.8789499389499389,
+      "pr_auc": 0.5366841852507386,
+      "precision": 0.8064516129032258,
+      "recall": 0.2777777777777778,
+      "f1": 0.4132231404958678,
+      "f2": 0.319693094629156,
+      "specificity": 0.9934065934065934,
+      "balanced_accuracy": 0.6355921855921856,
+      "mcc": 0.44777915476711544,
+      "kappa": 0.38485531103794834,
+      "recall_at_10pct": 0.5111111111111111,
+      "precision_at_10pct": 0.46,
+      "brier": NaN
+    },
+    "pycaret_lr": {
+      "base_rate": 0.09,
+      "roc_auc": 0.8630158730158729,
+      "pr_auc": 0.5536040723987083,
+      "precision": 0.7837837837837838,
+      "recall": 0.32222222222222224,
+      "f1": 0.4566929133858268,
+      "f2": 0.36523929471032746,
+      "specificity": 0.9912087912087912,
+      "balanced_accuracy": 0.6567155067155067,
+      "mcc": 0.47519286618821716,
+      "kappa": 0.42662456373608115,
+      "recall_at_10pct": 0.5222222222222223,
+      "precision_at_10pct": 0.47,
+      "brier": 0.05608582023230783
+    },
+    "pycaret_lr_afinado": {
+      "base_rate": 0.09,
+      "roc_auc": 0.8726190476190476,
+      "pr_auc": 0.5721456106753378,
+      "precision": 0.7941176470588235,
+      "recall": 0.3,
+      "f1": 0.43548387096774194,
+      "f2": 0.3426395939086294,
+      "specificity": 0.9923076923076923,
+      "balanced_accuracy": 0.6461538461538462,
+      "mcc": 0.4615876424711536,
+      "kappa": 0.40617577197149646,
+      "recall_at_10pct": 0.5666666666666667,
+      "precision_at_10pct": 0.51,
+      "brier": 0.05647674126889319
+    }
+  }
+}

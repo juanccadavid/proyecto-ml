@@ -28,16 +28,17 @@ from proyecto_ml import campeon as c
 from proyecto_ml import explicar as e
 from proyecto_ml import registro as r
 from proyecto_ml import segmentacion as sg
-from proyecto_ml.config import MODELS_DIR, ORIGEN_REAL, ORIGEN_SINTETICO, aviso_origen, get_settings
+from proyecto_ml.config import MODELS_DIR, ORIGEN_REAL, ORIGEN_SINTETICO, aviso_origen, fecha_corte, get_settings
+from proyecto_ml.datos_campeon import marca_datos
 
 ETIQUETAS = {
     "EDAD": "Edad (años)",
     "ANTIGUEDAD_F_MESES": "Antigüedad en el fondo (meses)",
     "ANTIGUEDAD_LA_MESES": "Antigüedad laboral (meses)",
-    "#RETIROS": "Retiros históricos",
+    "#RETIROS": "Retiros anteriores (con reingreso)",
     "SALARIO": "Salario mensual",
     "ESTRATO": "Estrato",
-    "#SOLICITUD_DISMINUCIONCUOTAS": "Solicitudes de disminución de cuotas",
+    "#SOLICITUD_DISMINUCIONCUOTAS": "¿Solicitó disminución de cuotas?",
     "#SOLICITUD_CANCELACIONAHORROS": "Solicitudes de cancelación de ahorros",
     "#SOLICITUD_RETIROPARCIALAHORROS": "Solicitudes de retiro parcial de ahorros",
     "#CANTIDAD_AHORROSALAVISTA": "Ahorros a la vista",
@@ -100,12 +101,9 @@ SECCIONES_FORMULARIO = {
     ],
     "Información laboral": ["CODEMPRESA", "CODDEPENDENCIA"],
 }
-CAMPOS_MODELO = a.NUMERICAS + a.CATEGORICAS
 CAMPOS_FORMULARIO = [campo for campos in SECCIONES_FORMULARIO.values() for campo in campos]
 if len(CAMPOS_FORMULARIO) != len(set(CAMPOS_FORMULARIO)):
     raise RuntimeError("Hay variables repetidas en SECCIONES_FORMULARIO")
-if diferencia := sorted(set(CAMPOS_FORMULARIO) ^ set(CAMPOS_MODELO)):
-    raise RuntimeError(f"El formulario y el modelo no tienen las mismas variables: {diferencia}")
 ZONA = {  # emoji, tipo de mensaje, texto
     "se retira": ("😟", "error", "Se retira: el modelo está seguro. ¡Contáctalo pronto!"),
     "zona gris": ("😐", "warning", "Zona gris: hay señales de retiro, pero el modelo no está seguro. Haz seguimiento."),
@@ -116,57 +114,103 @@ st.set_page_config(page_title="Simulador de abandono", page_icon="🏦", layout=
 
 
 @st.cache_resource
-def cargar_campeon(carpeta: Path, firma: str | None):
-    """El campeón guardado. ``firma`` (``campeon.firma``) es parte de la llave: después de ``make campeon`` cambia
-    y se carga el nuevo, sin reiniciar la app. Sin campeón (``firma`` None), None."""
+def cargar_campeon(carpeta: Path, firma: str | None, variables: tuple[str, ...]):
+    """El campeón guardado. ``firma`` (contenido real de los tres artefactos) y ``variables`` (predictores vigentes)
+    forman la llave: si cambian el modelo, el agrupador, el umbral o las variables, la caché se invalida."""
+    del variables
     return c.cargar(carpeta) if firma is not None else None
 
 
 @st.cache_resource(show_spinner="Eligiendo el modelo campeón (una sola vez)...")
-def elegir_campeon_aqui():
+def elegir_campeon_aqui(marca: str, corte: str, horizonte: int, variables: tuple[str, ...]):
     """Como ``make campeon`` pero en memoria y con una repetición: (modelo, agrupador, info)."""
+    del marca, variables
     df, fuente = c.datos_eleccion(origen=ORIGEN_SINTETICO)  # la demo pública: solo datos sintéticos
-    h = a.HORIZONTE_MESES
-    vista = a.foto(df, h)  # la huella va sobre la foto, como en make campeon
-    info = {"datos": fuente, "horizonte_meses": h, **r.parametros_datos(vista, ORIGEN_SINTETICO), "experimental": True}
+    vista = a.foto(df, horizonte, corte=pd.Timestamp(corte))
+    info = {
+        "datos": fuente,
+        "horizonte_meses": horizonte,
+        "fecha_corte": corte,
+        **r.parametros_datos(vista, ORIGEN_SINTETICO),
+        "experimental": True,
+    }
     elegido = c.elegir(vista, repeticiones=1, info=info, honestos=False)  # sin la anidada: arranca antes
     return elegido.con_zonas(), elegido.agrupador, c.resumen(elegido)
 
 
 @st.cache_data
-def datos_referencia(horizonte: int | None, origen: str, ruta: str | None = None) -> pd.DataFrame:
+def datos_referencia(
+    horizonte: int | None, origen: str, ruta: str | None = None, marca: str = "", corte: str = ""
+) -> pd.DataFrame:
     """Los asociados del MISMO origen que el campeón: con un campeón real, el extracto de DATOS_ASOCIADOS (.env).
     Así el fondo de SHAP, los rangos y el mapa no mezclan datos sintéticos con un modelo real."""
-    # ``ruta`` (DATOS_ASOCIADOS) es parte de la llave de las cachés: si cambia, se recalcula todo.
+    del marca
     df, _ = c.datos_eleccion(Path(ruta) if ruta else None, origen=origen)
-    return a.foto(df, horizonte) if horizonte else df
+    return a.foto(df, horizonte, corte=pd.Timestamp(corte) if corte else None) if horizonte else df
 
 
 @st.cache_data
-def huella_referencia(horizonte: int | None, origen: str, ruta: str | None = None) -> str:
-    return r.huella(datos_referencia(horizonte, origen, ruta))
+def huella_referencia(
+    horizonte: int | None, origen: str, ruta: str | None = None, marca: str = "", corte: str = ""
+) -> str:
+    return r.huella(datos_referencia(horizonte, origen, ruta, marca, corte))
 
 
 @st.cache_data
-def cargar_referencia(horizonte: int | None, origen: str = ORIGEN_SINTETICO, ruta: str | None = None) -> pd.DataFrame:
+def cargar_referencia(
+    horizonte: int | None,
+    origen: str = ORIGEN_SINTETICO,
+    ruta: str | None = None,
+    marca: str = "",
+    corte: str = "",
+    variables: tuple[str, ...] = (),
+) -> pd.DataFrame:
     """Variables de los datos del campeón, para rangos, valores iniciales y categorías."""
-    return a.preparar(datos_referencia(horizonte, origen, ruta))
+    del variables
+    return a.preparar(datos_referencia(horizonte, origen, ruta, marca, corte))
 
 
 @st.cache_resource(show_spinner="Preparando la explicación (SHAP)...")
 def explicador(
-    _modelo, firma: str | None, horizonte: int | None, origen: str = ORIGEN_SINTETICO, ruta: str | None = None
+    _modelo,
+    firma_puntaje: str,
+    horizonte: int | None,
+    origen: str = ORIGEN_SINTETICO,
+    ruta: str | None = None,
+    marca: str = "",
+    corte: str = "",
+    variables: tuple[str, ...] = (),
 ) -> e.Explicador:
-    """SHAP del campeón frente a los asociados de referencia. ``_modelo`` no es llave (Streamlit no lo puede
-    hashear); ``firma`` sí: otro campeón, otra explicación."""
-    return e.Explicador(_modelo, cargar_referencia(horizonte, origen, ruta))
+    """SHAP del campeón frente a los asociados de referencia. ``firma_puntaje`` depende solo del modelo de puntaje
+    (no del umbral ni de KMeans), así cambiar solo el umbral no reconstruye SHAP."""
+    del firma_puntaje
+    return e.Explicador(_modelo, cargar_referencia(horizonte, origen, ruta, marca, corte, variables))
 
 
 @st.cache_resource(show_spinner="Segmentando a los asociados (KMeans y DBSCAN)...")
-def segmentar(horizonte: int | None, origen: str = ORIGEN_SINTETICO, ruta: str | None = None):
+def segmentar(
+    horizonte: int | None,
+    origen: str = ORIGEN_SINTETICO,
+    ruta: str | None = None,
+    marca: str = "",
+    corte: str = "",
+    comportamiento: tuple[str, ...] = (),
+):
     """(segmentación, datos con el retiro) de los asociados de referencia, para el mapa."""
-    df = datos_referencia(horizonte, origen, ruta)
+    del comportamiento
+    df = datos_referencia(horizonte, origen, ruta, marca, corte)
     return sg.Segmentacion().fit(df), df
+
+
+def secciones_activas(campos_modelo: list[str]) -> dict[str, list[str]]:
+    """Las secciones del formulario adaptadas a ``campos_modelo`` (si en una prueba cambian las variables)."""
+    permitidos = set(campos_modelo)
+    secciones = {titulo: [col for col in cols if col in permitidos] for titulo, cols in SECCIONES_FORMULARIO.items()}
+    secciones = {t: cols for t, cols in secciones.items() if cols}
+    cubiertos = {col for cols in secciones.values() for col in cols}
+    if faltantes := [col for col in campos_modelo if col not in cubiertos]:
+        secciones["Otras variables"] = faltantes
+    return secciones
 
 
 def rango(serie: pd.Series, paso: float) -> tuple[float, float]:
@@ -198,24 +242,44 @@ def formato_puntaje(puntaje: float, metodo: str) -> str:
     return f"{puntaje:.1%}" if metodo == "predict_proba" else f"{puntaje:+.2f}"
 
 
+campos_modelo = a.NUMERICAS + a.CATEGORICAS
+clave_variables = tuple(campos_modelo)
+corte_configurado = fecha_corte()
+
 try:
     firma_campeon = c.firma(MODELS_DIR)
-    guardado = cargar_campeon(MODELS_DIR, firma_campeon)
+    guardado = cargar_campeon(MODELS_DIR, firma_campeon, clave_variables)
+except c.CampeonIncompatible as error:  # entrenado con otras variables: el mensaje dice cuáles (sin datos)
+    st.error(str(error))
+    st.stop()
 except Exception as error:  # archivo a medias o de otra versión: mensaje claro, sin traceback ni rutas
     st.error(
         f"No se pudo leer el campeón de `models/` ({type(error).__name__}). Vuelve a correr `make campeon`, o borra "
         "`models/campeon*` para que la app elija uno con datos sintéticos."
     )
     st.stop()
+
 elegido_aqui = guardado is None
-modelo, agrupador, info = elegir_campeon_aqui() if elegido_aqui else guardado
+marca_desarrollo = marca_datos(None)
+modelo, agrupador, info = (
+    elegir_campeon_aqui(marca_desarrollo, corte_configurado, a.HORIZONTE_MESES, clave_variables)
+    if elegido_aqui
+    else guardado
+)
 metodo, umbral, umbral_alto = info["metodo"], info["umbral"], info["umbral_alto"]
 origen = info.get("origen_datos", ORIGEN_SINTETICO)  # campeones guardados antes: todos eran sintéticos
 experimental = origen == ORIGEN_SINTETICO
+horizonte_info = info.get("horizonte_meses")
+corte_efectivo = corte_configurado
 # Con un campeón real, la referencia es el extracto anonimizado de DATOS_ASOCIADOS (.env); si no, los sintéticos.
 ruta_ref = str(get_settings().datos_asociados) if origen == ORIGEN_REAL else None
+marca_ref = marca_datos(Path(ruta_ref) if ruta_ref else None)  # el contenido, no solo la ruta, invalida las cachés
 try:  # los datos de referencia deben cumplir su contrato (con datos reales, el del dataset anonimizado)
-    huella_ref = huella_referencia(info.get("horizonte_meses"), origen, ruta_ref) if "datos_huella" in info else None
+    huella_ref = (
+        huella_referencia(horizonte_info, origen, ruta_ref, marca_ref, corte_efectivo)
+        if "datos_huella" in info
+        else None
+    )
 except c.DatosInvalidos as error:  # el mensaje ya viene sin valores personales en modo real
     st.error(f"Los datos de referencia (DATOS_ASOCIADOS del .env) no se pueden usar: {error}")
     st.stop()
@@ -228,7 +292,7 @@ if huella_ref is not None and huella_ref != info["datos_huella"]:
         )
         st.stop()
     st.warning("Los datos de desarrollo cambiaron desde que se eligió el campeón: corre `make campeon` de nuevo.")
-referencia = cargar_referencia(info.get("horizonte_meses"), origen, ruta_ref)
+referencia = cargar_referencia(horizonte_info, origen, ruta_ref, marca_ref, corte_efectivo, clave_variables)
 etiqueta = c.etiqueta_puntaje(metodo, info.get("metricas_cv", {}))
 
 st.caption("Fondo de empleados · modelo de abandono")
@@ -242,8 +306,8 @@ else:
     st.info(aviso_origen(origen))
     if info.get("temporalidad_confirmada") is False:
         st.warning(
-            "**Temporalidad sin confirmar:** si los conteos del extracto se midieron a la fecha de extracción y no a "
-            "t0, las cifras de este modelo están infladas por fuga. Pendiente de confirmar con el fondo."
+            "**Temporalidad sin confirmar:** si alguna variable del extracto se midió después del evento y no al corte "
+            "t0 = C, las cifras de este modelo estarían infladas por fuga. Pendiente de confirmar con el fondo."
         )
 
 with st.sidebar:
@@ -262,7 +326,7 @@ with st.sidebar:
         )
         + f"Datos ({'sintéticos' if experimental else 'reales anonimizados'}): `{info.get('datos', 'sin nombre')}` "
         f"({info['filas']} asociados, {info['tasa_retiro']:.1%} retiro), "
-        f"foto a {info.get('horizonte_meses') or 0} meses."
+        f"horizonte de {horizonte_info or 0} meses tras el corte."
     )
     version = [f"elegido el {info['fecha'][:16].replace('T', ' ')}"] if "fecha" in info else []
     version += [f"datos `{info['datos_huella']}`"] if "datos_huella" in info else []
@@ -294,20 +358,21 @@ with st.sidebar:
     if elegido_aqui:
         st.info("No había campeón en `models/`: se eligió al abrir la app (como `make campeon`, una repetición).")
     if st.button("Volver a los valores iniciales"):
-        for columna in a.NUMERICAS + a.CATEGORICAS:
+        for columna in campos_modelo:
             st.session_state.pop(columna, None)
         st.rerun()
 
 valores: dict[str, float | int | str] = {}
-for titulo, campos in SECCIONES_FORMULARIO.items():
+for titulo, campos in secciones_activas(campos_modelo).items():
     st.subheader(titulo)
     columnas = st.columns(2)
     for i, columna in enumerate(campos):
         with columnas[i % 2]:
             valores[columna] = control(columna, referencia)
 
-asociado = pd.DataFrame([valores], columns=CAMPOS_MODELO)
-asociado[a.NUMERICAS] = asociado[a.NUMERICAS].astype(float)  # como en preparar: los conteos son float
+asociado = pd.DataFrame([valores], columns=campos_modelo)
+numericas_activas = [col for col in a.NUMERICAS if col in asociado.columns]
+asociado[numericas_activas] = asociado[numericas_activas].astype(float)  # como en preparar: los conteos son float
 puntaje = float(a.puntaje(modelo, asociado)[0])
 zona = modelo.predict(asociado)[0]
 emoji, tipo, texto = ZONA[zona]
@@ -321,7 +386,14 @@ getattr(st, tipo)(texto)
 
 # ---- SHAP: de dónde sale el puntaje de este asociado
 st.subheader("¿Por qué este puntaje?")
-explicacion = explicador(modelo, firma_campeon or "en_memoria", info.get("horizonte_meses"), origen, ruta_ref)
+firma_puntaje = (
+    f"en_memoria:{marca_desarrollo}:{corte_configurado}:{horizonte_info}"
+    if elegido_aqui
+    else (c.firma_modelo(MODELS_DIR) or firma_campeon or "disco")
+)
+explicacion = explicador(
+    modelo, firma_puntaje, horizonte_info, origen, ruta_ref, marca_ref, corte_efectivo, clave_variables
+)
 tabla = explicacion.explicar(asociado)
 st.plotly_chart(e.figura_explicacion(tabla, explicacion.base, metodo, etiquetas=ETIQUETAS), width="stretch", key="shap")
 st.caption(
@@ -351,7 +423,9 @@ st.dataframe(perfil.round(2), width="stretch")
 
 # ---- Mapa de segmentos (no supervisado): dónde cae este asociado
 st.subheader("Mapa de segmentos")
-segmentacion, datos_mapa = segmentar(info.get("horizonte_meses"), origen, ruta_ref)
+segmentacion, datos_mapa = segmentar(
+    horizonte_info, origen, ruta_ref, marca_ref, corte_efectivo, tuple(a.COMPORTAMIENTO)
+)
 atipico = segmentacion.dbscan(asociado)[0] == sg.ATIPICO
 st.plotly_chart(
     sg.figura_mapa(
@@ -376,8 +450,10 @@ st.caption(
 st.subheader("¿Y si cambia una sola variable?")
 variable = st.selectbox(
     "Variable",
-    a.NUMERICAS,
-    index=a.NUMERICAS.index("#SOLICITUD_CANCELACIONAHORROS"),
+    numericas_activas,
+    index=numericas_activas.index("#SOLICITUD_CANCELACIONAHORROS")
+    if "#SOLICITUD_CANCELACIONAHORROS" in numericas_activas
+    else 0,
     format_func=lambda v: ETIQUETAS.get(v, v),  # sin etiqueta, el nombre de la columna (nunca "None")
 )
 assert variable is not None  # con index fijo, selectbox siempre devuelve una opción

@@ -15,6 +15,7 @@ servicios. ``fuerza_senal`` escala esa diferencia (0 = ninguna).
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TypedDict
 
@@ -81,6 +82,34 @@ PRODUCTOS: dict[str, tuple[float, float, float]] = {
     "#RETIROS": (0.01, 0.03, 0.5),
 }
 DISMINUCION_CUOTAS = (0.005, 0.10)  # probabilidad de "SI"
+
+# Salario y antigüedades: cuantiles del extracto redondeados a dos cifras, (probabilidad acumulada, valor). Se
+# sortean por la inversa de la distribución, interpolada por tramos (``_por_cuantiles``). Reemplazan a una
+# lognormal (salario) y a una exponencial (antigüedades) que dejaban corta la cola: la exponencial supone que la
+# tasa de salida del fondo es la misma a cualquier antigüedad, y en un fondo de empleados baja con los años (quien
+# lleva mucho tiende a quedarse), así que hay más veteranos que los que ella produce. Ver
+# validacion.comparar_distribuciones (antes y después en docs/metodologia.md).
+SALARIO_CUANTILES = [
+    (0.0, 1_423_500),
+    (0.05, 1_800_000),
+    (0.25, 2_600_000),
+    (0.5, 3_000_000),
+    (0.75, 3_600_000),
+    (0.95, 6_000_000),
+    (0.99, 11_000_000),
+    (1.0, 20_000_000),
+]
+ANTIGUEDAD_F_CUANTILES = [(0.0, 0), (0.05, 3), (0.25, 18), (0.5, 43), (0.75, 120), (0.95, 290), (0.99, 430), (1.0, 440)]
+ANTIGUEDAD_LA_CUANTILES = [
+    (0.0, 0),
+    (0.05, 13),
+    (0.25, 50),
+    (0.5, 130),
+    (0.75, 220),
+    (0.95, 390),
+    (0.99, 490),
+    (1.0, 600),
+]
 
 GRUPOS = {
     "SOCIODEMOGRAFICO": [
@@ -155,6 +184,12 @@ def _seudonimo(seed: int, numero: int) -> str:
     return hashlib.sha256(f"ficticio-{seed}-{numero}".encode()).hexdigest()[:10]
 
 
+def _por_cuantiles(rng: np.random.Generator, cuantiles: Sequence[tuple[float, float]], n: int) -> np.ndarray:
+    """``n`` valores con esos cuantiles: la inversa de la distribución acumulada, interpolada entre los puntos."""
+    probabilidades, valores = zip(*cuantiles, strict=True)
+    return np.interp(rng.random(n), probabilidades, valores)
+
+
 def _elegir(rng: np.random.Generator, opciones: dict, n: int) -> np.ndarray:
     """``n`` valores de ``opciones`` ({valor: probabilidad}); las probabilidades se normalizan."""
     p = np.array(list(opciones.values()), dtype=float)
@@ -184,10 +219,11 @@ def _generar(n: int, seed: int, tasa_retiro: float, fuerza_senal: float = 1.0) -
     edad = ((FECHA_CORTE - nacimiento).dt.days / 365.25).astype(int).to_numpy()
     # Antigüedades sesgadas a la derecha (muchos recientes, pocos de décadas), sin pasar de la mayoría de edad.
     tope = np.maximum((edad - 18) * 12, 0)
-    meses_fondo = np.minimum(rng.exponential(80, n).round(), tope)
-    meses_laboral = np.minimum(meses_fondo + rng.exponential(75, n).round(), tope)
+    meses_fondo = np.minimum(_por_cuantiles(rng, ANTIGUEDAD_F_CUANTILES, n).round(), tope)
+    # La antigüedad laboral no es menor que la del fondo (se entra al fondo trabajando en la empresa).
+    meses_laboral = np.minimum(np.maximum(_por_cuantiles(rng, ANTIGUEDAD_LA_CUANTILES, n).round(), meses_fondo), tope)
     ingreso_fondo, ingreso_laboral = _hace_meses(rng, meses_fondo), _hace_meses(rng, meses_laboral)
-    salario = rng.lognormal(np.log(3_000_000) + 0.08 * f * retirado, 0.33, n)
+    salario = _por_cuantiles(rng, SALARIO_CUANTILES, n) * np.exp(0.08 * f * retirado)  # la señal sintética, igual
     salario = np.maximum((salario / 1_000).round() * 1_000, 1_423_500).astype(int)
     empresa = np.where(
         rng.random(n) < PESO_EMPRESA_PRINCIPAL, "E01", [f"E{v:02d}" for v in rng.integers(2, EMPRESAS + 1, n)]
@@ -321,3 +357,13 @@ class GeneradorAsociados:
 
 def datos_desarrollo() -> pd.DataFrame:
     return GeneradorAsociados(**DESARROLLO).generar()
+
+
+def asociados_nuevos(n: int, seed: int, faltantes: dict[str, float] | None = None) -> pd.DataFrame:
+    """Asociados "nuevos" para validar lo entrenado con ``datos_desarrollo``: otra semilla, la MISMA tasa de retiro.
+
+    Con otra tasa (la de ``GeneradorAsociados`` por defecto es 0,3) cambia la prevalencia entre entrenamiento y
+    validación: la precisión, la PR-AUC y lo que pasa con un umbral fijo dejan de ser comparables con la validación
+    cruzada y con ``make campeon``. Todos los scripts que validan con nuevos los generan aquí.
+    """
+    return GeneradorAsociados(n, seed=seed, tasa_retiro=DESARROLLO["tasa_retiro"], faltantes=faltantes).generar()

@@ -66,10 +66,12 @@ def test_escenarios_usan_el_umbral_dado(logistica):
 
 def test_particion_temporal_entrena_con_la_foto_vieja():
     df = GeneradorAsociados(n=1500, seed=2).generar()
-    entrenamiento, prueba = v.particion_temporal(df, horizonte_meses=3, meses_prueba=3)
-    # Corte 2026-03-31 (el del extracto real): la foto de prueba es 3 meses antes y la de entrenamiento, 3 más.
-    assert (entrenamiento[a.FECHA_OBSERVACION] == pd.Timestamp("2025-09-30")).all()
-    assert (prueba[a.FECHA_OBSERVACION] == pd.Timestamp("2025-12-31")).all()
+    entrenamiento, prueba = v.particion_temporal(
+        df, horizonte_meses=3, meses_prueba=3, corte=pd.Timestamp("2026-03-31")
+    )
+    # Corte 2026-03-31 (el del extracto real): la foto de prueba es el corte y la de entrenamiento, 3 meses antes.
+    assert (entrenamiento[a.FECHA_OBSERVACION] == pd.Timestamp("2025-12-31")).all()
+    assert (prueba[a.FECHA_OBSERVACION] == pd.Timestamp("2026-03-31")).all()
     assert len(entrenamiento) == len(prueba) == len(df)
     assert entrenamiento[a.TARGET].equals(prueba[a.TARGET])
     with pytest.raises(ValueError):
@@ -82,3 +84,23 @@ def test_con_un_solo_extracto_no_se_inventa_una_validacion_fuera_de_tiempo():
     assert vieja["NROIDENTIFICACION"].equals(reciente["NROIDENTIFICACION"])
     assert vieja[a.CONTEOS_SIN_FECHA].equals(reciente[a.CONTEOS_SIN_FECHA])
     assert vieja[a.TARGET].equals(reciente[a.TARGET])
+
+
+def test_desplazamiento_distingue_un_lote_distinto_y_no_uno_igual():
+    referencia = GeneradorAsociados(n=400, seed=1, tasa_retiro=0.1).generar_extracto()
+    igual = GeneradorAsociados(n=400, seed=2, tasa_retiro=0.1).generar_extracto()
+    parecido = v.desplazamiento(referencia, igual, folds=3)
+    assert parecido["roc_auc"] < 0.65  # mismo generador, otra semilla: casi indistinguibles
+    assert set(parecido["por_variable"]) <= set(a.NUMERICAS + a.CATEGORICAS)
+    assert not set(a.IDENTIFICADORES) & set(parecido["por_variable"])
+    distinto = igual.assign(SALARIO=igual["SALARIO"] * 3)  # el mismo lote con otro nivel de salario
+    d = v.desplazamiento(referencia, distinto, folds=3)
+    assert d["roc_auc"] > 0.9 and next(iter(d["por_variable"])) == "SALARIO"  # la que más distingue
+    assert d["roc_auc_comportamiento"] < 0.65  # el comportamiento no cambió
+    distribuciones = v.comparar_distribuciones(referencia, distinto)
+    assert distribuciones.loc["SALARIO", "lote_p99"] > distribuciones.loc["SALARIO", "ref_p99"]
+    assert distribuciones.loc["SALARIO", "lote_fuera_ref_p01_p99"] > 0
+
+    duplicado = pd.concat([referencia, referencia.iloc[[0]]], ignore_index=True)
+    with pytest.raises(ValueError, match="duplicados"):
+        v.desplazamiento(duplicado, igual, folds=3)

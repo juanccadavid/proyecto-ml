@@ -35,10 +35,15 @@ def test_numericas_y_categoricas_quedan_tipadas():
 
 def test_foto_no_inventa_retiros_ni_filtra_filas():
     df = datos(80)
-    vista = a.foto(df, horizonte_meses=3, corte=pd.Timestamp("2026-10-31"))
+    vista = a.foto(df, horizonte_meses=3, corte=pd.Timestamp("2026-03-31"))
     assert len(vista) == len(df)
     assert vista[a.TARGET].equals(df[a.TARGET])
-    assert (vista[a.FECHA_OBSERVACION] == pd.Timestamp("2026-07-31")).all()
+    # t0 es el corte (ahí se miden las variables) y el evento cae DESPUÉS: (t0, t0 + 3 meses]. Si t0 fuera
+    # anterior al corte, el evento quedaría antes de la medición de las variables (fuga temporal).
+    assert (vista[a.FECHA_OBSERVACION] == pd.Timestamp("2026-03-31")).all()
+    assert vista.attrs["fin_horizonte"] == pd.Timestamp("2026-06-30") > vista[a.FECHA_OBSERVACION].iloc[0]
+    resumen = a.resumen_foto(df, corte=pd.Timestamp("2026-03-31"))
+    assert resumen.loc[0, "con_evento"] == int(df[a.TARGET].sum()) and len(resumen) == 1
 
 
 def test_modelos_supervisados_entrenan_y_predicen():
