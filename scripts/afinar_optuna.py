@@ -38,15 +38,19 @@ from proyecto_ml import abandono as a
 from proyecto_ml import busqueda_optuna as bo
 from proyecto_ml import registro as r
 from proyecto_ml.campeon import DatosInvalidos, datos_exploracion
-from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, get_settings
+from proyecto_ml.config import FIGURES_DIR, METRICS_DIR
+from proyecto_ml.datos_campeon import nombre_fuente
 from proyecto_ml.evaluate import SCORING, resaltar, tabla_comparativa
-from proyecto_ml.generador import GeneradorAsociados
+from proyecto_ml.generador import asociados_nuevos
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument(
-        "--datos", type=Path, default=get_settings().datos_asociados, help="Por defecto DATOS_ASOCIADOS del .env"
+        "--datos",
+        type=Path,
+        default=None,
+        help="Por defecto los datos de desarrollo de make campeon (make datos-desarrollo o en memoria)",
     )
     parser.add_argument(
         "--modelos",
@@ -73,9 +77,12 @@ def main() -> None:
         train = datos_exploracion(args.datos, "make optuna")
     except DatosInvalidos as error:
         raise SystemExit(str(error)) from None  # con limpiar_extracto y el contrato
-    nuevos = GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos).generar()
+    nuevos = asociados_nuevos(args.nuevos, args.semilla_nuevos)
     X, y = a.separar(train)
-    print(f"Entrenamiento: {args.datos} ({len(train)} filas, {a.objetivo_binario(train).mean():.0%} abandono)")
+    print(
+        f"Entrenamiento: {nombre_fuente(args.datos)} ({len(train)} filas, "
+        f"{a.objetivo_binario(train).mean():.0%} abandono)"
+    )
     print(f"Maximiza: {args.metrica} (validación cruzada, {args.folds} particiones) · {args.intentos} intentos\n")
 
     estudios, modelos = {}, {}
@@ -115,7 +122,7 @@ def main() -> None:
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     salida = METRICS_DIR / f"optuna_{stamp}.json"
     resumen = {
-        "datos": str(args.datos.name),
+        "datos": nombre_fuente(args.datos),
         "metrica": args.metrica,
         "intentos": args.intentos,
         "semilla": args.semilla,
@@ -139,7 +146,12 @@ def main() -> None:
     if args.sin_mlflow:
         return
     r.configurar()
-    params = {"datos": args.datos.name, "filas": len(train), "metrica": args.metrica, "intentos": args.intentos}
+    params = {
+        "datos": nombre_fuente(args.datos),
+        "filas": len(train),
+        "metrica": args.metrica,
+        "intentos": args.intentos,
+    }
     params |= {"semilla": args.semilla, "folds": args.folds}
     with r.corrida("optuna", params, artefactos=[salida, tabla_html, *paginas]):
         for nombre, estudio in estudios.items():

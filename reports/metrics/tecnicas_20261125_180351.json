@@ -1,0 +1,521 @@
+{
+  "origen_datos": "sintetico",
+  "datos_huella": "cabb07a593f5",
+  "contrato_huella": "acc9e403f75c",
+  "datos": "asociados_desarrollo.parquet",
+  "filas": 5000,
+  "horizonte_meses": 3,
+  "clasificador": "logreg",
+  "folds": 5,
+  "repeticiones": 3,
+  "vacios": 0.1,
+  "tecnicas": [
+    {
+      "grupo": "Base",
+      "tecnica": "base",
+      "descripcion": "Mediana, OneHot, StandardScaler, recorte IQR y class_weight='balanced'",
+      "pr_auc": 0.53143702982756,
+      "pr_auc_std": 0.04158055085138486,
+      "roc_auc": 0.8405018738010247,
+      "roc_auc_std": 0.0278585216824176,
+      "segundos": 0.11830499332863838,
+      "dif_pr_auc": 0.0,
+      "dif_ic_inf": 0.0,
+      "dif_ic_sup": 0.0,
+      "concluyente": false
+    },
+    {
+      "grupo": "Desbalance",
+      "tecnica": "sin balancear",
+      "descripcion": "Sin class_weight ni re-muestreo",
+      "pr_auc": 0.5406306437910536,
+      "pr_auc_std": 0.04173092581017337,
+      "roc_auc": 0.8440845016159013,
+      "roc_auc_std": 0.027913064915120387,
+      "segundos": 0.10562563333660364,
+      "dif_pr_auc": 0.009193613963493608,
+      "dif_ic_inf": 0.0016112065103619398,
+      "dif_ic_sup": 0.016776021416624844,
+      "concluyente": true
+    },
+    {
+      "grupo": "Desbalance",
+      "tecnica": "SMOTE",
+      "descripcion": "Retirados sintéticos entre vecinos de la minoría",
+      "pr_auc": 0.5310899301857356,
+      "pr_auc_std": 0.04257516824123164,
+      "roc_auc": 0.8341659643502356,
+      "roc_auc_std": 0.026995292625261947,
+      "segundos": 0.20832787999728072,
+      "dif_pr_auc": -0.0003470996418244443,
+      "dif_ic_inf": -0.014801920232461671,
+      "dif_ic_sup": 0.014107720948812737,
+      "concluyente": false
+    },
+    {
+      "grupo": "Desbalance",
+      "tecnica": "ADASYN",
+      "descripcion": "Como SMOTE, más donde la minoría es difícil",
+      "pr_auc": 0.5210581038643293,
+      "pr_auc_std": 0.04030339539076276,
+      "roc_auc": 0.829615523983989,
+      "roc_auc_std": 0.026207012851695185,
+      "segundos": 0.2251107733308648,
+      "dif_pr_auc": -0.010378925963230756,
+      "dif_ic_inf": -0.03210702865875541,
+      "dif_ic_sup": 0.01134917673229378,
+      "concluyente": false
+    },
+    {
+      "grupo": "Imputación",
+      "tecnica": "media",
+      "descripcion": "SimpleImputer(mean)",
+      "pr_auc": 0.5326535724735986,
+      "pr_auc_std": 0.04292285272779277,
+      "roc_auc": 0.8417668269882235,
+      "roc_auc_std": 0.028178466347030334,
+      "segundos": 0.11872821333818137,
+      "dif_pr_auc": 0.0012165426460385431,
+      "dif_ic_inf": -0.003036777324001186,
+      "dif_ic_sup": 0.005469862616077903,
+      "concluyente": false
+    },
+    {
+      "grupo": "Imputación",
+      "tecnica": "KNN",
+      "descripcion": "KNNImputer: promedio de 5 vecinos",
+      "pr_auc": 0.5310406756772686,
+      "pr_auc_std": 0.04207502986806084,
+      "roc_auc": 0.8401352462439422,
+      "roc_auc_std": 0.028901937039401495,
+      "segundos": 0.36408872667234393,
+      "dif_pr_auc": -0.0003963541502913781,
+      "dif_ic_inf": -0.005259220050381307,
+      "dif_ic_sup": 0.004466511749798292,
+      "concluyente": false
+    },
+    {
+      "grupo": "Imputación",
+      "tecnica": "iterativa",
+      "descripcion": "IterativeImputer: cada columna con las demás",
+      "pr_auc": 0.5324931815362487,
+      "pr_auc_std": 0.04318890930417516,
+      "roc_auc": 0.8416168239819902,
+      "roc_auc_std": 0.02830459217058045,
+      "segundos": 0.13344144666722665,
+      "dif_pr_auc": 0.0010561517086886685,
+      "dif_ic_inf": -0.0037489474538669487,
+      "dif_ic_sup": 0.005861250871243968,
+      "concluyente": false
+    },
+    {
+      "grupo": "Imputación",
+      "tecnica": "mediana + indicador",
+      "descripcion": "SimpleImputer + MissingIndicator",
+      "pr_auc": 0.532626167125877,
+      "pr_auc_std": 0.04230671602040936,
+      "roc_auc": 0.8422261355464431,
+      "roc_auc_std": 0.02807752889557378,
+      "segundos": 0.1197568333397309,
+      "dif_pr_auc": 0.0011891372983169335,
+      "dif_ic_inf": -0.0024714193907034686,
+      "dif_ic_sup": 0.004849693987337084,
+      "concluyente": false
+    },
+    {
+      "grupo": "Codificación",
+      "tecnica": "ordinal",
+      "descripcion": "OrdinalEncoder: un número por categoría",
+      "pr_auc": 0.5452457752249613,
+      "pr_auc_std": 0.04283702226428148,
+      "roc_auc": 0.8492511327869903,
+      "roc_auc_std": 0.030058424004527497,
+      "segundos": 0.3284021666661526,
+      "dif_pr_auc": 0.01380874539740129,
+      "dif_ic_inf": -0.002822709681378363,
+      "dif_ic_sup": 0.030440200476180505,
+      "concluyente": false
+    },
+    {
+      "grupo": "Codificación",
+      "tecnica": "target",
+      "descripcion": "TargetEncoder: tasa de retiro por categoría",
+      "pr_auc": 0.5520147127066418,
+      "pr_auc_std": 0.042541055802400536,
+      "roc_auc": 0.8540830405865949,
+      "roc_auc_std": 0.02783174346483296,
+      "segundos": 0.08497815333151569,
+      "dif_pr_auc": 0.020577682879081793,
+      "dif_ic_inf": 0.004467765048582255,
+      "dif_ic_sup": 0.03668760070958095,
+      "concluyente": true
+    },
+    {
+      "grupo": "Escalado",
+      "tecnica": "min-max",
+      "descripcion": "MinMaxScaler: a [0, 1]",
+      "pr_auc": 0.5244966321086181,
+      "pr_auc_std": 0.04192942766442422,
+      "roc_auc": 0.8366840940571624,
+      "roc_auc_std": 0.028066818941059474,
+      "segundos": 0.12086629332819333,
+      "dif_pr_auc": -0.006940397718941949,
+      "dif_ic_inf": -0.016420265821732817,
+      "dif_ic_sup": 0.0025394703838485634,
+      "concluyente": false
+    },
+    {
+      "grupo": "Escalado",
+      "tecnica": "max-abs",
+      "descripcion": "MaxAbsScaler: a [-1, 1] sin centrar",
+      "pr_auc": 0.5248237761722292,
+      "pr_auc_std": 0.04205781418680147,
+      "roc_auc": 0.836709116285748,
+      "roc_auc_std": 0.028130474771134225,
+      "segundos": 0.11957764000010987,
+      "dif_pr_auc": -0.006613253655330831,
+      "dif_ic_inf": -0.016245025773546497,
+      "dif_ic_sup": 0.0030185184628846303,
+      "concluyente": false
+    },
+    {
+      "grupo": "Escalado",
+      "tecnica": "robusto",
+      "descripcion": "RobustScaler: mediana e IQR",
+      "pr_auc": 0.5311896971998801,
+      "pr_auc_std": 0.04137963967265122,
+      "roc_auc": 0.8404014156869896,
+      "roc_auc_std": 0.027849372661495713,
+      "segundos": 0.11804191333552201,
+      "dif_pr_auc": -0.00024733262767995257,
+      "dif_ic_inf": -0.0013820731798319303,
+      "dif_ic_sup": 0.0008874079244719068,
+      "concluyente": false
+    },
+    {
+      "grupo": "Escalado",
+      "tecnica": "normalizer",
+      "descripcion": "Normalizer: cada fila a norma 1",
+      "pr_auc": 0.544204573660329,
+      "pr_auc_std": 0.046609781674490335,
+      "roc_auc": 0.8387246108355737,
+      "roc_auc_std": 0.02875630567068253,
+      "segundos": 0.11335077999780575,
+      "dif_pr_auc": 0.012767543832769013,
+      "dif_ic_inf": -0.0017767579774257154,
+      "dif_ic_sup": 0.027311845642963448,
+      "concluyente": false
+    },
+    {
+      "grupo": "Feature engineering",
+      "tecnica": "variables nuevas",
+      "descripcion": "Agregaciones, interacción y log del salario (CrearVariables)",
+      "pr_auc": 0.535993837036471,
+      "pr_auc_std": 0.0416866227204694,
+      "roc_auc": 0.8388057536854909,
+      "roc_auc_std": 0.027152356678905767,
+      "segundos": 0.12818917999975382,
+      "dif_pr_auc": 0.00455680720891094,
+      "dif_ic_inf": -0.005050819927855912,
+      "dif_ic_sup": 0.014164434345677414,
+      "concluyente": false
+    },
+    {
+      "grupo": "Feature engineering",
+      "tecnica": "binning",
+      "descripcion": "EDAD, antigüedades y SALARIO en 5 rangos (KBinsDiscretizer)",
+      "pr_auc": 0.5297150132413075,
+      "pr_auc_std": 0.04386518950462443,
+      "roc_auc": 0.8417110875915177,
+      "roc_auc_std": 0.02674420062368217,
+      "segundos": 0.13017614000321676,
+      "dif_pr_auc": -0.0017220165862524839,
+      "dif_ic_inf": -0.01023086397659017,
+      "dif_ic_sup": 0.0067868308040850535,
+      "concluyente": false
+    },
+    {
+      "grupo": "Extracción",
+      "tecnica": "PCA 95 %",
+      "descripcion": "Componentes que guardan el 95 % de la varianza",
+      "pr_auc": 0.49572175812754293,
+      "pr_auc_std": 0.04380691273146422,
+      "roc_auc": 0.8332803714920992,
+      "roc_auc_std": 0.02787165913989492,
+      "segundos": 0.09602119999472052,
+      "dif_pr_auc": -0.03571527170001709,
+      "dif_ic_inf": -0.06811400118965022,
+      "dif_ic_sup": -0.003316542210384195,
+      "concluyente": true
+    },
+    {
+      "grupo": "Selección",
+      "tecnica": "RFE 15",
+      "descripcion": "RFE: las 15 columnas más útiles para una logística",
+      "pr_auc": 0.2409376704482583,
+      "pr_auc_std": 0.044902385039536856,
+      "roc_auc": 0.6996671627889522,
+      "roc_auc_std": 0.0557086075869914,
+      "segundos": 0.27153829333061974,
+      "dif_pr_auc": -0.2904993593793017,
+      "dif_ic_inf": -0.3489587847833058,
+      "dif_ic_sup": -0.2320399339752979,
+      "concluyente": true
+    }
+  ],
+  "con_objetivo": [
+    {
+      "variable": "SALIDA_POR_PRODUCTO",
+      "tipo": "numérica",
+      "medida": "spearman",
+      "valor": 0.4806876519260797,
+      "fuerza": 0.4806876519260797
+    },
+    {
+      "variable": "SENALES_SALIDA",
+      "tipo": "numérica",
+      "medida": "spearman",
+      "valor": 0.4772437018826278,
+      "fuerza": 0.4772437018826278
+    },
+    {
+      "variable": "#SOLICITUD_RETIROPARCIALAHORROS",
+      "tipo": "numérica",
+      "medida": "spearman",
+      "valor": 0.3874447343009397,
+      "fuerza": 0.3874447343009397
+    },
+    {
+      "variable": "#SOLICITUD_CANCELACIONAHORROS",
+      "tipo": "numérica",
+      "medida": "spearman",
+      "valor": 0.3741456462199796,
+      "fuerza": 0.3741456462199796
+    },
+    {
+      "variable": "#SOLICITUD_DISMINUCIONCUOTAS",
+      "tipo": "categórica",
+      "medida": "cramer_v",
+      "valor": 0.2717779359155881,
+      "fuerza": 0.2717779359155881
+    },
+    {
+      "variable": "PRODUCTOS",
+      "tipo": "numérica",
+      "medida": "spearman",
+      "valor": -0.20222444405861134,
+      "fuerza": 0.20222444405861134
+    },
+    {
+      "variable": "#CANTIDAD_AHORROSCONTRACTUALES",
+      "tipo": "numérica",
+      "medida": "spearman",
+      "valor": -0.2004209900684805,
+      "fuerza": 0.2004209900684805
+    },
+    {
+      "variable": "#CANTIDAD_SERVICIOS",
+      "tipo": "numérica",
+      "medida": "spearman",
+      "valor": -0.14418817028811468,
+      "fuerza": 0.14418817028811468
+    },
+    {
+      "variable": "#SOLICITUDCREDITOS_ULT3MES",
+      "tipo": "numérica",
+      "medida": "spearman",
+      "valor": -0.10492466023412396,
+      "fuerza": 0.10492466023412396
+    },
+    {
+      "variable": "SALARIO_LOG",
+      "tipo": "numérica",
+      "medida": "spearman",
+      "valor": 0.08764679035586878,
+      "fuerza": 0.08764679035586878
+    },
+    {
+      "variable": "SALARIO",
+      "tipo": "numérica",
+      "medida": "spearman",
+      "valor": 0.08764679035586878,
+      "fuerza": 0.08764679035586878
+    },
+    {
+      "variable": "CODDEPENDENCIA",
+      "tipo": "categórica",
+      "medida": "cramer_v",
+      "valor": 0.06915649395538924,
+      "fuerza": 0.06915649395538924
+    },
+    {
+      "variable": "#RETIROS",
+      "tipo": "numérica",
+      "medida": "spearman",
+      "valor": 0.03715829665590683,
+      "fuerza": 0.03715829665590683
+    },
+    {
+      "variable": "ESTADOCIVIL",
+      "tipo": "categórica",
+      "medida": "cramer_v",
+      "valor": 0.03527434102790517,
+      "fuerza": 0.03527434102790517
+    },
+    {
+      "variable": "TIPOCONTRATO",
+      "tipo": "categórica",
+      "medida": "cramer_v",
+      "valor": 0.03186655046466631,
+      "fuerza": 0.03186655046466631
+    },
+    {
+      "variable": "ANTIGUEDAD_F_MESES",
+      "tipo": "numérica",
+      "medida": "spearman",
+      "valor": -0.014064226093254266,
+      "fuerza": 0.014064226093254266
+    },
+    {
+      "variable": "TIPOIDENTIFICACION",
+      "tipo": "categórica",
+      "medida": "cramer_v",
+      "valor": 0.011612048395817347,
+      "fuerza": 0.011612048395817347
+    },
+    {
+      "variable": "ANTIGUEDAD_LA_MESES",
+      "tipo": "numérica",
+      "medida": "spearman",
+      "valor": -0.010301057045620872,
+      "fuerza": 0.010301057045620872
+    },
+    {
+      "variable": "EDAD",
+      "tipo": "numérica",
+      "medida": "spearman",
+      "valor": -0.0027908833959098124,
+      "fuerza": 0.0027908833959098124
+    },
+    {
+      "variable": "#CANTIDAD_AHORROSALAVISTA",
+      "tipo": "numérica",
+      "medida": "spearman",
+      "valor": -0.0002941907848862015,
+      "fuerza": 0.0002941907848862015
+    },
+    {
+      "variable": "CODPAISCEDULA",
+      "tipo": "categórica",
+      "medida": "cramer_v",
+      "valor": 0.0,
+      "fuerza": 0.0
+    },
+    {
+      "variable": "CODCIUDADRESIDENCIA",
+      "tipo": "categórica",
+      "medida": "cramer_v",
+      "valor": 0.0,
+      "fuerza": 0.0
+    },
+    {
+      "variable": "CODDEPARTAMENTORESIDENCIA",
+      "tipo": "categórica",
+      "medida": "cramer_v",
+      "valor": 0.0,
+      "fuerza": 0.0
+    },
+    {
+      "variable": "CODPAISRESIDENCIA",
+      "tipo": "categórica",
+      "medida": "cramer_v",
+      "valor": 0.0,
+      "fuerza": 0.0
+    },
+    {
+      "variable": "RELACION",
+      "tipo": "categórica",
+      "medida": "cramer_v",
+      "valor": 0.0,
+      "fuerza": 0.0
+    },
+    {
+      "variable": "CODPROFESION",
+      "tipo": "categórica",
+      "medida": "cramer_v",
+      "valor": 0.0,
+      "fuerza": 0.0
+    },
+    {
+      "variable": "ESTUDIOS",
+      "tipo": "categórica",
+      "medida": "cramer_v",
+      "valor": 0.0,
+      "fuerza": 0.0
+    },
+    {
+      "variable": "ESTRATO",
+      "tipo": "categórica",
+      "medida": "cramer_v",
+      "valor": 0.0,
+      "fuerza": 0.0
+    },
+    {
+      "variable": "CIUDADNACE",
+      "tipo": "categórica",
+      "medida": "cramer_v",
+      "valor": 0.0,
+      "fuerza": 0.0
+    },
+    {
+      "variable": "DPTONACE",
+      "tipo": "categórica",
+      "medida": "cramer_v",
+      "valor": 0.0,
+      "fuerza": 0.0
+    },
+    {
+      "variable": "PAISNACE",
+      "tipo": "categórica",
+      "medida": "cramer_v",
+      "valor": 0.0,
+      "fuerza": 0.0
+    },
+    {
+      "variable": "SEXO",
+      "tipo": "categórica",
+      "medida": "cramer_v",
+      "valor": 0.0,
+      "fuerza": 0.0
+    },
+    {
+      "variable": "CODEMPRESA",
+      "tipo": "categórica",
+      "medida": "cramer_v",
+      "valor": 0.0,
+      "fuerza": 0.0
+    }
+  ],
+  "redundantes": [
+    {
+      "variable_a": "SALARIO",
+      "variable_b": "SALARIO_LOG",
+      "correlacion": 1.0
+    },
+    {
+      "variable_a": "SENALES_SALIDA",
+      "variable_b": "SALIDA_POR_PRODUCTO",
+      "correlacion": 0.9996546646730134
+    },
+    {
+      "variable_a": "#SOLICITUD_RETIROPARCIALAHORROS",
+      "variable_b": "SENALES_SALIDA",
+      "correlacion": 0.8662138454963202
+    },
+    {
+      "variable_a": "#SOLICITUD_RETIROPARCIALAHORROS",
+      "variable_b": "SALIDA_POR_PRODUCTO",
+      "correlacion": 0.8646260063479961
+    }
+  ]
+}

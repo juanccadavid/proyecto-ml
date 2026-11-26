@@ -68,20 +68,53 @@ archivo. Los datos sintéticos usan el mismo corte.
 ```bash
 make real                 # contrato-ml + segmentos-real + regresion-real + predecir-real
 make segmentos-real       # KMeans y DBSCAN por comportamiento y perfil, k = 5 (no necesita etiqueta)
-make regresion-real       # estima el SALARIO (no necesita etiqueta)
+make regresion-real       # estima el SALARIO; elige con CV y mide en una reserva del 20 % (no necesita etiqueta)
 make predecir-real        # puntúa a cada asociado con el campeón entrenado con sintéticos (make campeon)
 ```
 
 Estos objetivos ponen `ORIGEN_DATOS=real_anonimizado` sin tocar el `.env`; los resultados quedan en
 `reports/` (ignorado por Git), en experimentos de MLflow con sufijo `_real` y, las predicciones, en
-`data/processed/predicciones.csv`. El mapa de segmentos con datos reales muestra solo agregados por segmento.
+`data/processed/predicciones.csv`. Con datos reales, MLflow recibe solo agregados: la figura de la regresión es
+por tramos (`regresion.figura_por_tramo`, sin salarios individuales) y el mapa de segmentos, que tiene una
+coordenada por asociado, se queda en `reports/` sin subirse.
 
-- **Segmentación y regresión** sí aprenden de los datos reales.
-- **El abandono no**: `make campeon` con datos reales sigue bloqueado mientras no exista una etiqueta futura.
-  `predecir-real` aplica a los asociados reales el campeón entrenado con los sintéticos, que ahora tienen los
-  mismos códigos y una forma parecida a la del extracto. El puntaje ordena por las señales que el generador
-  asocia al retiro (cancelaciones, retiros parciales, disminución de cuotas, pocos productos); **no está validado
-  contra retiros reales** y no debe leerse como probabilidad de retiro del fondo.
+| Componente | Con qué se entrena | Con qué se evalúa | Qué se puede afirmar |
+|---|---|---|---|
+| Clasificación de abandono (`make campeon`) | solo sintéticos | solo sintéticos (validación cruzada, nuevos del generador, escenarios) | que el pipeline recupera la regla del generador; nada sobre el fondo |
+| Segmentación (`segmentos-real`) | extracto real | estabilidad (semillas, bootstrap, k); sin etiqueta externa | segmentos exploratorios que describen el extracto (ver metodología) |
+| Regresión del salario (`regresion-real`) | extracto real | reserva del 20 % que no se usa para elegir, frente a `DummyRegressor`; error relativo (MdAPE) y error por quintil | asociación transversal en el corte, no pronóstico ni causalidad |
+| Predicción (`predecir-real`) | campeón entrenado con sintéticos | **sin validación** contra retiros reales; solo su parecido con los sintéticos (validación adversaria) | un orden de revisión según la regla del generador, no una probabilidad de retiro del fondo |
+
+`predecir-real` aplica a los asociados reales el campeón entrenado con los sintéticos. El puntaje ordena por las
+señales que el generador asocia al retiro (solicitudes de cancelación, de retiro parcial y de disminución de cuotas;
+pocos productos). Las solicitudes son registros de solicitud, no operaciones completadas. Al terminar, imprime
+un aviso y el resultado de la validación adversaria reproducida el 25-nov-2026: ROC-AUC 1,00 con todas las
+variables y 0,60 con comportamiento. Las distribuciones marginales de comportamiento son próximas (KS ≤ 0,020),
+pero el perfil no: 100 % de las categorías reales de empresa y geografía y 81,8 % de profesiones quedan fuera del
+soporte sintético. Entre variables numéricas, la mayor diferencia es antigüedad laboral (KS 0,083; 9,5 % fuera
+del P1–P99 sintético); salario KS 0,060, edad 0,049 y antigüedad en el fondo 0,043. Esto mide desplazamiento
+entre dominios, no desempeño de abandono; sobre el perfil, el puntaje real es una extrapolación (detalle en la
+metodología).
+
+## Pendiente científico: la validación cruzada interna de TargetEncoder
+
+Documentado en el PR #42 y perdido en la reescritura de este archivo (PR #45); se restaura con su estado actual.
+
+- **Qué pasa.** El candidato `logreg_target` codifica las categóricas con `TargetEncoder(cv=StratifiedKFold(5))`
+  (`features.py`). Al ajustar, cada fila de entrenamiento recibe la media del objetivo de su categoría calculada
+  en las **otras** particiones internas, que no se agrupan por asociado. Si el entrenamiento tuviera varias fotos
+  del mismo asociado (varios extractos), su etiqueta de otra foto entraría en la codificación de su fila: una
+  fuga interna del ajuste. No llega a la evaluación externa, que se codifica con `transform`, sin sus etiquetas.
+- **Estado actual: la condición no se da.** El fondo entrega un solo corte y `extractos.foto_entre_extractos`
+  rechaza construir fotos entre extractos, así que `validacion_fuera_de_tiempo` no puede ejecutarse. En los flujos
+  que sí corren (`make campeon`, con sintéticos), cada asociado aparece una vez: la validación interna de
+  TargetEncoder no mezcla registros del mismo asociado.
+- **Alternativa compatible con scikit-learn 1.9.1** (verificada): con `sklearn.set_config(enable_metadata_routing=True)`,
+  `TargetEncoder(cv=GroupKFold(5))` recibe `groups` en `fit_transform` y a través de `Pipeline.fit`. Exige
+  activar el *routing* global y pasar `groups` en cada entrenamiento y reentrenamiento (campeón, umbrales
+  anidados, técnicas). No se adopta: hoy no corrige un caso que ocurra y no hay una mejora que medir.
+- **Cuándo revisarlo:** si llegan varios cortes con seguimiento del mismo asociado. Entonces hay que agrupar la CV
+  interna por asociado (o por período) sin tocar la separación temporal externa.
 
 ## Limitaciones vigentes
 

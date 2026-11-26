@@ -29,7 +29,7 @@ EXPERIMENTALES. Con **real_anonimizado**, el archivo se valida pero el entrenami
 historia acumulada y no existe la etiqueta futura de tres meses.
 
 Uso:
-    uv run python scripts/elegir_campeon.py                    # foto a 3 meses
+    uv run python scripts/elegir_campeon.py                    # t0 = corte, evento en los 3 meses siguientes
     uv run python scripts/elegir_campeon.py --horizonte 12 --precision-min 0.9
     uv run python scripts/elegir_campeon.py --optuna 30         # + Random Forest y HistGB afinados
     uv run python scripts/elegir_campeon.py --datos data/processed/asociados_desarrollo.parquet --sin-mlflow
@@ -64,7 +64,7 @@ from proyecto_ml.config import (
 )
 from proyecto_ml.evaluate import compute_metrics
 from proyecto_ml.figuras import marcar_origen
-from proyecto_ml.generador import DESARROLLO, GeneradorAsociados
+from proyecto_ml.generador import asociados_nuevos
 
 
 def _slug(escenario: v.Escenario) -> str:
@@ -101,9 +101,9 @@ def main() -> None:
     minimo = int(y_evento.value_counts().reindex([0, 1], fill_value=0).min())
     if minimo < args.folds:
         raise SystemExit(f"La clase minoritaria tiene {minimo} asociados (mínimo {args.folds}): usa más filas.")
-    t0 = a.fecha_observacion(h).date() if h else a.FECHA_CORTE.date()
     print(
-        f"Datos ({origen}): {fuente} · foto a {h or 0} meses (t0 = {t0}) · {len(df)} asociados, "
+        f"Datos ({origen}): {fuente} · foto en t0 = corte {a.fecha_observacion().date()}, evento en los "
+        f"{a.HORIZONTE_MESES} meses siguientes (hasta {a.fin_horizonte().date()}) · {len(df)} asociados, "
         f"{y_evento.mean():.1%} de evento futuro sintético"
     )
     print(f"Validación cruzada: {args.folds} particiones x {args.repeticiones} repeticiones · criterio {c.CRITERIO}")
@@ -115,11 +115,10 @@ def main() -> None:
             print("Temporalidad confirmada (TEMPORALIDAD_CONFIRMADA=si): los conteos se miden a t0.\n")
         else:
             print(
-                "OJO: TEMPORALIDAD SIN CONFIRMAR. Los conteos de comportamiento no traen su fecha de medición;\n"
-                "si son a la fecha de extracción y no a t0, para los retirados incluyen lo que pasó después (fuga).\n"
-                "Lo mismo, con menos riesgo, salario, cargo, agencia... (abandono.ATRIBUTOS_SIN_FECHA).\n"
-                "La evaluación queda marcada como no válida hasta que el fondo lo confirme\n"
-                "(TEMPORALIDAD_CONFIRMADA=si en el .env).\n"
+                "OJO: TEMPORALIDAD SIN CONFIRMAR. Las variables deben medirse en t0 (el corte) y el evento ser\n"
+                "posterior a t0; si algún conteo o atributo se midió después del evento, hay fuga\n"
+                "(abandono.ATRIBUTOS_SIN_FECHA). La evaluación queda marcada como no válida hasta que el fondo lo\n"
+                "confirme (TEMPORALIDAD_CONFIRMADA=si en el .env).\n"
             )
 
     X, y = a.separar(df)
@@ -141,7 +140,8 @@ def main() -> None:
         info={
             "datos": fuente,
             "horizonte_meses": h,
-            "fecha_observacion": str(t0),
+            "fecha_observacion": str(a.fecha_observacion().date()),  # t0 = corte: ahí se miden las variables
+            "fin_horizonte": str(a.fin_horizonte(h or a.HORIZONTE_MESES).date()),  # el evento cae en (t0, fin]
             "fecha_corte": str(a.FECHA_CORTE.date()),  # FECHA_CORTE efectiva (.env o la de los sintéticos)
             # con datos reales, la evaluación vale solo si el fondo confirmó que los conteos son a t0
             "temporalidad_confirmada": None if experimental else temporalidad_confirmada(),
@@ -192,8 +192,7 @@ def main() -> None:
     umbrales = {n: cand.umbrales["umbral"] for n, cand in campeon.candidatos.items()}
     nuevos, en_nuevos, por_zona, resultados, escenarios = None, {}, None, None, None
     if experimental:  # nuevos y escenarios salen del generador: solo tienen sentido con datos sintéticos
-        nuevos = GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos, tasa_retiro=DESARROLLO["tasa_retiro"])
-        nuevos = nuevos.generar()
+        nuevos = asociados_nuevos(args.nuevos, args.semilla_nuevos)
         nuevos = a.foto(nuevos, h) if h else nuevos
         Xn, yn = a.separar(nuevos)
         en_nuevos = {
@@ -318,7 +317,7 @@ def main() -> None:
     with r.corrida("campeon", params, artefactos=artefactos, tags={"campeon": campeon.nombre}):
         r.registrar_datos(df, fuente, "eleccion", fuente)  # versión de los datos (huella, sin copiarlos)
         if nuevos is not None:
-            r.registrar_datos(nuevos, "nuevos", "nuevos", f"GeneradorAsociados(seed={args.semilla_nuevos})")
+            r.registrar_datos(nuevos, "nuevos", "nuevos", f"asociados_nuevos(seed={args.semilla_nuevos})")
         r.registrar_modelos(entrenados, params, metricas_mlflow, titulos=c.TITULOS, guardar_modelo=False)
         propios = {**params, "modelo": campeon.nombre, "umbral": campeon.umbral, "umbral_alto": campeon.umbral_alto}
         with r.corrida(f"campeon_{campeon.nombre}", propios, metricas_mlflow[campeon.nombre], anidada=True):

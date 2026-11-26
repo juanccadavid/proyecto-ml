@@ -101,6 +101,11 @@ def lista_candidatos(X: pd.DataFrame | None = None, random_state: int = 42) -> d
     Las variables nuevas y el binning no entran: su diferencia con la base cabe en el ruido (variables nuevas
     −0,003, IC −0,020 a 0,015).
 
+    Procedencia: esas diferencias salen de un ``make tecnicas`` con el generador v1. Con el generador actual (forma
+    del extracto real) la lista no se volvió a medir; es una lista fija de candidatos, y ``elegir`` los reevalúa en
+    cada corrida con su incertidumbre y reporta los empates. La lista se armó mirando sintéticos de desarrollo, no
+    los asociados nuevos con que se valida al campeón.
+
     Los de Optuna se suman con ``make campeon ARGS="--optuna 30"`` (se afinan con estos mismos datos). Los
     afinados por grilla de ``make afinar`` (Ridge, pycaret_lr) no entran: son Ridge y la logística con otro
     alpha/C, buscados con otros datos (DATOS_ASOCIADOS del .env), no con los de elección.
@@ -614,7 +619,18 @@ def elegir(
     """Evalúa los candidatos (por defecto ``lista_candidatos(X)``), elige el de mejor PR-AUC y lo entrena con todo.
 
     ``honestos``: mide además la regla de umbrales del campeón en validación anidada (``umbrales_honestos``).
+
+    Exige un asociado por fila: la validación cruzada (``StratifiedKFold``) y la interna de TargetEncoder
+    (``logreg_target``) parten por filas, no por asociado. Con el mismo asociado en dos filas (varias fotos), su
+    etiqueta de una fila entraría a evaluar o a codificar la otra (fuga de identidad). Varias fotos van por
+    ``elegir_y_medir``, que valida hacia adelante.
     """
+    if a.IDENTIFICADORES[0] in df and df[a.IDENTIFICADORES[0]].duplicated().any():
+        raise ValueError(
+            f"Hay asociados repetidos ({a.IDENTIFICADORES[0]}): la validación cruzada y la de TargetEncoder parten "
+            "por filas y mezclarían al mismo asociado entre entrenamiento y validación. Una foto por asociado, o "
+            "varias fotos con elegir_y_medir (validación hacia adelante)."
+        )
     X, y = a.separar(df)  # filas crudas: el pipeline prepara las variables (PrepararVariables)
     candidatos = candidatos or lista_candidatos(X)
     evaluados = {
@@ -632,6 +648,7 @@ def elegir(
         "repeticiones": repeticiones,
         "beta": beta,
         "precision_min": precision_min,
+        "variables": a.NUMERICAS + a.CATEGORICAS,  # con qué variables se entrenó: cargar lo compara con el código
         **(info or {}),
     }
     return Campeon(
@@ -682,47 +699,81 @@ def guardar(campeon: Campeon, carpeta: Path, extra: dict | None = None) -> dict[
     }
     joblib.dump(campeon.con_zonas(), rutas["modelo"])
     joblib.dump(campeon.agrupador, rutas["grupos"])
-    contenido = {**resumen(campeon), **(extra or {}), "variables": a.NUMERICAS + a.CATEGORICAS}
+    contenido = {"variables": a.NUMERICAS + a.CATEGORICAS, **resumen(campeon), **(extra or {})}
     texto = json.dumps(contenido, indent=2, ensure_ascii=False, default=str)
     rutas["info"].write_text(texto + "\n", encoding="utf-8", newline="\n")
     return rutas
 
 
 def firma(carpeta: Path) -> str | None:
-    """Huella de los artefactos del campeón en ``carpeta`` (None si falta alguno): cambia cada vez que se guarda.
+    """Huella SHA-256 del CONTENIDO real de los tres artefactos del campeón en ``carpeta`` (None si falta alguno).
 
-    Contenido de ``campeon.json`` (trae la fecha de la elección y las métricas) + tamaño y fecha de modificación de
-    los dos .joblib. Sirve de llave de caché: el simulador vuelve a cargar el campeón justo cuando cambia, sin leer
-    ni deserializar los modelos en cada interacción.
+    Lee los bytes de ``abandono_campeon.joblib``, ``abandono_kmeans.joblib`` y ``campeon.json``: cualquier cambio en el
+    modelo, el agrupador, los umbrales o los metadatos invalida la caché aunque el archivo conserve ruta, tamaño o
+    marca de tiempo.
     """
     import hashlib
 
     rutas = [carpeta / ARCHIVO_MODELO, carpeta / ARCHIVO_GRUPOS, carpeta / ARCHIVO_INFO]
     if not all(r.exists() for r in rutas):
         return None
-    h = hashlib.sha256(rutas[2].read_bytes())
-    for ruta in rutas[:2]:
-        estado = ruta.stat()
-        h.update(f"{ruta.name}:{estado.st_size}:{estado.st_mtime_ns}".encode())
+    h = hashlib.sha256()
+    for ruta in rutas:
+        datos = ruta.read_bytes()
+        h.update(f"{ruta.name}:{len(datos)}:".encode())
+        h.update(datos)
     return h.hexdigest()[:16]
 
 
-def cargar(carpeta: Path):
-    """(modelo, agrupador, info) desde ``carpeta``; None si falta un archivo o el esquema ya no es compatible.
+def firma_modelo(carpeta: Path) -> str | None:
+    """Huella SHA-256 del contenido real de ``abandono_campeon.joblib`` (None si no existe).
 
-    ``modelo`` es un ModeloZonas. Un campeón guardado antes (solo el pipeline) se envuelve con los umbrales de
-    ``campeon.json``. Los artefactos sin la lista exacta de variables se consideran obsoletos: es más seguro volver
-    a elegir el campeón que descubrir la incompatibilidad durante una predicción.
+    Permite que las cachés que dependen solo de la función de puntaje (como SHAP) no se invaliden si cambia únicamente
+    el umbral en ``campeon.json`` o el agrupador KMeans.
+    """
+    import hashlib
+
+    ruta = carpeta / ARCHIVO_MODELO
+    return hashlib.sha256(ruta.read_bytes()).hexdigest()[:16] if ruta.exists() else None
+
+
+class CampeonIncompatible(ValueError):
+    """El campeón guardado se entrenó con otras variables que las del código actual: hay que volver a elegirlo."""
+
+
+def revisar_variables(info: dict) -> None:
+    """``CampeonIncompatible`` si ``info["variables"]`` no son las de ``abandono`` hoy.
+
+    El pipeline guardado recuerda las columnas con que se ajustó, pero ``preparar`` usa las del código actual: si
+    alguien quita una variable (p. ej. CARGO), un campeón viejo falla al predecir; si agrega una, la ignora sin
+    avisar. Un campeón guardado antes de que se registraran las variables no se puede revisar y se acepta.
+    """
+    guardadas = info.get("variables")
+    actuales = a.NUMERICAS + a.CATEGORICAS
+    if guardadas is None or list(guardadas) == actuales:
+        return
+    faltan, sobran = sorted(set(actuales) - set(guardadas)), sorted(set(guardadas) - set(actuales))
+    raise CampeonIncompatible(
+        f"El campeón de models/ se entrenó con otras variables (nuevas en el código: {faltan}; ya no están: "
+        f"{sobran}). Vuelve a elegirlo con `make campeon`."
+    )
+
+
+def cargar(carpeta: Path):
+    """(modelo, agrupador, info) desde ``carpeta``; None si falta alguno de los tres archivos.
+
+    ``modelo`` es un ModeloZonas sincronizado siempre con ``umbral`` y ``umbral_alto`` de ``campeon.json`` (así un
+    ajuste de umbral en ``campeon.json`` actualiza también ``modelo.predict``). ``CampeonIncompatible`` si se entrenó
+    con otras variables (``revisar_variables``).
     """
     rutas = [carpeta / ARCHIVO_MODELO, carpeta / ARCHIVO_GRUPOS, carpeta / ARCHIVO_INFO]
     if not all(r.exists() for r in rutas):
         return None
     info = json.loads(rutas[2].read_text(encoding="utf-8"))
-    if info.get("variables") != a.NUMERICAS + a.CATEGORICAS:
-        return None
-    modelo = joblib.load(rutas[0])
-    if not isinstance(modelo, ModeloZonas):
-        modelo = ModeloZonas(modelo, info["umbral"], info["umbral_alto"])
+    revisar_variables(info)  # antes de deserializar: un modelo de otra versión puede ni siquiera cargar
+    cargado = joblib.load(rutas[0])
+    base = cargado.modelo if isinstance(cargado, ModeloZonas) else cargado
+    modelo = ModeloZonas(base, info["umbral"], info.get("umbral_alto"))
     return modelo, joblib.load(rutas[1]), info
 
 

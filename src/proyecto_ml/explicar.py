@@ -33,16 +33,23 @@ _SUBE, _BAJA = "#e34948", "#2a78d6"  # par divergente de la paleta de referencia
 _TINTA, _GRIS = "#0b0b0b", "#898781"
 
 
-def _preparadas(df: pd.DataFrame) -> pd.DataFrame:
+def _variables() -> list[str]:
+    return a.NUMERICAS + a.CATEGORICAS
+
+
+def _preparadas(df: pd.DataFrame, variables: list[str] | None = None) -> pd.DataFrame:
     """Las variables del modelo, venga ``df`` crudo (con FECHANACIMIENTO) o ya preparado."""
-    return a.preparar(df) if "FECHANACIMIENTO" in df else df[VARIABLES]
+    columnas = variables or _variables()
+    return a.preparar(df) if "FECHANACIMIENTO" in df else df[columnas]
 
 
 class _Codigos:
     """Categóricas <-> códigos numéricos (vacío = NaN), para pasar por el masker de SHAP y volver."""
 
     def __init__(self, X: pd.DataFrame):
-        self.categorias = {c: pd.Index(X[c].dropna().unique()) for c in a.CATEGORICAS}
+        self.columnas = list(X.columns)
+        self.categoricas = [c for c in self.columnas if c in a.CATEGORICAS]
+        self.categorias = {c: pd.Index(X[c].dropna().unique()) for c in self.categoricas}
 
     def ampliar(self, X: pd.DataFrame) -> None:
         """Agrega al final las categorías no vistas (p. ej. una ciudad nueva): los códigos viejos no cambian."""
@@ -57,7 +64,7 @@ class _Codigos:
         return X.to_numpy(dtype=float)
 
     def a_tabla(self, valores: np.ndarray) -> pd.DataFrame:
-        X = pd.DataFrame(valores, columns=VARIABLES)
+        X = pd.DataFrame(valores, columns=self.columnas)
         for c, categorias in self.categorias.items():
             codigo = X[c]
             texto = np.asarray(categorias, dtype=object)[codigo.fillna(0).astype(int)]
@@ -86,22 +93,29 @@ class Explicador:
 
     def contribuciones(self, filas: pd.DataFrame) -> pd.DataFrame:
         """Filas x variables: cuánto sube (+) o baja (-) cada variable el puntaje de cada asociado."""
-        X = _preparadas(filas)
+        X = _preparadas(filas, self.codigos.columnas)
         self.codigos.ampliar(X)
         # PermutationExplainer sortea permutaciones con el generador global de numpy y solo lo siembra al crearse:
         # sin volver a sembrar, el mismo asociado tendría una explicación un poco distinta en cada llamada.
+        # Se restaura el estado al terminar: sembrar el generador global no debe cambiar el azar de otro código.
+        estado = np.random.get_state()  # noqa: NPY002
         np.random.seed(self.random_state)  # noqa: NPY002 (es el generador que usa SHAP por dentro)
-        resultado = self._shap(self.codigos.a_numeros(X), silent=True)
-        return pd.DataFrame(resultado.values, index=X.index, columns=VARIABLES)
+        try:
+            resultado = self._shap(self.codigos.a_numeros(X), silent=True)
+        finally:
+            np.random.set_state(estado)  # noqa: NPY002
+        return pd.DataFrame(resultado.values, index=X.index, columns=self.codigos.columnas)
 
     def explicar(self, fila: pd.DataFrame) -> pd.DataFrame:
         """Un asociado (la primera fila): variable, su valor y su contribución, de la mayor a la menor |contribución|.
 
         ``base`` + la suma de ``contribucion`` da exactamente el puntaje del modelo para ese asociado.
         """
-        X = _preparadas(fila).iloc[[0]]
+        X = _preparadas(fila, self.codigos.columnas).iloc[[0]]
         contribucion = self.contribuciones(X).iloc[0]
-        tabla = pd.DataFrame({"variable": VARIABLES, "valor": X.iloc[0].to_numpy(), "contribucion": contribucion})
+        tabla = pd.DataFrame(
+            {"variable": self.codigos.columnas, "valor": X.iloc[0].to_numpy(), "contribucion": contribucion}
+        )
         orden = tabla["contribucion"].abs().sort_values(ascending=False, kind="stable").index
         return tabla.loc[orden].reset_index(drop=True)
 

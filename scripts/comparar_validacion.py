@@ -51,7 +51,7 @@ def main() -> None:
     if h:
         df = a.foto(df, h)
     print(
-        f"Datos: {fuente} · foto a {h or 0} meses · {len(df)} asociados, "
+        f"Datos: {fuente} · t0 = corte, horizonte {h or 0} meses · {len(df)} asociados, "
         f"{int(a.objetivo_binario(df).sum())} eventos futuros sintéticos"
     )
     print(aviso_origen())

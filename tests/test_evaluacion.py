@@ -108,6 +108,40 @@ def test_regresion_sin_fuga_y_referencia(datos):
     assert (tabla[g.ERRORES] > 0).all().all()  # errores en positivo (sklearn los da negativos)
 
 
+def test_regresion_no_aprende_salarios_imposibles():
+    df = GeneradorAsociados(n=50, seed=3).generar()
+    df.loc[0, "SALARIO"] = 987_654  # relleno del extracto real
+    df.loc[1, "SALARIO"] = 32_421_080_000  # error de digitación
+    X, y = g.separar(df)
+    assert {0, 1}.isdisjoint(X.index) and len(X) == len(df) - 2
+    assert y.between(*a.SALARIO_PLAUSIBLE).all()
+
+
+def test_reserva_no_se_usa_para_elegir_y_mide_al_elegido(datos):
+    _, nuevos = datos
+    X_todos, y_todos = g.separar(nuevos)
+    X, X_reserva, y, y_reserva = g.separar_reserva(X_todos, y_todos)
+    assert X.index.intersection(X_reserva.index).empty  # disjuntas
+    assert len(X_reserva) == pytest.approx(g.FRACCION_RESERVA * len(X_todos), abs=1)
+    assert g.separar_reserva(X_todos, y_todos)[1].index.equals(X_reserva.index)  # reproducible
+    medidas = g.medir_en_reserva(g.modelos(), ["ridge", "media"], X, y, X_reserva, y_reserva)
+    assert set(medidas) == {"ridge", "media"} and set(medidas["ridge"]) == {"MAE", "MSE", "RMSE", "R2", "MdAPE"}
+    assert medidas["media"]["R2"] <= 0.01  # el promedio de la parte de elección no explica la reserva
+
+
+def test_error_por_tramo_y_figura_agregada_sin_salarios_individuales():
+    rng = np.random.default_rng(0)
+    y = rng.lognormal(15, 0.3, 500)
+    prediccion = y * rng.normal(1, 0.1, 500)
+    tabla = g.error_por_tramo(y, prediccion)
+    assert list(tabla.index) == [1, 2, 3, 4, 5] and tabla["asociados"].sum() == 500
+    assert tabla["predicho_medio"].is_monotonic_increasing  # quintiles del salario predicho
+    assert g.metricas(y, prediccion)["MdAPE"] == pytest.approx(np.median(np.abs(y - prediccion) / y))
+    fig = g.figura_por_tramo(tabla, "prueba")
+    # La figura de los datos reales lleva un valor por tramo, nunca uno por asociado.
+    assert all(len(traza.y) == len(tabla) for traza in fig.data)
+
+
 # ---------------------------------------------------------------- Optuna: hiperparámetros comunes del bosque
 
 

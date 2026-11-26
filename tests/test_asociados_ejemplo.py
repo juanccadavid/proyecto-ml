@@ -1,14 +1,18 @@
 """Generador sintético alineado con el contrato definitivo."""
 
+from pathlib import Path
+
 import pandas as pd
 
 from proyecto_ml import contrato as k
 from proyecto_ml.generador import (
     DESARROLLO,
+    FALTANTES,
     FECHA_CORTE,
     GRUPOS,
     TARGET_SINTETICO,
     GeneradorAsociados,
+    asociados_nuevos,
     datos_desarrollo,
     diccionario,
 )
@@ -64,3 +68,21 @@ def test_datos_desarrollo_reproducibles():
     assert set(a[TARGET_SINTETICO].unique()) == {0, 1}
     assert not a[TARGET_SINTETICO].equals((a["#RETIROS"] > 0).astype(int))
     pd.testing.assert_frame_equal(a, b)
+
+
+def test_asociados_nuevos_tienen_la_prevalencia_de_desarrollo():
+    """Validar con otra tasa de retiro cambia la prevalencia: precisión, PR-AUC y umbral dejan de ser comparables."""
+    nuevos, desarrollo = asociados_nuevos(5000, seed=2026), datos_desarrollo()
+    assert abs(nuevos[TARGET_SINTETICO].mean() - desarrollo[TARGET_SINTETICO].mean()) < 0.02
+    assert abs(nuevos[TARGET_SINTETICO].mean() - DESARROLLO["tasa_retiro"]) < 0.02
+    assert asociados_nuevos(300, seed=2026, faltantes=FALTANTES).isna().any().any()
+
+
+def test_los_scripts_validan_con_nuevos_de_la_misma_prevalencia():
+    """Antes abandono, afinar, optuna y pycaret entrenaban con 10 % de retiros y validaban con 27 %."""
+    scripts = Path(__file__).resolve().parents[1] / "scripts"
+    nombres = ["modelo_abandono", "afinar_modelos", "afinar_optuna", "comparar_pycaret", "elegir_campeon"]
+    for nombre in [*nombres, "regresion_salario"]:
+        codigo = (scripts / f"{nombre}.py").read_text(encoding="utf-8")
+        assert "asociados_nuevos(" in codigo, nombre
+        assert "GeneradorAsociados(" not in codigo, nombre

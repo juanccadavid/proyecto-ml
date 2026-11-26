@@ -39,8 +39,12 @@ if TYPE_CHECKING:
 
 TARGET = TARGET_SINTETICO
 RETIROS_HISTORICOS = "#RETIROS"
-FECHA_CORTE = pd.Timestamp(fecha_corte())  # FECHA_CORTE del .env; por defecto la de los sintéticos
-# Fecha de referencia usada para documentar el horizonte del lote.
+FECHA_CORTE = pd.Timestamp(fecha_corte())  # FECHA_CORTE del .env; por defecto la del extracto real
+# Diseño temporal (contrato v2): el fondo mide TODAS las variables al corte C (edad y antigüedades a C, conteos
+# ULT3MES en los tres meses anteriores a C, #RETIROS acumulado hasta C). La foto es entonces t0 = C y el evento a
+# predecir, el retiro confirmado del fondo en (C, C + HORIZONTE_MESES]. Ese evento no existe en el extracto real
+# (todos están activos y no hay seguimiento posterior); en los sintéticos lo simula EVENTO_RETIRO_3M_SINTETICO.
+# Una solicitud de retiro parcial o de cancelación es una señal medida en C, no el evento.
 HORIZONTE_MESES = 3
 FECHA_OBSERVACION = "FECHA_OBSERVACION"
 
@@ -67,10 +71,9 @@ COMPORTAMIENTO = [
     "#CANTIDAD_AHORROSCONTRACTUALES",
     "#CANTIDAD_SERVICIOS",
 ]
-# Temporalidad: EDAD y las antigüedades ya llegan calculadas. Los conteos de COMPORTAMIENTO llegan sin fecha
-# propia: el código no puede saber si son a t0 o a la fecha de
-# extracción. Si son a la extracción, para los retirados incluyen lo que pasó después de t0 (fuga). Lo confirma
-# el fondo; mientras tanto, una evaluación con datos reales queda marcada (config.temporalidad_confirmada).
+# Temporalidad (contrato v2): EDAD y las antigüedades llegan medidas al corte C, y los conteos ULT3MES cubren
+# (C - 3 meses, C]. Si algún lote futuro midiera conteos después del evento en vez de al corte t0 = C, habría fuga
+# temporal; ``config.temporalidad_confirmada`` registra esa verificación.
 CONTEOS_SIN_FECHA = COMPORTAMIENTO
 NUMERICAS = [
     *COMPORTAMIENTO,
@@ -104,9 +107,8 @@ CATEGORICAS = [
 # no agrega información; partiría la importancia de la profesión entre dos columnas y le daría doble peso en los
 # modelos lineales. Sigue en el contrato porque el extracto lo trae.
 DUPLICADAS = ["CARGO"]
-# Lo mismo, con menos riesgo, para los atributos: el extracto trae su valor a la extracción (o al retiro), no a t0.
-# Un ascenso o un cambio de agencia entre t0 y el retiro se vería "antes" de tiempo. Se confirma con el fondo junto
-# con los conteos (TEMPORALIDAD_CONFIRMADA); SEXO no cambia.
+# Atributos medidos en el corte C (t0 = C). Si en un lote con seguimiento futuro se actualizaran después del evento,
+# introducirían fuga temporal; SEXO es invariante.
 ATRIBUTOS_SIN_FECHA = [c for c in ["SALARIO", *CATEGORICAS] if c != "SEXO"]
 # Las únicas que tiene sentido recortar (clip_outliers): continuas. Los conteos de COMPORTAMIENTO casi
 # siempre valen 0, su IQR queda en [0, 0] y recortarlos borraría a quienes sí tienen solicitudes.
@@ -129,40 +131,58 @@ SENAL_RIESGO = {
 }
 
 
-def fecha_observacion(horizonte_meses: int = HORIZONTE_MESES, corte: pd.Timestamp = FECHA_CORTE) -> pd.Timestamp:
-    """t0: la fecha de la foto, ``horizonte_meses`` antes del corte."""
-    return pd.Timestamp(corte) - pd.DateOffset(months=horizonte_meses)
+_CORTE_INICIAL = FECHA_CORTE
 
 
-def foto(df: pd.DataFrame, horizonte_meses: int = HORIZONTE_MESES, corte: pd.Timestamp = FECHA_CORTE) -> pd.DataFrame:
-    """Conserva el lote y anota t0 = corte - horizonte.
+def _corte_efectivo(corte: pd.Timestamp | str | None = None) -> pd.Timestamp:
+    if corte is not None:
+        return pd.Timestamp(corte)
+    configurado = pd.Timestamp(fecha_corte())
+    return configurado if configurado != _CORTE_INICIAL else FECHA_CORTE
 
-    El esquema real trae ``#RETIROS`` como historia acumulada y no incluye una etiqueta futura. Solo los datos
-    sintéticos llevan ``EVENTO_RETIRO_3M_SINTETICO``; por eso un único extracto real no permite entrenar ni evaluar
-    la pregunta de retiro en los próximos tres meses.
+
+def fecha_observacion(corte: pd.Timestamp | str | None = None) -> pd.Timestamp:
+    """t0: la fecha de la foto, que es el corte C (ahí mide el fondo todas las variables)."""
+    return _corte_efectivo(corte)
+
+
+def fin_horizonte(horizonte_meses: int = HORIZONTE_MESES, corte: pd.Timestamp | str | None = None) -> pd.Timestamp:
+    """Fin de la ventana del evento: el retiro a predecir cae en (C, C + horizonte]."""
+    return fecha_observacion(corte) + pd.DateOffset(months=horizonte_meses)
+
+
+def foto(
+    df: pd.DataFrame, horizonte_meses: int = HORIZONTE_MESES, corte: pd.Timestamp | str | None = None
+) -> pd.DataFrame:
+    """La foto del lote en t0 = corte: no filtra filas ni toca la etiqueta; anota t0 y deja el horizonte en
+    ``attrs``.
+
+    Las variables ya vienen medidas al corte, así que la ventana del evento es posterior: (t0, t0 + horizonte]. En
+    el esquema anterior (con fecha de retiro) la foto se tomaba antes del corte y el evento caía entre la foto y el
+    corte; con variables medidas al corte, esa definición pondría el evento antes de la medición (fuga temporal).
+    El extracto real no trae el evento: solo los sintéticos llevan ``EVENTO_RETIRO_3M_SINTETICO``.
     """
     vista = df.copy()
-    vista[FECHA_OBSERVACION] = fecha_observacion(horizonte_meses, corte)
+    vista[FECHA_OBSERVACION] = fecha_observacion(corte)
+    vista.attrs |= {"horizonte_meses": horizonte_meses, "fin_horizonte": fin_horizonte(horizonte_meses, corte)}
     return vista
 
 
-def resumen_foto(df: pd.DataFrame, horizontes=(1, 3, 6, 12), corte: pd.Timestamp = FECHA_CORTE) -> pd.DataFrame:
-    """Para el EDA: por horizonte, la fecha t0, cuántos asociados entran a la foto y cuántos se retiran."""
-    filas = []
-    for h in horizontes:
-        vista = foto(df, h, corte)
-        y = objetivo_binario(vista)
-        filas.append(
+def resumen_foto(df: pd.DataFrame, corte: pd.Timestamp | str | None = None) -> pd.DataFrame:
+    """Para el EDA: la foto (t0), la ventana del evento y cuántos asociados lo tienen. Una fila: la etiqueta
+    sintética es a ``HORIZONTE_MESES`` y no cambia con otro horizonte."""
+    y = objetivo_binario(df)
+    return pd.DataFrame(
+        [
             {
-                "horizonte_meses": h,
-                "fecha_observacion": fecha_observacion(h, corte).date(),
-                "asociados": len(vista),
-                "se_retiran": int(y.sum()),
-                "tasa_retiro": float(y.mean()) if len(vista) else float("nan"),
-                "fuera_de_la_foto": len(df) - len(vista),  # retirados antes de t0 o ingresados después
+                "fecha_observacion": fecha_observacion(corte).date(),
+                "fin_horizonte": fin_horizonte(HORIZONTE_MESES, corte).date(),
+                "asociados": len(df),
+                "con_evento": int(y.sum()),
+                "tasa_evento": float(y.mean()) if len(df) else float("nan"),
             }
-        )
-    return pd.DataFrame(filas).set_index("horizonte_meses")
+        ]
+    )
 
 
 def valores_imposibles(X: pd.DataFrame) -> pd.DataFrame:

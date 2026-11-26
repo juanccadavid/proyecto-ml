@@ -2,21 +2,34 @@
 
 [![CI](https://github.com/juanccadavid/proyecto-ml/actions/workflows/ci.yml/badge.svg)](https://github.com/juanccadavid/proyecto-ml/actions/workflows/ci.yml)
 
-**Predicción de abandono de asociados de un fondo de empleados**, de punta a punta y con datos sintéticos.
+**Predicción de abandono de asociados de un fondo de empleados**, de punta a punta. El clasificador de abandono se
+entrena y se evalúa solo con datos sintéticos; el extracto real anonimizado se usa para segmentación, regresión
+del salario y un puntaje sin validar.
 
 **Problema:** anticipar qué asociados de un fondo de empleados se van a retirar en los próximos 3 meses, para
 contactarlos a tiempo. Retener a un asociado cuesta menos que reemplazarlo, y el retiro es raro (pocos de cada
 100), así que el modelo tiene que encontrar a los pocos que se van sin llenar de falsas alarmas al equipo.
 
+**Definición:** para cada asociado activo al corte C, con variables medidas en C, el evento es su retiro
+confirmado del fondo en (C, C + 3 meses]. Una solicitud de retiro parcial o de cancelación es una señal medida en
+C, no el evento. El extracto real no trae ese evento, así que la etiqueta solo existe en los datos sintéticos
+(detalle en [docs/metodologia.md](docs/metodologia.md#definición-del-problema-la-foto-del-asociado-y-el-horizonte)).
+
 **Cómo:** contrato de datos → anonimización → foto del asociado en t0 (sin fuga de información) → pipeline de
 scikit-learn → campeón por PR-AUC en validación cruzada repetida, con umbrales medidos en validación anidada y
-una prueba de estrés temporal → MLflow → predicción, simulador en Streamlit con SHAP y segmentos (KMeans, DBSCAN).
+escenarios de señal débil → MLflow → predicción, simulador en Streamlit con SHAP y segmentos (KMeans, DBSCAN).
 
-> **Estado (nov-2026): todo el sistema corre y está probado, pero solo con DATOS SINTÉTICOS.** El extracto real
-> del fondo no ha llegado. Las métricas de este README salen del generador (`generador.py`): prueban que el
-> sistema funciona, **no** cómo le irá al modelo con el fondo. Para datos reales hacen falta el extracto
-> anonimizado y, en el `.env`, `ORIGEN_DATOS=real_anonimizado`, `FECHA_CORTE` y `DATOS_ASOCIADOS` (ver
-> "Datos sintéticos y datos reales"), además de confirmar la temporalidad con el fondo.
+> **Estado (nov-2026).** El extracto real anonimizado llegó (un solo corte, 2026-03-31) y se usa **solo en
+> local** (`make real`): no tiene una etiqueta de retiro futuro y el fondo no puede construirla.
+>
+> | Componente | Entrena con | Se evalúa con |
+> |---|---|---|
+> | Clasificación de abandono | sintéticos | sintéticos: prueban el pipeline, **no** cómo le irá al modelo con el fondo |
+> | Segmentación | extracto real | estabilidad (semillas, bootstrap, k); es exploratoria |
+> | Regresión del salario | extracto real | reserva del 20 % frente a predecir el promedio; estimación transversal |
+> | Predicción sobre el extracto | campeón sintético | **sin validación** contra retiros reales; la validación adversaria muestra que el perfil real está fuera de lo que vio el modelo (el comportamiento no) |
+>
+> Ver "Datos sintéticos y datos reales" y [docs/datos_reales.md](docs/datos_reales.md).
 
 > **¿Nuevo en el proyecto?** Empieza por [`docs/guia_comandos.txt`](docs/guia_comandos.txt): Git, uv, Make,
 > imports, contratos, pipeline y generador de datos, con los comandos de este proyecto.
@@ -66,10 +79,10 @@ make tipos                   # mypy sobre src/proyecto_ml (también en el CI)
 make check                   # lint + tipos + pruebas, antes de abrir un PR
 ```
 
-**Pruebas** (`tests/`, pytest): `make test` corre todas (unas 310, unos 2-3 minutos). Cubren contrato de datos,
-anonimización y PII, la foto y la fuga de información, el pipeline, el campeón y sus umbrales, la validación
-temporal, la predicción, MLflow, el simulador (Streamlit `AppTest`) y los scripts. Para una sola:
-`uv run pytest -q tests/test_campeon.py`.
+**Pruebas** (`tests/`, pytest): `make test` corre todas (unas 235; con cobertura, unos 5 minutos en un
+portátil). Cubren contrato de datos, anonimización y PII, la foto y la fuga de información, el pipeline, el campeón
+y sus umbrales, la partición temporal sintética, la segmentación, la regresión, la predicción, MLflow, el simulador
+(Streamlit `AppTest`) y los scripts. Para una sola: `uv run pytest -q tests/test_campeon.py`.
 
 `make` (sin argumentos) lista todos los objetivos. Sin `make`, cada objetivo del `Makefile` muestra
 el comando `uv run ...` equivalente.
@@ -137,15 +150,19 @@ el equipo de desarrollo** (no tiene Docker): Docker Desktop en Windows y abrir e
 
 ## Resultados
 
-Las métricas versionadas anteriores correspondían al contrato de 74 columnas y dejaron de ser comparables. Tras
-la migración al esquema definitivo, `make campeon` vuelve a calcularlas con 5.000 asociados sintéticos. Esas cifras
-solo verifican el funcionamiento del pipeline; no describen al fondo ni sustituyen una evaluación temporal real.
+Las métricas versionadas anteriores correspondían a otro contrato/generador y dejaron de ser comparables. En la
+reproducción local del 25-nov-2026, `make pipeline` usó 5.000 filas y 503 etiquetas sintéticas (10,1 %); el
+Random Forest obtuvo PR-AUC 0,568 ± 0,043 en validación cruzada repetida. Esas cifras solo muestran qué tan bien
+los candidatos recuperan las reglas del generador; no describen al fondo ni sustituyen una evaluación temporal
+real. El clasificador sintético-real adversario da ROC-AUC 1,00 con todas las variables y 0,60 con comportamiento,
+lo que evidencia desplazamiento de dominio, no acierto de abandono.
 
-Solo habrá un corte real y `#RETIROS` cuenta retiros acumulados durante la permanencia. No es la etiqueta de los
-próximos tres meses; por ello el proyecto bloquea el entrenamiento supervisado del abandono con ese extracto. Lo
-que no necesita etiqueta sí corre con él (`make real`): la segmentación, la regresión del salario y la predicción
-con el campeón entrenado con sintéticos, que hablan los mismos campos y códigos que el extracto. Ver
-[docs/datos_reales.md](docs/datos_reales.md).
+Solo habrá un corte real y `#RETIROS` cuenta retiros previos de asociados que volvieron a ingresar. No es la
+etiqueta de los próximos tres meses, y el fondo confirmó que no puede saber quién se retiró después del corte; por
+ello el proyecto bloquea el entrenamiento supervisado del abandono con ese extracto. Lo que no necesita etiqueta
+sí corre con él (`make real`): la segmentación (exploratoria), la regresión del salario (medida en una reserva) y
+la predicción con el campeón entrenado con sintéticos (sin validación real). Los resultados con el extracto se
+quedan en local y no se publican. Ver [docs/datos_reales.md](docs/datos_reales.md).
 
 ## Arquitectura
 
@@ -206,16 +223,19 @@ flowchart TD
         SUPA -->|"make supabase-bajar"| RAW
         GEN["GeneradorAsociados (sintético)"] -->|"make datos-desarrollo"| DEV["data/processed: 5.000 de desarrollo"]
     end
-    RAW --> CONTRATO
-    DEV --> CONTRATO
-    CONTRATO{"Paso 2: Contrato de datos<br/>make contrato-ml"} -->|cumple| SUP["Paso 3a: Supervisado: candidatos<br/>preparar → preprocesar → modelo"]
-    CONTRATO --> NOSUP["Paso 3b: No supervisado<br/>make segmentos: KMeans y DBSCAN"]
+    DEV --> CSINT{"Paso 2: Contrato<br/>make contrato"}
+    RAW --> CREAL{"Paso 2: Contrato<br/>make contrato-ml"}
+    CSINT -->|"con etiqueta sintética"| SUP["Paso 3a: Supervisado: candidatos<br/>preparar → preprocesar → modelo"]
+    CSINT --> NOSUP["Paso 3b: No supervisado<br/>make segmentos: KMeans y DBSCAN"]
     SUP --> CAMP["Paso 5: Campeón: make campeon<br/>PR-AUC en CV repetida, empates,<br/>umbrales anidados, zonas"]
     CAMP --> MOD[("models/ + MLflow<br/>abandono@campeon")]
     MOD --> PRED["Paso 6: make predecir<br/>zona, alerta, grupo"]
     MOD --> APP["Simulador Streamlit<br/>SHAP + mapa de segmentos"]
     NOSUP --> APP
-    CI["Paso 7: CI en cada push<br/>pruebas + make pipeline"] -.-> CAMP
+    CREAL -->|"sin etiqueta: no entrena el abandono"| REAL["make real (solo local)<br/>segmentos-real · regresion-real"]
+    CREAL --> PREAL["predecir-real<br/>campeón sintético, sin validación real"]
+    MOD --> PREAL
+    CI["Paso 7: CI en cada push<br/>pruebas + make pipeline (sintéticos)"] -.-> CAMP
 ```
 
 | Paso | Qué pasa | Comando | Dónde |
@@ -224,33 +244,37 @@ flowchart TD
 | **2. Contrato** | Columnas, tipos, rangos y reglas del negocio. Un lote que no cumple no sigue. | `make contrato DATA=...` (o `scripts/ingesta.py --contrato contratos/asociados.yaml`) | `contratos/asociados.yaml`, `contrato.py` |
 | **3. Preparación** | Selecciona los predictores permitidos. Usa `EDAD`, `ANTIGUEDAD_F_MESES` y `ANTIGUEDAD_LA_MESES`; excluye identificadores, contacto, fechas crudas y estado. | incluido en todos los pipelines | `abandono.preparar` |
 | **4a. Supervisado** | Un solo pipeline para todos los modelos: preparar → preprocesar (imputar, codificar, escalar, recortar) → modelo. Los candidatos son una lista fija (`campeon.lista_candidatos`): los 4 supervisados y la logística sin balancear y con TargetEncoder, que ganaron de forma concluyente en un `make tecnicas` anterior. | `make tecnicas`, `make validacion` | `abandono.armar_pipeline`, `features.py`, `tecnicas.py` |
-| **4b. No supervisado** | Segmentos por comportamiento, sin ver el retiro. Los atípicos de DBSCAN concentran el retiro. | `make segmentos` | `segmentacion.py` |
-| **5. Campeón** | Gana la mejor PR-AUC en validación cruzada repetida (5 × 3), con su incertidumbre: ± entre particiones, intervalo bootstrap y empates. Los umbrales (F2 y precisión ≥ 0,8) se miden también en validación anidada. Se valida además en el tiempo (entrena con la foto vieja, mide en la reciente con el umbral de la vieja) y, con sintéticos, con asociados nuevos y escenarios de señal débil. | `make campeon` | `campeon.py`, `validacion.py`, `explicar.py` (SHAP) |
-| **6. Uso** | El campeón guardado recibe una fila con las variables requeridas y devuelve puntaje, zona, alerta y grupo sin copiar identificadores. | `make predecir DATA=...`, `make simulador` | `predict.py`, `app_abandono.py` |
+| **4b. No supervisado** | Segmentos sin ver el retiro. Con sintéticos, por comportamiento (los atípicos de DBSCAN concentran el evento sintético). Con el extracto real, por comportamiento y perfil (`--perfil`, k = 5 exploratorio; estabilidad en la metodología). | `make segmentos`, `make segmentos-real` | `segmentacion.py` |
+| **5. Campeón** | Solo con sintéticos. Gana la mejor PR-AUC en validación cruzada repetida (5 × 3), con su incertidumbre: ± entre particiones, intervalo bootstrap y empates. Los umbrales (F2 y precisión ≥ 0,8) se miden también en validación anidada. Se valida además con asociados nuevos del generador y escenarios de señal débil. Con un solo corte no hay validación temporal. | `make campeon` | `campeon.py`, `validacion.py`, `explicar.py` (SHAP) |
+| **6. Uso** | El campeón guardado recibe una fila con las variables requeridas y devuelve puntaje, zona, alerta y grupo sin copiar identificadores. Sobre el extracto real es un orden de revisión sin validación. | `make predecir DATA=...`, `make predecir-real`, `make simulador` | `predict.py`, `app_abandono.py` |
 | **7. CI** | En cada push: lint, pruebas y el flujo completo, con el resumen del campeón y los resultados como artefacto. | `make pipeline` (lo mismo en local) | `.github/workflows/ci.yml`, `scripts/resumen_campeon.py` |
 
 ## Datos sintéticos y datos reales
 
-Hoy todo corre con **datos sintéticos** (`GeneradorAsociados`): sirven para construir y probar el sistema, **no son
-evidencia** de cómo le irá al modelo con el fondo. El extracto real sirve para validar el esquema y, cuando exista
-un modelo entrenado con una etiqueta futura válida, para predecir; hoy no sirve para entrenar el clasificador:
+Los **datos sintéticos** (`GeneradorAsociados`) sirven para construir y probar el sistema y son los únicos con
+etiqueta de abandono: **no son evidencia** de cómo le irá al modelo con el fondo. El **extracto real** (local,
+nunca en Git) valida el esquema y alimenta lo que no necesita etiqueta; no sirve para entrenar ni evaluar el
+clasificador:
 
 ```bash
 ORIGEN_DATOS=sintetico            # por defecto
-ORIGEN_DATOS=real_anonimizado     # make campeon se detiene: falta la etiqueta futura
+ORIGEN_DATOS=real_anonimizado     # lo ponen los objetivos *-real; make campeon se detiene: falta la etiqueta futura
 ```
 
 | | `sintetico` | `real_anonimizado` |
 |---|---|---|
-| De dónde salen los datos | `--datos`, o `data/processed/asociados_desarrollo.parquet`, o el generador en memoria | **solo** `--datos` (sin él, falla: nunca cae en los generados) |
+| De dónde salen los datos | `--datos`, o `data/processed/asociados_desarrollo.parquet`, o el generador en memoria | **solo** `--datos` (los objetivos `*-real` usan `data/raw/DataAnonimizada.xlsx`); sin él, falla: nunca cae en los generados |
 | Contrato de datos | 44 columnas reales + una etiqueta futura solo sintética | contrato v2 de 44 columnas como lista blanca; el error dice cantidades y columnas, **sin valores** (`contrato.sin_valores`). Ver [docs/privacidad.md](docs/privacidad.md) |
-| Entrenamiento supervisado | sí, experimental | no disponible: falta seguimiento futuro |
-| MLflow | experimentos `abandono`, `salario`; modelo `abandono` | no se registra un campeón de abandono sin etiqueta válida |
-| Etiqueta en consola, `campeon.json`, resumen del CI y simulador | **MODO SINTÉTICO: resultados experimentales** | no aplica al entrenamiento actual |
+| Clasificación de abandono | entrena y evalúa, experimental | no disponible: falta seguimiento futuro |
+| Segmentación | `make segmentos` | `make segmentos-real` (modo perfil, exploratoria) |
+| Regresión del salario | `make regresion` | `make regresion-real` (reserva del 20 %, transversal) |
+| Predicción | `make predecir` | `make predecir-real`: campeón sintético, **sin validación** contra retiros reales; imprime un aviso y el parecido con los sintéticos (`validacion.desplazamiento`) |
+| MLflow | experimentos `abandono`, `salario`; modelo `abandono` | experimentos con sufijo `_real`; no se registra un campeón de abandono |
+| Marca en consola, figuras y simulador | **MODO SINTÉTICO: resultados experimentales** | **DATOS REALES ANONIMIZADOS**; figuras sin detalle individual |
 
-Con datos reales, `make contrato-ml` valida las 44 columnas sin mostrar valores. `make campeon` se detiene de
-forma explícita por ausencia de la etiqueta futura. Las figuras sintéticas llevan la marca "DATOS SINTÉTICOS ·
-resultado experimental".
+Con datos reales, `make contrato-ml` valida las 44 columnas sin mostrar valores y `make campeon` se detiene de
+forma explícita por ausencia de la etiqueta futura. Los resultados con el extracto se quedan en `reports/` y
+`data/processed/`, ignorados por Git, y sus cifras no se publican.
 
 ## Limitaciones
 
@@ -278,7 +302,7 @@ de aprobación: [`docs/licencia.md`](docs/licencia.md)).
 | [`docs/privacidad.md`](docs/privacidad.md) | Custodia del archivo anonimizado, lista blanca de 44 columnas, exclusión de identificadores y salida sin datos individuales |
 | [`docs/mlflow.md`](docs/mlflow.md) | Experimentos y modelo registrado en MLflow, la versión liviana de los datos |
 | [`docs/datos_reales.md`](docs/datos_reales.md) | Estado del extracto local, respuestas del fondo, validación y límites del corte único |
-| [`docs/diccionario_datos.md`](docs/diccionario_datos.md) | Significado de los códigos de estudios, estado civil y tipo de contrato; alcance de sus nombres de columna |
+| [`docs/diccionario_datos.md`](docs/diccionario_datos.md) | Significado de los códigos de estudios, estado civil y tipo de contrato, que el contrato exige como valores válidos |
 | [`docs/licencia.md`](docs/licencia.md) | Propuesta de licencia (MIT, pendiente de aprobación), qué cubre y las licencias de las dependencias |
 | [`docs/guia_comandos.txt`](docs/guia_comandos.txt) | Guía para empezar: Git, uv, Make, imports, contratos y cada comando del proyecto |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Ramas, commits y Pull Requests |

@@ -40,9 +40,10 @@ from sklearn.pipeline import Pipeline
 from proyecto_ml import abandono as a
 from proyecto_ml import registro as r
 from proyecto_ml.campeon import DatosInvalidos, datos_exploracion
-from proyecto_ml.config import FIGURES_DIR, METRICS_DIR, get_settings
+from proyecto_ml.config import FIGURES_DIR, METRICS_DIR
+from proyecto_ml.datos_campeon import nombre_fuente
 from proyecto_ml.evaluate import COLUMNAS_COMPARATIVA, compute_metrics, resaltar, tabla_comparativa
-from proyecto_ml.generador import GeneradorAsociados
+from proyecto_ml.generador import asociados_nuevos
 
 # Ids de PyCaret. Bagging: rf, et. Boosting: ada, gbc, lightgbm.
 MODELOS = ["lr", "rf", "et", "ada", "gbc", "lightgbm"]
@@ -71,7 +72,10 @@ def experimento(train: pd.DataFrame, folds: int = 5) -> tuple[pd.DataFrame, dict
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument(
-        "--datos", type=Path, default=get_settings().datos_asociados, help="Por defecto DATOS_ASOCIADOS del .env"
+        "--datos",
+        type=Path,
+        default=None,
+        help="Por defecto los datos de desarrollo de make campeon (make datos-desarrollo o en memoria)",
     )
     parser.add_argument("--nuevos", type=int, default=1000, help="Asociados nuevos para validar")
     parser.add_argument("--semilla-nuevos", type=int, default=2026, help="La misma que usa make abandono")
@@ -92,8 +96,11 @@ def main() -> None:
         train = datos_exploracion(args.datos, "make pycaret")
     except DatosInvalidos as error:
         raise SystemExit(str(error)) from None  # con limpiar_extracto y el contrato
-    nuevos = GeneradorAsociados(args.nuevos, seed=args.semilla_nuevos).generar()
-    print(f"Entrenamiento: {args.datos} ({len(train)} filas, {a.objetivo_binario(train).mean():.0%} abandono)\n")
+    nuevos = asociados_nuevos(args.nuevos, args.semilla_nuevos)
+    print(
+        f"Entrenamiento: {nombre_fuente(args.datos)} ({len(train)} filas, "
+        f"{a.objetivo_binario(train).mean():.0%} abandono)\n"
+    )
 
     tabla_pycaret, de_pycaret = experimento(train, args.folds)
 
@@ -124,7 +131,7 @@ def main() -> None:
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     salida = METRICS_DIR / f"pycaret_{stamp}.json"
     resumen = {
-        "datos": str(args.datos.name),
+        "datos": nombre_fuente(args.datos),
         "ordenar": args.ordenar,
         "comparativa": comparativa.to_dict(orient="index"),
         "pycaret_leaderboard": tabla_pycaret.to_dict(orient="index"),
@@ -137,7 +144,7 @@ def main() -> None:
     if args.sin_mlflow:
         return
     r.configurar()
-    params = {"datos": args.datos.name, "filas": len(train), "nuevos": args.nuevos}
+    params = {"datos": nombre_fuente(args.datos), "filas": len(train), "nuevos": args.nuevos}
     metricas = r.unir(r.metricas_tabla(comparativa.drop(columns="Model"), "cv"), r.metricas_tabla(en_nuevos, "nuevos"))
     with r.corrida("pycaret", params, artefactos=[salida, tabla_html], tags={"mejor_pycaret": mejor}):
         r.registrar_modelos({mejor: modelos[mejor]}, params, metricas)  # el modelo, solo el mejor de PyCaret

@@ -68,7 +68,10 @@ def main() -> None:
     X, y = a.preparar(df), a.objetivo_binario(df)
     if args.vacios:
         X = t.con_vacios(X, args.vacios, seed=args.semilla)
-    print(f"Datos: {fuente} · foto a {h or 0} meses · {len(X)} asociados, {int(y.sum())} se retiran ({y.mean():.1%})")
+    print(
+        f"Datos: {fuente} · t0 = corte, horizonte {h or 0} meses · {len(X)} asociados, "
+        f"{int(y.sum())} se retiran ({y.mean():.1%})"
+    )
     print(aviso_origen())
     print(f"Modelo: {args.clasificador} · {args.folds} particiones x {args.repeticiones} repeticiones")
 

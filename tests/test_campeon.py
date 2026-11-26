@@ -75,13 +75,53 @@ def test_guardar_y_cargar(elegido, foto, tmp_path):
     assert np.allclose(a.puntaje(modelo, X), a.puntaje(elegido.modelo, X))
     assert (agrupador.grupos(X) == elegido.agrupador.predict(foto)).all()
     assert info["modelo"] == elegido.nombre and info["umbral"] == elegido.umbral and info["nota"] == "prueba"
-    assert info["variables"] == a.NUMERICAS + a.CATEGORICAS
     assert set(info["grupos"]) == {"riesgo", "estable"}
+    assert info["variables"] == a.NUMERICAS + a.CATEGORICAS
     assert c.cargar(tmp_path / "vacia") is None
 
-    info["variables"].append("VARIABLE_OBSOLETA")
+
+def test_no_carga_un_campeon_entrenado_con_otras_variables(elegido, tmp_path):
+    # Pasó de verdad: al sacar CARGO del modelo, el campeón guardado fallaba al predecir con una traza cruda.
+    c.guardar(elegido, tmp_path)
+    ruta = tmp_path / c.ARCHIVO_INFO
+    info = json.loads(ruta.read_text(encoding="utf-8"))
+    info["variables"] = [*info["variables"], "CARGO"]
+    ruta.write_text(json.dumps(info), encoding="utf-8")
+    with pytest.raises(c.CampeonIncompatible, match="CARGO"):
+        c.cargar(tmp_path)
+    del info["variables"]  # un campeón guardado antes de registrar las variables no se puede revisar: se acepta
+    ruta.write_text(json.dumps(info), encoding="utf-8")
+    assert c.cargar(tmp_path) is not None
+
+
+def test_cargar_sincroniza_umbrales_y_firma_depende_del_contenido_real(elegido, foto, tmp_path):
+    import os
+
+    import joblib
+
+    rutas = c.guardar(elegido, tmp_path)
+    firma_inicial = c.firma(tmp_path)
+    firma_mod_inicial = c.firma_modelo(tmp_path)
+    assert firma_inicial and firma_mod_inicial
+
+    # 1) Cambiar umbral en campeon.json conservando ruta actualiza ModeloZonas.predict y cambia firma, no firma_modelo.
+    info = json.loads(rutas["info"].read_text(encoding="utf-8"))
+    info["umbral"], info["umbral_alto"] = 0.9999, 0.99999
     rutas["info"].write_text(json.dumps(info), encoding="utf-8")
-    assert c.cargar(tmp_path) is None
+    assert c.firma(tmp_path) != firma_inicial
+    assert c.firma_modelo(tmp_path) == firma_mod_inicial
+    modelo_nuevo, _, _ = c.cargar(tmp_path)
+    assert modelo_nuevo.umbral == pytest.approx(0.9999)
+    assert (modelo_nuevo.predict(a.preparar(foto.head(20))) == "se queda").all()
+
+    # 2) Sobrescribir abandono_kmeans.joblib conservando mtime cambia firma por contenido de bytes.
+    firma_antes_kmeans = c.firma(tmp_path)
+    stat_viejo = rutas["grupos"].stat()
+    otro_kmeans = a.AgrupadorAbandono(random_state=99).fit(GeneradorAsociados(n=200, seed=99).generar())
+    joblib.dump(otro_kmeans, rutas["grupos"])
+    os.utime(rutas["grupos"], ns=(stat_viejo.st_atime_ns, stat_viejo.st_mtime_ns))
+    assert c.firma(tmp_path) != firma_antes_kmeans
+    assert c.firma_modelo(tmp_path) == firma_mod_inicial
 
 
 def test_figura_de_umbrales(elegido):
@@ -118,9 +158,10 @@ def test_datos_reales_sirven_para_lo_que_no_usa_la_etiqueta(tmp_path):
     assert {"EDAD", "FECHAINGRESOLABORA"} <= set(datos.columns)
 
 
-def test_datos_reales_con_fechas_posteriores_al_corte_no_pasan(tmp_path):
+def test_datos_reales_con_fechas_posteriores_al_corte_no_pasan(tmp_path, monkeypatch):
+    monkeypatch.setattr(a, "fecha_corte", lambda: "2026-03-31")
     extracto = GeneradorAsociados(n=60, seed=4).generar_extracto()
-    extracto.loc[0, "FECHAINGRESO"] = a.FECHA_CORTE + pd.Timedelta(days=1)  # corte mal puesto en el .env
+    extracto.loc[0, "FECHAINGRESO"] = pd.Timestamp("2026-03-31") + pd.Timedelta(days=1)
     ruta = tmp_path / "extracto.parquet"
     extracto.to_parquet(ruta, index=False)
     with pytest.raises(c.DatosInvalidos, match="FECHAINGRESO tiene fechas después de FECHA_CORTE"):
@@ -144,3 +185,54 @@ def test_estrato_en_blanco_es_categoria_y_cargo_no_entra():
     X = a.preparar(df)
     assert X.loc[0, "ESTRATO"] == a.ESTRATO_SIN_DATO  # categoría propia: no se imputa con la moda
     assert "CARGO" not in X.columns and "CODPROFESION" in X.columns  # CARGO repite CODPROFESION
+
+
+def test_elegir_rechaza_asociados_repetidos(foto):
+    # La CV y la interna de TargetEncoder parten por filas: el mismo asociado en dos filas filtraría su etiqueta.
+    repetido = pd.concat([foto, foto.head(5)], ignore_index=True)
+    with pytest.raises(ValueError, match="repetidos"):
+        c.elegir(repetido, honestos=False)
+
+
+def test_predecir_real_avisa_si_el_campeon_es_sintetico(elegido, tmp_path, monkeypatch):
+    from proyecto_ml import predict as p
+
+    c.guardar(elegido, tmp_path, extra={"origen_datos": "sintetico"})
+    monkeypatch.setenv("ORIGEN_DATOS", "sintetico")
+    assert p.aviso_campeon_sintetico(tmp_path) is None  # con sintéticos no hace falta
+    monkeypatch.setenv("ORIGEN_DATOS", "real_anonimizado")
+    assert "SINTÉTICOS" in p.aviso_campeon_sintetico(tmp_path) and "NO están validados" in p.aviso_campeon_sintetico(
+        tmp_path
+    )
+
+
+def test_scripts_exploratorios_no_usan_datos_reales_ni_lotes_sin_etiqueta(tmp_path, monkeypatch):
+    # make abandono, afinar, optuna y pycaret validan contra asociados del generador: con datos reales mezclarían
+    # orígenes, así que se niegan; y sin la etiqueta sintética no hay qué aprender.
+    ruta = tmp_path / "desarrollo.parquet"
+    GeneradorAsociados(n=60, seed=3).generar().to_parquet(ruta, index=False)
+    monkeypatch.setenv("ORIGEN_DATOS", "real_anonimizado")
+    with pytest.raises(c.DatosInvalidos, match="exploratorio"):
+        c.datos_exploracion(ruta, "make abandono")
+    monkeypatch.setenv("ORIGEN_DATOS", "sintetico")
+    assert len(c.datos_exploracion(ruta, "make abandono")) == 60
+    sin_etiqueta = tmp_path / "extracto.parquet"
+    GeneradorAsociados(n=60, seed=3).generar_extracto().to_parquet(sin_etiqueta, index=False)
+    with pytest.raises(c.DatosInvalidos, match="etiqueta sintética"):
+        c.datos_exploracion(sin_etiqueta, "make abandono")
+
+
+def test_scripts_exploratorios_usan_por_defecto_los_datos_de_desarrollo(tmp_path, monkeypatch):
+    # Antes el valor por defecto era DATOS_ASOCIADOS (sin etiqueta desde el contrato v2) y make abandono, afinar,
+    # optuna y pycaret fallaban sin argumentos.
+    from proyecto_ml import config
+    from proyecto_ml.datos_campeon import nombre_fuente
+
+    monkeypatch.setenv("ORIGEN_DATOS", "sintetico")
+    monkeypatch.setattr(config, "PROCESSED_DIR", tmp_path)  # sin archivo de desarrollo: el generador en memoria
+    en_memoria = c.datos_exploracion(None, "make abandono")
+    assert a.TARGET in en_memoria and len(en_memoria) == 5000
+    assert nombre_fuente(None) == "datos_desarrollo() en memoria"
+    GeneradorAsociados(n=80, seed=3).generar().to_parquet(tmp_path / "asociados_desarrollo.parquet", index=False)
+    assert len(c.datos_exploracion(None, "make abandono")) == 80  # con archivo, el de make datos-desarrollo
+    assert nombre_fuente(None) == "asociados_desarrollo.parquet"

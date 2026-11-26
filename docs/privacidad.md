@@ -19,6 +19,13 @@ pero el extracto y sus predicciones individuales nunca se adjuntan.
   códigos (`2` → `'2'`, `'O  '` → `'O'`) no cambia su significado. Los valores imposibles (salario de relleno,
   antigüedad laboral imposible) se tratan como vacíos dentro del modelo, sin tocar el archivo.
 - El mapa de segmentos con datos reales muestra solo agregados por segmento, no el detalle de cada asociado.
+- **MLflow con datos reales recibe solo agregados.** De cada dataset registra la huella, el esquema y el número de
+  filas (`registro.registrar_datos`), nunca las filas. La figura de la regresión real es por quintiles
+  (`regresion.figura_por_tramo`), sin salarios individuales; el mapa de segmentos real, que tiene una coordenada
+  por asociado, se queda en `reports/` (ignorado por Git) y no se sube como artefacto.
+- **Riesgos que quedan, en local:** `reports/figures/segmentos.html` y `data/processed/predicciones.csv` tienen una
+  fila por asociado (sin identificadores) y existen solo en el equipo del custodio. `docker-compose.yml` monta
+  `./data` (solo lectura) y pasa el `.env` al contenedor: no compartir ese contenedor ni su volumen de MLflow.
 
 ## Seudonimización y anonimía
 

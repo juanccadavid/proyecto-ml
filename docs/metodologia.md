@@ -1,6 +1,16 @@
 # Metodología: modelos de abandono, campeón y evaluación
 
-> Parte de la documentación de [proyecto-ml](../README.md). Todas las cifras son de **datos sintéticos**.
+> Parte de la documentación de [proyecto-ml](../README.md). Las métricas de abandono y segmentación sintética se
+> identifican como tales. Las cifras del extracto real se limitan a dominios y a la regresión del salario, y no
+> constituyen validación del abandono.
+>
+> **Vigencia de las cifras.** Las cifras sintéticas de esta página se recalcularon el 25-nov-2026 con el generador
+> actual: 5.000 asociados, 503 etiquetas sintéticas (10,1 %), corte 31-mar-2026 y evento en
+> (31-mar, 30-jun-2026]. Experimento principal: `reports/metrics/campeon_20261125_181558.json`; técnicas:
+> `reports/metrics/tecnicas_20261125_180351.json`. Son experimentos reproducibles del generador, no validación
+> del fondo. Los `campeon_*.json` no se versionan por defecto (los regenera cada `make pipeline`): el que se cita
+> aquí se fija a propósito con `git add -f`, como indica [reports/README.md](../reports/README.md). Con el
+> extracto real no hay métricas de abandono: no existe una etiqueta futura (ver [datos_reales.md](datos_reales.md)).
 
 `make abandono` responde "¿este asociado abandona el fondo?" con dos enfoques
 ([`src/proyecto_ml/abandono.py`](../src/proyecto_ml/abandono.py)):
@@ -17,10 +27,15 @@
 - **KMeans** (sin objetivo): agrupa por comportamiento (solicitudes, ahorros, intención de retiro) en 2 grupos;
   el de "riesgo" se elige por su perfil, no por el objetivo. Después se compara con el evento futuro sintético.
 
-Para validar, se generan asociados **que los modelos nunca vieron** (mismo generador, otra semilla):
+Para validar, se generan asociados **que los modelos nunca vieron** (`generador.asociados_nuevos`: mismo generador,
+otra semilla y la **misma tasa de retiro** que los datos de desarrollo; con otra prevalencia, la precisión, la PR-AUC
+y el umbral fijo de 0,5 no se podrían comparar con la validación cruzada ni con `make campeon`). Hasta el 25-nov-2026
+`make abandono`, `afinar`, `optuna` y `pycaret` los generaban con 30 % de retiros: con los mismos modelos, la PR-AUC
+sobre nuevos daba ~0,79 (Random Forest 0,788; HistGB 0,784) y con la tasa de desarrollo da ~0,58 (0,584; 0,586).
+La diferencia la explica la prevalencia, no el modelo:
 
 ```bash
-make abandono                                        # entrena con data/ejemplo, valida con 1000 nuevos
+make abandono                                        # entrena con los datos de make campeon, valida con 1000 nuevos
 make abandono ARGS="--nuevos 5000 --semilla-nuevos 7 --alpha 10"
 make abandono ARGS="--validar mi_archivo.parquet"    # validar además con otro archivo
 make abandono ARGS="--sin-limpieza"                  # sin la limpieza de cleaning.py, para comparar
@@ -42,8 +57,11 @@ Imprime las 5 principales de cada modelo y guarda `reports/figures/abandono_impo
 Además, para el Random Forest, `reports/figures/abandono_importancia_rf.html` es un gráfico **interactivo**
 (Plotly: al pasar el mouse muestra variable e importancia) con su `feature_importances_` por columna ya
 transformada, con el prefijo de su rama (`num__`, `clip__`, `cat__SEXO_F`...). Es la importancia propia del
-bosque (cuánto reduce la impureza): favorece a las continuas como `SALARIO` o `EDAD`, que en la de
-permutación casi no pesan. En código: `figura_importancia_interactiva(importancia_arbol(rf), "titulo")`.
+bosque (cuánto reduce la impureza): favorece a las continuas, que admiten muchos cortes. En
+`reports/metrics/abandono_20261125_184901.json`, `EDAD` y las dos antigüedades tienen 0,067–0,071 de MDI cada una y no
+aparecen entre las 5 primeras por permutación. `SALARIO` sí aporta en las dos (MDI 0,095; permutación 0,037 en el
+bosque), porque el generador lo hace depender de la etiqueta sintética. En código:
+`figura_importancia_interactiva(importancia_arbol(rf), "titulo")`.
 
 Al final imprime una **tabla comparativa** al estilo de `compare_models` de PyCaret: Accuracy, AUC, Recall,
 Prec., F1, Kappa, MCC y **TT (Sec)** (tiempo promedio de entrenamiento por partición), con validación cruzada
@@ -81,43 +99,32 @@ con dejar el pipeline al final de una celda; desde código: `pagina_pipelines({"
 Se excluyen las columnas que solo existen porque el asociado ya se fue (fecha/motivo de retiro, `ESTADO`,
 fechas de actualización...): con ellas cualquier modelo acierta el 100 % pero no anticipa nada.
 
-## La foto del asociado: fecha de observación y horizonte
+## Definición del problema: la foto del asociado y el horizonte
 
-Sin una fecha de retiro, el modelo usa el lote tal como llega al corte: EDAD y las antigüedades se miden
-después de que los retirados se fueron, y como el generador reparte los retiros en los 12 meses anteriores,
-en la práctica predice "¿se retiró en el último año?". Así corren por defecto los comandos **exploratorios**
-(`make abandono`, `afinar`, `optuna`, `pycaret`; solo `abandono` acepta `--horizonte`): sus métricas no se
-comparan con las del campeón. `make
-campeon`, `tecnicas`, `validacion` y `segmentos` usan la foto por defecto (`--horizonte 0` la apaga). El
-diseño correcto es una **foto** en t0 = corte − H:
+| Elemento | Definición (contrato v2) | Dónde |
+|---|---|---|
+| **Unidad y población** | Un asociado **activo** al corte C (31-03-2026 en el extracto real; todos tienen `ESTADO` = A) | `abandono.foto` |
+| **Momento de la predicción** | t0 = C: ahí el fondo mide todas las variables | `abandono.fecha_observacion` |
+| **Variables** | Disponibles en t0: edad y antigüedades a C; conteos `ULT3MES` de (C − 3 meses, C]; productos al corte; `#RETIROS` (retiros previos con reingreso) acumulado hasta C | `abandono.preparar` |
+| **Evento (abandono confirmado)** | Retiro del fondo en **(C, C + 3 meses]**: posterior a toda variable | `abandono.fin_horizonte` |
+| **Etiqueta disponible** | Solo sintética: `EVENTO_RETIRO_3M_SINTETICO`. El extracto real no trae el evento y el fondo no puede construirlo | `generador.py` |
+| **Lo que NO es abandono** | Una solicitud de retiro parcial, de cancelación de ahorros o de disminución de cuotas: son **señales** medidas en t0, no el evento | — |
 
-- **Población:** asociados activos en t0 (los que se retiraron antes ya no eran asociados en la foto).
-- **Objetivo sintético:** `EVENTO_RETIRO_3M_SINTETICO`, creado únicamente por el generador.
-- **Historial:** `#RETIROS` es el conteo acumulado durante la permanencia y entra como predictor; nunca se convierte
-  en etiqueta futura.
-- **Variables:** `EDAD`, `ANTIGUEDAD_F_MESES` y `ANTIGUEDAD_LA_MESES` vienen calculadas en el archivo.
+Como el evento es posterior a t0 y todas las variables son de t0 o anteriores, el diseño no tiene fuga temporal
+por construcción. En el esquema anterior (v1, con fecha de retiro) la foto se tomaba en t0 = C − 3 meses y el
+evento caía entre t0 y el corte; con variables medidas al corte, esa definición habría puesto el evento **antes**
+de la medición, que es fuga. `abandono.foto` ya no filtra filas ni toca la etiqueta: anota t0 y el horizonte.
 
 ```python
-vista = a.foto(df, horizonte_meses=3)  # t0 = 2026-07-31
+vista = a.foto(df)  # t0 = 2026-03-31; el evento cae hasta 2026-06-30 (vista.attrs["fin_horizonte"])
 X, y = a.separar(vista)  # el pipeline selecciona y tipa los predictores permitidos
-a.resumen_foto(df)  # por horizonte: asociados, retiros y tasa en la foto
+a.resumen_foto(df)  # t0, fin del horizonte, asociados y cuántos tienen el evento sintético
 ```
 
-| Datos | Foto a 3 meses | Foto a 12 meses (= sin foto) |
-|---|---|---|
-| 50 de `data/ejemplo` | 39 asociados, **1 retiro** | 50, 12 retiros (24 %) |
-| 2.000 generados (semilla 7) | 1.535 asociados, **135 retiros (8,8 %)** | 2.000, 600 retiros (30 %) |
-
-Con 50 filas la foto no deja con qué entrenar, así que es opcional (`--horizonte`) y se usa con más filas:
-
-```bash
-make ejemplo ARGS="--rows 2000 --seed 7 --output-dir data/processed --nombre asociados_2000"
-make abandono DATA=data/processed/asociados_2000.parquet ARGS="--horizonte 3"
-```
-
-Ojo: los conteos de solicitudes (`ULT3MESES`...) se toman como vienen. Si el extracto los mide a la fecha de
-extracción y no a t0, para los retirados incluyen lo que pasó después de irse (fuga). Hay que confirmarlo con
-el fondo. EDA de la foto: [`sesiones/02_juan_eda_foto_asociado.ipynb`](../sesiones/02_juan_eda_foto_asociado.ipynb).
+**Población que se puede evaluar.** Con sintéticos, todos los asociados de la foto (la etiqueta existe). Con el
+extracto real, ninguno: sin el evento no hay métrica de abandono, solo el puntaje (`predecir-real`) y su
+parecido con los sintéticos de entrenamiento (`validacion.desplazamiento`). EDA de la foto:
+[`sesiones/02_juan_eda_foto_asociado.ipynb`](../sesiones/02_juan_eda_foto_asociado.ipynb).
 
 ## El modelo campeón: `make campeon`
 
@@ -125,40 +132,42 @@ Los afinados, Optuna y PyCaret son **experimentos** (quedan en MLflow); el **cam
 "oficial": lo usa el simulador ([`campeon.py`](../src/proyecto_ml/campeon.py),
 [`scripts/elegir_campeon.py`](../scripts/elegir_campeon.py)).
 
-- **Datos:** los de desarrollo, 5.000 asociados generados con semilla 7 y **10 % de retiro** (más cerca de un
-  fondo real que el 30 % por defecto), con la foto a 3 meses: 4.602 asociados, 105 retiros (2,3 %). `make
-  datos-desarrollo` los escribe en `data/processed/`; sin el archivo se generan en memoria, idénticos. Los 50
-  de `data/ejemplo` quedan para el contrato y las pruebas.
+- **Datos:** los de desarrollo, 5.000 asociados generados con semilla 7 y **10 % de etiquetas sintéticas**.
+  La etiqueta se asigna a la foto completa: 503 eventos (10,1 %); no se filtran 398 filas como en la definición
+  temporal anterior. `make datos-desarrollo` los escribe en `data/processed/`; sin el archivo se generan en
+  memoria, idénticos. Los 50 de `data/ejemplo` quedan para el contrato y las pruebas.
 - **Criterio:** PR-AUC promedio en validación cruzada **repetida** (5 particiones × 3 repeticiones), no en los
-  "nuevos" del generador. PR-AUC y no AUC: con 2 % de retiros el AUC pasa de 0,97 en todos los modelos.
-- **Candidatos:** una lista fija (`campeon.lista_candidatos`): los 4 supervisados y la logística sin balancear
-  y con TargetEncoder, que en un `make tecnicas` anterior le ganaron a la base de forma concluyente (ver
-  "Incertidumbre" abajo); con vacíos en los datos, también el indicador de vacíos; con `--optuna N`, también
-  los árboles afinados con Optuna. Si `make tecnicas` cambia de veredicto, la lista se actualiza a mano.
+  asociados nuevos del generador. PR-AUC se informa junto a la prevalencia (10,1 %); no es evidencia de
+  desempeño real.
+- **Candidatos:** los cuatro supervisados y dos alternativas motivadas por codificación/desbalance
+  (`campeon.lista_candidatos`). Se conservan como exploratorios; ni los resultados de `make tecnicas` ni los de
+  distintas semillas justifican declarar una técnica general ganadora. Con `--optuna N` se agregan los árboles
+  afinados, con la cautela de que compiten en los mismos datos.
 - **Umbrales**, con las predicciones fuera de partición (cada asociado puntuado por un modelo que no lo vio):
   - *alerta*: el que maximiza **F2** (el recall pesa el doble: perder a quien se va cuesta más que una llamada);
-  - *alto*: el menor puntaje desde el cual **al menos 8 de cada 10 alertas son retiros reales**.
+  - *alto*: el menor puntaje desde el cual **al menos 8 de cada 10 alertas son etiquetas positivas sintéticas**.
 - **Tres zonas:** 😟 **se retira** (≥ alto) · 😐 **zona gris** (entre los dos) · 😀 **se queda** (< alerta).
 - **KMeans** con los mismos datos y sin el objetivo: el simulador muestra en qué grupo cae el asociado y la
   tasa del evento futuro sintético del grupo.
 
 | Candidato | PR-AUC ± entre particiones | IC 95 % (bootstrap) | campeón − candidato (IC 95 %) | umbral alerta | precisión / recall |
 |---|---|---|---|---|---|
-| **Logística sin balancear (campeón)** | **0,918 ± 0,038** | 0,88–0,96 | — | 0,31 | 0,86 / 0,85 |
-| Logística + TargetEncoder | 0,906 ± 0,041 | 0,87–0,95 | 0,006 (−0,023 a 0,035) | 0,96 | 0,92 / 0,84 |
-| Ridge | 0,890 ± 0,046 | 0,85–0,94 | 0,025 (−0,005 a 0,055) | 0,10 | 0,75 / 0,90 |
-| HistGradientBoosting (boosting) | 0,868 ± 0,043 | 0,83–0,93 | 0,043 (0,010 a 0,076) ✔ | 0,12 | 0,68 / 0,88 |
-| Regresión logística | 0,865 ± 0,053 | 0,82–0,92 | 0,044 (0,015 a 0,073) ✔ | 0,88 | 0,72 / 0,86 |
-| Random Forest (bagging) | 0,859 ± 0,060 | 0,81–0,92 | 0,046 (−0,005 a 0,098) | 0,14 | 0,70 / 0,89 |
+| **Random Forest (campeón sintético)** | **0,568 ± 0,043** | 0,535–0,613 | — | 0,117 | 0,306 / 0,716 |
+| HistGradientBoosting (boosting) | 0,559 ± 0,042 | 0,527–0,610 | 0,010 (−0,018 a 0,037) | 0,207 | 0,281 / 0,769 |
+| Logística + TargetEncoder | 0,547 ± 0,042 | 0,506–0,591 | 0,018 (−0,006 a 0,042) | 0,528 | 0,281 / 0,761 |
+| Logística sin balancear | 0,538 ± 0,039 | 0,499–0,585 | 0,028 (0,003 a 0,054) ✔ | 0,102 | 0,249 / 0,789 |
+| Regresión logística | 0,531 ± 0,041 | 0,493–0,581 | 0,035 (0,006 a 0,063) ✔ | 0,430 | 0,232 / 0,827 |
+| Ridge | 0,498 ± 0,039 | 0,467–0,551 | 0,072 (0,034 a 0,109) ✔ | 0,0003 | 0,259 / 0,757 |
 
-✔ = el campeón lo supera de forma concluyente (el intervalo de la diferencia no toca el 0). Contra los demás, **la elección no es concluyente**: la diferencia cabe en el ruido. Entre los empatados, la logística sin balancear es además la más simple de leer (un coeficiente por variable), así que la dejamos.
+✔ = la diferencia es concluyente según la t corregida de Nadeau-Bengio. La elección del Random Forest no es
+concluyente frente a HistGradientBoosting ni TargetEncoder. El campeón designa únicamente el ganador de esta
+comparación sintética concreta; no una recomendación para producción.
 
-El umbral de alerta (máximo F2) ya alcanza la precisión pedida (0,86 ≥ 0,8), así que coincide con el umbral alto y **no queda zona gris**: cada alerta es "se retira". Es la regla, no un
-error: el umbral alto es el más bajo, desde el de alerta, con precisión ≥ 0,8, y el de alerta ya la cumple. Ojo
-con lo que promete: esa precisión (0,86) se midió con las mismas predicciones con que se eligió el umbral; en
-validación anidada la regla de alerta da 0,69 y la del umbral alto 0,80, y en asociados nuevos la zona acierta
-el 85 %. El simulador muestra las cifras de la validación anidada. Con el extracto real se vuelve a decidir si
-conviene exigir una zona gris (umbral alto > alerta). Zonas con 4.635 asociados nuevos (foto a 3 meses): **se retira** 98 (83 se retiran, 85 %), **se queda** 4.537 (21 se retiran). KMeans: en el grupo "riesgo" se retira el 13,5 %; en el "estable", el 0,9 %.
+El umbral de alerta maximiza F2 (0,117); el umbral alto es 0,410. Fuera de partición, la alerta tiene
+precisión 0,306 y recall 0,716; la zona alta, precisión 0,801 y recall 0,416. En validación anidada, la
+precisión baja a 0,284 para alerta y 0,793 para zona alta (objetivo 0,80), con recall 0,724 y 0,396
+respectivamente. En 5.000 asociados nuevos sintéticos, las zonas contienen 277 (tasa sintética 74,4 %),
+912 (13,5 %) y 3.811 (3,7 %). Son proporciones condicionadas por el generador, no tasas reales.
 
 Guarda solo el campeón en `models/`:
 
@@ -183,7 +192,7 @@ Un campeón guardado antes de este cambio (solo el pipeline) se carga igual: `c.
 umbrales de `campeon.json`. KMeans también recibe la fila cruda (`agrupador.predict(filas)`).
 
 ```bash
-make campeon                                     # foto a 3 meses, datos de desarrollo
+make campeon                                     # t0 = corte, evento a 3 meses, datos de desarrollo
 make campeon ARGS="--horizonte 12 --precision-min 0.9"
 make campeon DATA=data/raw/supabase_asociados.parquet   # se detiene sin una etiqueta futura válida
 make simulador                                   # usa el campeón
@@ -191,10 +200,9 @@ make simulador                                   # usa el campeón
 
 ### Incertidumbre: qué tan seguros estamos de cada cifra
 
-- **± es entre particiones, no entre repeticiones.** La PR-AUC del campeón varía ± 0,038 de una
-  partición a otra (15 puntajes); entre las 3 repeticiones solo ± 0,001, que es lo que
-  mostraba antes y subestima el ruido. El intervalo del 95 % por bootstrap de asociados va de
-  0,882 a 0,959.
+- **± es entre particiones, no entre repeticiones.** La PR-AUC del campeón varía ± 0,043 entre las 15
+  particiones; entre las tres repeticiones, la desviación es 0,006. El IC bootstrap de la PR-AUC es
+  0,535–0,613.
 - **El campeón contra cada candidato, partición a partición** (todos usan las mismas particiones), con la prueba t
   corregida de Nadeau y Bengio, que tiene en cuenta que las particiones comparten casi todo el entrenamiento. Si
   el intervalo de la diferencia toca el 0, es un empate (`campeon.json`: `comparacion` y `empatados`). La
@@ -206,18 +214,19 @@ make simulador                                   # usa el campeón
 
   | Umbral | fuera de partición (optimista) | validación anidada | asociados nuevos |
   |---|---|---|---|
-  | alerta: precisión / recall | 0,86 / 0,85 | **0,69 / 0,86** | 0,85 / 0,80 |
-  | se retira: precisión (pedida 0,80) | 0,86 | **0,80** | 0,85 |
+  | alerta: precisión / recall | 0,306 / 0,716 | **0,284 / 0,724** | 0,277 / 0,701 |
+  | se retira: precisión / recall (pedida 0,80) | 0,801 / 0,416 | **0,793 / 0,396** | 0,744 / 0,410 |
 
-- **Más retiros para que las cifras sean estables.** Con 2.000 asociados de desarrollo la foto dejaba 40
-  retiros y el umbral alto se apoyaba en unos 31 aciertos. Ahora son 4.602 asociados en la foto
-  (105 retiros), de 5.000 generados.
-- **Candidatos abiertos** (`campeon.lista_candidatos`): los 4 supervisados + las técnicas de `make tecnicas`
-  que le ganan a la base de forma concluyente (logística sin balancear y con TargetEncoder; con vacíos en los
-  datos, también el indicador de vacíos). Las variables nuevas no entran: con estos datos su diferencia cabe en
-  el ruido. `make campeon ARGS="--optuna 20"` suma Random Forest y HistGB afinados con Optuna (por PR-AUC, en
-  estos mismos datos): HistGB pasa de 0,868 a 0,898 y Random Forest a 0,861, y
-  ninguno cambia al campeón.
+- **Sensibilidad a semillas y baseline.** En semillas 7/42/2026, la PR-AUC base fue 0,531/0,509/0,529;
+  sin balancear, 0,541/0,516/0,542; TargetEncoder, 0,552/0,505/0,555; Normalizer, 0,544/0,554/0,547.
+  El DummyClassifier de prior obtuvo AP igual a la prevalencia (0,094–0,101) y ROC-AUC 0,5. Sin balancear
+  fue positivo en los tres seeds, aunque los intervalos pareados no lo respaldan en todos; TargetEncoder
+  empeoró en uno y Normalizer no tiene una justificación de dominio suficiente para promoverlo solo por la
+  métrica. No se declara ganador general ni se elige técnica para el fondo real.
+- **Candidatos abiertos** (`campeon.lista_candidatos`): se conservan los cuatro supervisados, logística sin
+  balancear y TargetEncoder como hipótesis comparables; ninguno se considera candidato validado en producción.
+  `make campeon ARGS="--optuna 20"` añade árboles afinados sobre estos mismos datos y puede sobreajustar la
+  búsqueda.
 
 ### Evaluación del campeón: ROC, matriz de confusión, MCC/Kappa y SHAP
 
@@ -233,36 +242,36 @@ make simulador                                   # usa el campeón
 - `campeon_calibracion.html`: si la probabilidad del modelo es creíble (el "30 %" es un 30 % de verdad), por
   grupos de probabilidad con cortes finos cerca de 0; el tamaño del punto es el número de asociados del grupo.
   Solo si el campeón da probabilidades (no con Ridge). El Brier va en las métricas, con el **Brier skill**
-  (`brier_skill`: 1 = perfecto, 0 = igual que decir siempre la tasa de retiro). Con `class_weight="balanced"`
-  la probabilidad queda inflada: la logística balanceada da 0,01 y con TargetEncoder −0,08, frente a 0,79 del
-  campeón. Si el campeón queda por debajo de 0,5, el simulador muestra "Puntaje de riesgo (no calibrado)" en
+  (`brier_skill`: 1 = perfecto, 0 = igual que decir siempre la tasa de retiro). Las probabilidades y la
+  calibración se refieren exclusivamente a la etiqueta sintética. Si el campeón queda por debajo de 0,5, el
+  simulador muestra "Puntaje de riesgo (no calibrado)" en
   vez de "Probabilidad de retiro".
 
-| Umbral del campeón | real se queda: sin alerta / alerta | real se retira: sin alerta / alerta |
+| Umbral del campeón | etiqueta sintética 0: sin alerta / alerta | etiqueta sintética 1: sin alerta / alerta |
 |---|---|---|
-| alerta = se retira (0,31) | 4.483 / 14 | 16 / **89** (recall 85 %, precisión 86 %) |
+| alerta = se retira (0,117) | 3.682 / 815 | 143 / **360** (recall 71,6 %, precisión 30,6 %) |
 
 **MCC y Kappa** (al umbral de alerta) van en la tabla de candidatos y en MLflow (`cv_mcc`, `cv_kappa`):
 
 | | Ridge | Regresión logística | Random Forest (bagging) | HistGradientBoosting (boosting) | Logística sin balancear | Logística + TargetEncoder |
 |---|---|---|---|---|---|---|
-| MCC | 0,81 | 0,78 | 0,78 | 0,76 | **0,85** | 0,87 |
-| Kappa | 0,81 | 0,78 | 0,78 | 0,76 | **0,85** | 0,87 |
+| MCC | 0,250 | 0,327 | 0,379 | 0,370 | 0,338 | 0,367 |
+| Kappa | 0,278 | 0,244 | 0,335 | 0,310 | 0,267 | 0,309 |
 
 El MCC pesa por igual las dos clases de error; nosotros no (ver la siguiente sección), así que no decide.
 
 ### Qué métrica usamos y por qué
 
 ```
-¿Clases balanceadas (50/50)?  NO: se retira el 2,3 % en la foto a 3 meses
-   └─> Accuracy engaña: decir "nadie se va" acierta el 97,7 %
+¿Clases balanceadas (50/50)?  NO: 10,1 % de etiquetas sintéticas
+   └─> Accuracy engaña: decir "nadie se va" acierta el 89,9 %
        └─> MCC / Kappa (corrigen el desbalance) para comparar sin fijarse en el costo
            └─> ¿Qué es más costoso?  Los FALSOS NEGATIVOS: un asociado que se va sin que nadie lo llame
                └─> RECALL: umbral de alerta con F2 (el recall pesa el doble que la precisión)
 ```
 
-- **Para elegir el modelo**, la PR-AUC: resume la precisión y el recall en todos los umbrales y no se infla
-  con el desbalance, como sí pasa con el AUC-ROC (todos pasan de 0,97).
+- **Para elegir el modelo**, la PR-AUC: resume la precisión y el recall en todos los umbrales y su baseline
+  es la prevalencia (10,1 %). ROC-AUC es complementaria, no evidencia de generalización real.
 - **Para el umbral de alerta**, F2. Una llamada de más cuesta poco; perder un asociado cuesta mucho.
 - **Para la zona "se retira"**, una precisión mínima de 0,8: cuando el modelo está seguro, debe acertar.
 - **MCC y Kappa** se reportan para comparar con PyCaret y con la literatura, pero no deciden.
@@ -282,10 +291,10 @@ campeón es Ridge. Se explican las variables originales (EDAD, SEXO...), no las 
 
 - **En el simulador**, debajo del riesgo, aparece "¿Por qué este puntaje?": una cascada con las 8 variables
   que más pesan para ese asociado. Se recalcula al mover cualquier control.
-- **En `make campeon`**, la importancia global, que es la |contribución| promedio en 100 asociados nuevos.
-  Arriba quedan las señales de salida: cancelación de ahorros (2,2 pts), cancelación de créditos (1,2) e
-  intención de retiro (1,0). Es la misma lectura de la importancia por permutación, pero también se puede
-  explicar asociado por asociado.
+- **En `make campeon`**, la importancia global es la |contribución| promedio en 100 asociados nuevos.
+  Arriba quedan retiro parcial, ahorros contractuales, servicios, disminución de cuotas y cancelación de ahorros.
+  El generador asigna la etiqueta antes y condiciona directamente varias de estas señales a ella; esta importancia
+  describe las reglas sintéticas, no relaciones verificadas en el fondo.
 
 ```python
 from proyecto_ml import explicar as e
@@ -305,38 +314,95 @@ Cada punto se verificó en el código y tiene una prueba que impide que vuelva a
 | Identificadores, contacto, fechas crudas, `ESTADO` y objetivo | no entran a los modelos | `preparar` · `test_identificadores_y_fuga_no_son_predictores` |
 | Selección del campeón, umbrales e hiperparámetros | con validación cruzada sobre los datos de elección; los asociados nuevos no participan; los umbrales se miden además en validación anidada | `campeon.elegir`, `umbrales_honestos` |
 | Tiempo | un solo corte; no se afirma validación fuera de tiempo | `docs/datos_reales.md` |
+| Cachés del simulador | SHA-256 del contenido de modelo, KMeans y `campeon.json` (umbrales); marcas de contenido de datos, corte, horizonte y predictores. SHAP depende solo del modelo de puntaje para evitar invalidaciones innecesarias | `campeon.firma`, `datos_campeon.marca_datos`, pruebas AppTest de cambios con ruta conservada |
 | Reproducibilidad | misma semilla, mismos candidatos y métricas | `test_reproducible` |
 
-**Riesgos que dependen de los datos reales (por confirmar con el fondo):**
+**Riesgos y su estado con el extracto real:**
 
-- **Conteos medidos después de t0.** Si el extracto mide los conteos "ULT3MESES" a la fecha de extracción y no a
-  t0, para los retirados incluyen lo que pasó después: fuga. `make campeon` lo advierte en modo real.
+- **Conteos medidos después de t0.** El fondo confirmó que los conteos se miden al corte (`ULT3MES`, los tres meses
+  anteriores). Para entrenar con datos reales haría falta además una etiqueta posterior al corte, que no existe.
 - **Optuna se afina con los mismos datos** con que compite (`--optuna`): su PR-AUC de validación cruzada es algo
   optimista.
-- **Otras distribuciones.** El contrato detiene cambios de esquema y rangos, no cambios de distribución: con el
-  extracto, los umbrales (F2 y precisión ≥ 0,8) se vuelven a elegir; los de hoy no son definitivos.
+- **Otras distribuciones.** El contrato detiene cambios de esquema y rangos, no cambios de distribución.
+  `predecir-real` aplica a los asociados reales los umbrales (F2 y precisión ≥ 0,8) elegidos con sintéticos: sin
+  etiqueta real no se pueden recalibrar ni medir.
+- **TargetEncoder con varias fotos.** Su validación cruzada interna no agrupa por asociado; hoy no importa porque
+  ningún flujo entrena con varias fotos del mismo asociado (detalle en [datos_reales.md](datos_reales.md)).
 
 ## Validación: qué miden las cifras (para la sustentación)
 
-> Las métricas sobre asociados nuevos miden si el modelo **recupera la regla del generador**. La validación
-> real será **temporal**, con el extracto del fondo: entrenar con una foto vieja y probar con la más reciente
-> (`validacion.particion_temporal`, lista y probada con datos generados).
+> Las métricas sobre asociados nuevos miden si el modelo **recupera la regla del generador**. Una validación real
+> tendría que ser **temporal** (entrenar con un corte y medir con retiros posteriores), pero el fondo entrega un
+> solo corte y no puede decir quién se retiró después: con los datos disponibles no hay validación real del
+> abandono. `validacion.particion_temporal` solo prueba el mecanismo con la etiqueta del generador.
+
+**Qué del campeón sale directamente de la lógica sintética.** El generador hace depender de la etiqueta solo
+siete variables (`generador.PRODUCTOS`, `DISMINUCION_CUOTAS` y un factor sobre el salario); las demás se sortean
+sin relación con ella. La importancia SHAP del campeón (`shap_nuevos` en
+`reports/metrics/campeon_20261125_181558.json`, 100 asociados nuevos) reproduce esa construcción:
+
+| Variable | ¿Depende de la etiqueta en el generador? | |contribución| SHAP promedio |
+|---|---|---|
+| `#SOLICITUD_RETIROPARCIALAHORROS` | sí: P(tener) 0,02 → 0,30 | 0,043 |
+| `#CANTIDAD_AHORROSCONTRACTUALES` | sí: 0,43 → 0,10 | 0,039 |
+| `#CANTIDAD_SERVICIOS` | sí: 0,35 → 0,10 | 0,024 |
+| `#SOLICITUD_DISMINUCIONCUOTAS` | sí: P(SI) 0,005 → 0,10 | 0,021 |
+| `#SOLICITUD_CANCELACIONAHORROS` | sí: 0,005 → 0,17 | 0,020 |
+| `SALARIO` | sí: × e^0,08 en la etiqueta 1 | 0,014 |
+| `#SOLICITUDCREDITOS_ULT3MES` | sí: 0,15 → 0,03 | 0,010 |
+| `ESTRATO`, `EDAD`, `CODPROFESION`, `ESTADOCIVIL`, `ANTIGUEDAD_F_MESES`… | **no** | ≤ 0,005 (piso de ruido) |
+| `#CANTIDAD_AHORROSALAVISTA` | **no**: 0,21 en las dos clases | por debajo del piso |
+
+Lectura: las siete primeras son exactamente las variables con señal construida, en un orden que sigue el tamaño
+de la diferencia que les impuso el generador; las que no la tienen quedan en el piso de ruido. Por eso **ninguna
+importancia, umbral ni métrica del campeón es extrapolable al fondo**: describen la regla del generador. Lo que sí
+se lleva al extracto es el pipeline (contrato, preparación, validación, umbrales anidados), listo para reentrenar
+el día que exista una etiqueta real.
 
 Mientras tanto, `make campeon` valida cada candidato, con su umbral, en escenarios menos favorables
 ([`validacion.py`](../src/proyecto_ml/validacion.py)): otra tasa de retiro y una señal más débil
 (`GeneradorAsociados(fuerza_senal=...)`: 1 = el generador de siempre, 0,5 = retirados la mitad de distintos).
-Esa tabla reemplaza al "0,97 en nuevos" en la presentación:
+La tabla muestra solo al campeón actual (Random Forest). Estos escenarios cambian la regla sintética; no simulan
+ni estiman el rendimiento sobre el fondo:
 
-| Escenario (foto a 3 meses) | Logística sin balancear (campeón): PR-AUC · precisión · recall | Ridge | HistGradientBoosting (boosting) |
-|---|---|---|---|
-| tasa 30 %, señal 100 % (generador) | 0,94 · 0,93 · 0,83 | 0,94 · 0,88 · 0,84 | 0,90 · 0,88 · 0,81 |
-| tasa 10 %, señal 100 % | 0,90 · 0,85 · 0,80 | 0,88 · 0,76 · 0,85 | 0,84 · 0,65 · 0,83 |
-| tasa 10 %, señal 50 % | 0,55 · 0,68 · 0,43 | 0,49 · 0,58 · 0,49 | 0,44 · 0,46 · 0,44 |
-| tasa 10 %, señal 25 % | 0,17 · 0,33 · 0,10 | 0,12 · 0,22 · 0,11 | 0,15 · 0,30 · 0,17 |
+| Escenario sintético (horizonte de 3 meses) | PR-AUC · precisión · recall |
+|---|---|
+| tasa 30 %, señal 100 % (generador) | 0,760 · 0,604 · 0,703 |
+| tasa 10 %, señal 100 % | 0,563 · 0,277 · 0,701 |
+| tasa 10 %, señal 50 % | 0,315 · 0,210 · 0,488 |
+| tasa 10 %, señal 25 % | 0,168 · 0,149 · 0,322 |
 
-**El titular no es el ROC-AUC de 0,99**, que sale de un generador con una señal muy fuerte. Si la señal real es la mitad de clara, el campeón baja a PR-AUC 0,55 y encuentra a 43 % de los que se van; con un cuarto, **PR-AUC 0,17, precisión 0,33 y recall 0,10**. Esa es la cifra honesta mientras no llegue el extracto. **Pendiente con el fondo** (datos agregados, sin anonimizar): tasa de retiro anual, % de asociados con al
-menos una solicitud de cancelación o disminución de cuotas, y mediana de antigüedad y salario, para calibrar
-el generador y elegir el umbral con la tasa real.
+Las dos primeras filas difieren solo en la prevalencia: con el mismo modelo y la misma señal, la PR-AUC pasa de
+0,563 a 0,760 y la precisión de 0,277 a 0,604. Por eso la PR-AUC solo se compara a igual tasa de retiro, y los
+asociados nuevos de todos los scripts salen con la de desarrollo (`generador.asociados_nuevos`).
+
+El deterioro al debilitar la señal ilustra la dependencia del modelo respecto a las reglas programadas. No permite
+acotar el rendimiento real: la tasa real futura tampoco está disponible y no hay etiquetas con las que calibrar
+umbrales o probabilidades.
+
+**¿Se parecen los asociados reales a los sintéticos con que se entrenó el campeón?** Sin etiqueta no se puede
+medir el desempeño real, pero sí si el campeón se aplica dentro de lo que vio. `validacion.desplazamiento` hace una
+**validación adversaria**: un clasificador intenta distinguir filas sintéticas de reales con las variables del
+modelo (ROC-AUC fuera de partición; 0,5 = indistinguibles). Lo imprime `make predecir-real`.
+
+| Comparación | ROC-AUC | Lectura |
+|---|---|---|
+| Sintéticos frente a otros sintéticos (control; 3 semillas) | ROC-AUC 0,501–0,506; comportamiento 0,485–0,492 | control cercano al azar tras normalizar ambos lotes con el mismo contrato |
+| Sintéticos frente al extracto real, todas las variables | ROC-AUC 1,00 | dominios claramente separables; no mide abandono |
+| … solo variables de comportamiento | ROC-AUC ≈ 0,60 | desplazamiento moderado; no es una métrica del clasificador de abandono |
+| … variables que distinguen | geografía ROC-AUC 1,00; empresa 1,00; profesión ≈ 0,95 | categorías principales fuera del soporte sintético |
+
+Distribuciones agregadas sintético-real: KS de salario 0,060, edad 0,049, antigüedad en el fondo 0,043 y
+antigüedad laboral 0,083. Fuera del intervalo sintético P1–P99 queda 1,1 %, 2,5 %, 5,6 % y 9,5 %,
+respectivamente. Los conteos de comportamiento tienen KS ≤ 0,020. En categóricas, la distancia de variación
+total es 1,00 para empresa y códigos geográficos; 100 % de empresas y ciudades/departamentos reales y 81,8 %
+de profesiones quedan fuera del soporte sintético. Sexo, tipo de contrato y estrato tienen distancia ≤ 0,017 y
+ningún valor real fuera de soporte.
+
+Lectura: el campeón **extrapola en categorías de perfil** y hay diferencias cuantitativas en salario/antigüedad;
+las marginales de comportamiento son más próximas. No se modificó el generador para reducir estas diferencias:
+no había justificación independiente de proceso ni etiquetas reales que validaran el cambio. `predecir-real` sigue
+siendo un orden basado en reglas sintéticas, no una probabilidad ni validación del fondo.
 
 ## KFold, StratifiedKFold y TimeSeriesSplit: `make validacion`
 
@@ -345,11 +411,11 @@ tres formas y entrena la logística en cada partición (`validacion.comparar_val
 
 | Estrategia | PR-AUC | ± entre particiones | retirados por prueba | filas de entrenamiento |
 |---|---|---|---|---|
-| KFold (al azar) | 0,872 | 0,086 | 16 a 27 | 3.682 |
-| **StratifiedKFold** (la del campeón) | 0,866 | **0,035** | 21 en todas | 3.682 |
-| TimeSeriesSplit (por fecha de ingreso) | 0,858 | 0,088 | 15 a 24 | 767 → 3.835 |
+| KFold (al azar) | 0,544 | 0,026 | 78 a 122 | 4.000 |
+| **StratifiedKFold** (la del campeón) | 0,526 | **0,053** | 100 a 101 | 4.000 |
+| TimeSeriesSplit (por fecha de ingreso) | 0,542 | 0,036 | 76 a 97 | 835 → 4.167 |
 
-- **KFold**: con 105 retirados, una prueba tiene 16 y otra 27, y la cifra salta el doble que con la estratificada (± 0,086 frente a ± 0,035). Que su promedio salga un poco más alto aquí es azar de esas particiones.
+- **KFold**: la prevalencia de prueba varía más (78–122 eventos sintéticos) que en la estratificada. No se debe interpretar el promedio algo mayor como ventaja concluyente.
 - **StratifiedKFold**: deja la misma tasa de retiro en cada prueba. Por eso la usan el campeón, Optuna y la
   grilla.
 - **TimeSeriesSplit**: solo prueba con filas posteriores a las de su entrenamiento. La foto no tiene una
@@ -367,22 +433,44 @@ make validacion ARGS="--modelo random_forest --folds 10"
 
 El abandono es una clasificación. [`regresion.py`](../src/proyecto_ml/regresion.py) es la contraparte de
 regresión, con un uso real: **estimar el salario** de quien no lo reporta (el 5 % en el generador). Se entrena
-con quienes sí lo reportan y se valida con **KFold**, porque en regresión no hay clases que estratificar.
-SALARIO no entra como predictor en la regresión cuyo objetivo es estimar el salario.
+con quienes reportan un salario plausible (`SALARIO_PLAUSIBLE`: el relleno 987.654 y los de miles de millones no
+se aprenden) y se valida con **KFold**, porque en regresión no hay clases que estratificar. SALARIO no entra como
+predictor (`test_regresion_sin_fuga_y_referencia`).
 
-| Métrica | Qué dice | Referencia (promedio) | Ridge | Random Forest | HistGB |
-|---|---|---|---|---|---|
-| **MAE** | error promedio, en pesos | $1.286.406 | $1.291.881 | $1.306.053 | $1.329.315 |
-| **MSE** | castiga más los errores grandes (pesos²) | 2,94 × 10¹² | 2,95 × 10¹² | 3,00 × 10¹² | 3,12 × 10¹² |
-| **RMSE** | raíz del MSE, otra vez en pesos | $1.713.075 | $1.718.107 | $1.731.711 | $1.765.573 |
-| **R²** | fracción de la variación explicada (0 = el promedio) | 0,00 | −0,01 | −0,02 | −0,06 |
+**Elección y evaluación separadas.** Antes de elegir se aparta una **reserva** del 20 %. La validación cruzada
+compara la referencia (`DummyRegressor`, predecir el promedio) con Ridge, Random Forest y HistGB sobre el resto y
+elige por R²; ese R² es optimista para el elegido, porque es el mejor de varios sobre las mismas particiones. La
+cifra que se reporta es la de la **reserva**: el elegido y la referencia, entrenados sin ella, medidos una sola vez
+(`supera_referencia` se decide ahí). En los datos sintéticos, Ridge no supera al promedio en la reserva. En el
+extracto real, HistGradientBoosting sí supera al promedio para **estimar salario** en esa reserva; esto no valida
+el clasificador de abandono.
 
-**Ningún modelo le gana a predecir el promedio, y eso es lo correcto** (en MLflow, tag `supera_referencia =
-false`; en el JSON, `supera_referencia`; la figura lo dice en el título): el generador saca el salario al azar
-(lognormal), sin relación con las demás variables. Un R² alto aquí sería fuga. Si el RMSE es mucho mayor que
-el MAE, hay pocos errores muy grandes, que son los salarios altos. Con el extracto real, donde el salario
-depende del cargo, la antigüedad y el estrato, el R² debería subir. Resultados en
-`reports/figures/regresion_salario.html` y en MLflow (experimento `salario`).
+**Error relativo y por tramo.** Además de MAE, RMSE y R², se reporta `MdAPE` (mediana del error relativo) y el error
+por quintil del salario predicho (`regresion.error_por_tramo`). Con el extracto real el error es **heterocedástico**:
+crece con el salario y el error relativo casi se duplica en el quintil más alto, donde el modelo además se aleja
+del promedio real. Un MAE global promedia errores muy distintos; para salarios altos la estimación es poco útil.
+
+**Es una estimación transversal.** Salario y predictores se miden en el mismo corte: el modelo describe cómo van
+juntos en esa foto y sirve para estimar el salario de quien no lo reporta en ese corte. No pronostica salarios
+futuros ni mide efectos causales.
+
+CV sintética del 80 % de elección (5 folds; valores de consola del `make pipeline` del 25-nov):
+
+| Métrica | Referencia (promedio) | Ridge | Random Forest | HistGB |
+|---|---:|---:|---:|---:|
+| MAE | 1.170 M | 1.195 M | 1.217 M | 1.278 M |
+| RMSE | 1.924 M | 1.945 M | 1.963 M | 2.021 M |
+| R² | −0,001 | −0,023 | −0,042 | −0,103 |
+
+En la reserva sintética, Ridge obtiene R² −0,022 y MAE mayor que la referencia (1,252 M frente a 1,234 M);
+en 5.000 asociados nuevos, R² es −0,016 frente a −0,003 del promedio. No supera el baseline. El generador
+muestrea el salario mediante cuantiles y aplica además un factor sintético asociado a la etiqueta; por tanto, no es
+correcto describirlo como lognormal independiente ni usarlo como evidencia de una relación real.
+
+En `make real`, HistGradientBoosting obtiene R² 0,190 y MdAPE 0,159 en la reserva real, frente a R² 0,000 y
+MdAPE 0,210 del promedio. Es evidencia agregada para estimación transversal del salario, no predicción de retiro.
+No se publican salarios absolutos del extracto. Resultados completos locales en `reports/metrics/` y
+`reports/figures/regresion_salario.html`.
 
 ## Supervisado vs. no supervisado: segmentación con KMeans y DBSCAN (`make segmentos`)
 
@@ -393,25 +481,24 @@ depende del cargo, la antigüedad y el estrato, el R² debería subir. Resultado
 | Responde | ¿este asociado se retira? (puntaje y zona) | ¿qué tipos de asociado hay? (segmentos) |
 | Se valida con | PR-AUC, recall, precisión (validación cruzada) | silueta; y, solo al final, la tasa de retiro de cada segmento |
 
-[`scripts/segmentar.py`](../scripts/segmentar.py) agrupa a los asociados de la foto por sus 9 variables de
+[`scripts/segmentar.py`](../scripts/segmentar.py) agrupa a los asociados de la foto por sus 6 variables de
 comportamiento, imputadas y estandarizadas:
 
-- **KMeans** parte a todos en `k` grupos alrededor de `k` centros. `k` se elige con la **silueta**:
-  - k = 2 da 0,279; de k = 3 en adelante queda entre 0,113 y 0,135.
-  - El segmento 1 es el de más señales de salida, ordenado por sus centros sin mirar el retiro.
-- **DBSCAN** no pide `k`: forma grupos con las zonas densas (al menos 18 vecinos a menos de `eps` = 2,31, el
-  cuantil 90 de la distancia al vecino 18) y deja aparte a los **atípicos**, que no caen en ninguna.
+- **KMeans** parte a todos en `k` grupos alrededor de `k` centros. En la ejecución actual, k = 2 tiene la
+  silueta más alta (0,666); el primer grupo queda dominado por las señales que el generador condiciona a la
+  etiqueta. Es una estructura sintética, no un segmento de riesgo real.
+- **DBSCAN** deja 14 de 5.000 como atípicos; solo captura 1,6 % de las etiquetas sintéticas y no se considera
+  un detector útil en esta ejecución.
 
 | Marcar "en riesgo" a… | asociados | se retira | recall | ARI con el retiro |
 |---|---|---|---|---|
-| KMeans: segmento 1 | 489 (11 %) | 13,5 % | 63 % | 0,17 |
-| **DBSCAN: atípicos** | 220 (5 %) | **41,4 %** | **87 %** | **0,53** |
-| (todos los asociados) | 4.602 | 2,3 % | | |
+| KMeans: segmento 1 | 93 (1,9 %) | 86,0 % | 15,9 % | 0,221 |
+| DBSCAN: atípicos | 14 (0,3 %) | 57,1 % | 1,6 % | 0,023 |
+| (todos los asociados) | 5.000 | 10,1 % | | |
 
-Sin ver el retiro, DBSCAN aparta a un 5 % de asociados con comportamiento raro: muchas cancelaciones,
-disminuciones e intenciones de retiro. Ahí está el 87 % de los que se van. Aun así, el supervisado es mejor
-(el campeón encuentra al 85 % con una precisión del 86 %), porque aprende directamente del retiro. Los
-segmentos sirven para **describir** a los asociados y para campañas, no para reemplazar al campeón.
+Aunque la segmentación no recibe la etiqueta, sus entradas incluyen señales que el generador crea condicionadas
+al evento; las tasas altas no son descubrimiento independiente. DBSCAN no recupera casi ningún evento. Estas
+pruebas describen el comportamiento del generador y no sustentan campañas sobre el fondo.
 
 **Mapa interactivo** (`reports/figures/segmentos.html` y, en el simulador, "Mapa de segmentos"):
 - Cada asociado va en dos ejes que se leen directo: **señales de salida** (cancelaciones, disminuciones,
@@ -426,12 +513,29 @@ Con PCA, en cambio, dos componentes solo explican el 28 % de la variación y los
 **Con el extracto real: modo perfil** (`--perfil`, lo usa `make segmentos-real`). En el extracto casi todos los
 conteos valen 0, así que solo con comportamiento los segmentos salen por qué producto tiene cada uno. El modo
 perfil agrupa por comportamiento (en `log1p`, para que un conteo raro no domine) y por quién es el asociado: edad,
-antigüedad en el fondo (log), salario (log) y si le falta el estrato. La silueta queda plana (alrededor de 0,18 para
-todo `k`) y no sirve para elegir, así que `k` se fija en 5. Con el extracto salen cinco segmentos que se le pueden
-contar al fondo: los que **cancelan ahorros** (segmento 1, la señal de salida más fuerte), los que **retiran
-ahorros** (2), los **nuevos sin estrato** y con pocos productos (3), los **nuevos con estrato** (4) y los
-**veteranos** vinculados, de más edad, antigüedad y salario (5). `segmentacion.perfil` describe cada segmento con
-medianas y porcentajes en sus unidades (edad, antigüedad, salario, % sin estrato, % sin movimientos).
+antigüedad en el fondo (log), salario (log) y si le falta el estrato. Con el extracto salen cinco segmentos que se
+le pueden contar al fondo: los que registran **solicitudes de cancelación de ahorros** (segmento 1, la señal de
+salida más fuerte), los que registran **solicitudes de retiro parcial** (2), los **nuevos sin estrato** y con pocos
+productos (3), los **nuevos con estrato** (4) y los **veteranos** vinculados, de más edad, antigüedad y salario
+(5). Una solicitud no equivale a una operación completada: el extracto cuenta solicitudes, no retiros ni
+cancelaciones hechas. `segmentacion.perfil` describe cada segmento con medianas y porcentajes en sus unidades
+(edad, antigüedad, salario, % sin estrato, % sin movimientos).
+
+**Por qué k = 5: decisión exploratoria, no estadística.** Auditoría sobre el extracto real (KMeans del modo
+perfil; solo agregados):
+
+| Prueba | Resultado | Lectura |
+|---|---|---|
+| Índices por k (3 a 7) | silueta 0,175–0,197; Calinski-Harabasz máximo en k = 3; Davies-Bouldin baja al subir k | ningún índice elige k = 5; no hay un número "natural" de grupos |
+| 10 semillas (`n_init` = 20) | ARI con la base ≥ 0,99 | la solución con k = 5 no depende del inicio |
+| Bootstrap 80 % × 20 (Jaccard por segmento, criterio de Hennig) | solicitudes de cancelación y de retiro parcial: Jaccard mínimo ≥ 0,97; los tres grandes: Jaccard medio ≈ 0,96, pero en 1 de 20 submuestras se reorganizan (Jaccard mínimo 0,33–0,58) | los dos segmentos de salida son robustos; los tres de perfil son estables casi siempre, no siempre |
+| Silueta por segmento | veteranos 0,08; los demás 0,19–0,23 | los veteranos son un extremo de un continuo de edad y antigüedad, no un grupo separado |
+| k = 4 y k = 6 | con k = 4 el segmento de cancelación se reparte; con k = 6 se parten los nuevos con estrato | k = 5 es el menor k en el que las dos solicitudes de salida quedan en segmentos propios |
+| Interpretabilidad de las variables | `SIN_ESTRATO` (binaria) separa por sí sola los nuevos sin estrato (100 %) de los nuevos con estrato (0 %) | uno de los cinco segmentos lo define un dato faltante: describe un perfil incompleto, no una condición económica |
+
+Conclusión: los cinco segmentos son una **segmentación exploratoria orientada a la interpretación del negocio**, no
+grupos que los datos impongan. Los dos segmentos de solicitudes de salida son estables y son los que sirven para
+actuar; los de perfil describen a la mayoría de los asociados y se leen como tendencias, no como fronteras.
 
 ```bash
 make segmentos                                   # k por silueta, eps por vecinos
@@ -477,6 +581,12 @@ Usa **PyCaret 4.0 alfa**: la estable (3.3) exige pandas < 2.2 y no es compatible
 extra opcional (no lo instala `make setup` ni el CI). A diferencia de nuestro preprocesador, PyCaret codifica
 las categóricas con OrdinalEncoder (no OneHot) y no compensa el desbalance (`class_weight`).
 
+Con los datos de desarrollo (`reports/metrics/pycaret_20261125_185438.json`), los boosting de PyCaret encabezan la
+validación cruzada por AUC (`gbc` 0,874; `ada` 0,873) frente a 0,850 de nuestro HistGB por defecto. Con los 1.000
+nuevos (9,0 % de eventos), la PR-AUC más alta es la de LightGBM (0,623) y `gbc` (0,609), frente a 0,586 del HistGB.
+Es una comparación exploratoria con una sola partición de nuevos y sin intervalos: no pasa por la selección del
+campeón ni indica un ganador general.
+
 ## Afinar hiperparámetros: Ridge y `pycaret_lr`
 
 `make afinar` ([`scripts/afinar_modelos.py`](../scripts/afinar_modelos.py)) busca en grilla (`GridSearchCV`) los
@@ -497,9 +607,19 @@ comportamiento el IQR vale [0, 0] y recortarlos borraría la señal.
 **Tabla por partición** (`pipeline | fold | Accuracy | AUC`): para cada preprocesamiento de cada modelo
 (`Ridge_median_onehot`, `LogisticRegression_mean_ordinal_iqr`...), su mejor combinación del resto en cada
 una de las 5 particiones. Debajo, el resumen por preprocesamiento: promedio y desviación entre particiones
-y, la prueba honesta, el resultado sobre asociados **nuevos**. Con `data/ejemplo` (50 filas) el orden se
-invierte: en validación cruzada gana ordinal, con nuevos gana OneHot. Con tan pocas filas, buscar entre
-más combinaciones sobreajusta la validación cruzada. El **gráfico de bigotes**
+y, la prueba honesta, el resultado sobre asociados **nuevos**. Con los datos de desarrollo
+(`reports/metrics/afinamiento_20261125_185058.json`; nuevos: 1.000 con 9,0 % de eventos sintéticos):
+
+- La logística rinde mejor con OneHot y recorte IQR (AUC 0,862 ± 0,008 en validación cruzada; 0,873 con nuevos), y
+  Ridge con ordinal e IQR (0,854 ± 0,010; 0,879). Entre preprocesamientos de un mismo modelo, el AUC de validación
+  cruzada varía a lo sumo 0,009, menos que la desviación entre particiones (0,008–0,014): ninguno gana de forma
+  concluyente. Mediana y media empatan
+  porque los datos de desarrollo no traen vacíos numéricos.
+- Afinar sube el AUC con nuevos (Ridge 0,849 → 0,879; `pycaret_lr` 0,863 → 0,873), pero los dos eligen
+  `class_weight=None`: con el umbral fijo de 0,5 el recall de Ridge cae de 0,756 a 0,278. Maximizar AUC no dice
+  nada del umbral; el campeón lo fija aparte (F2 y precisión ≥ 0,8).
+
+El **gráfico de bigotes**
 (`reports/figures/afinamiento_bigotes.png`) muestra lo mismo: una caja por pipeline con sus 5 particiones
 y un rombo con el resultado sobre nuevos. `afinamiento_importancia.png` muestra las variables que más
 aportan a los dos afinados.
@@ -543,14 +663,19 @@ hiperparámetros, `cv_`, `nuevos_` y el resumen del estudio, no una corrida por 
 `reports/figures/optuna_<m>.html` (historia de la búsqueda, importancia, cortes y poda) y el resumen en
 `reports/metrics/optuna_*.json`.
 
-Con `data/ejemplo` (50 filas), 60 intentos por modelo, unos 2 minutos:
+Con los datos de desarrollo (5.000 asociados, 10,1 % de etiquetas sintéticas), 60 intentos por modelo, unos
+3 minutos (`reports/metrics/optuna_20261125_185402.json`; nuevos: 1.000 con 9,0 % de eventos sintéticos):
 
-- **HistGB es el que más gana.** Por defecto (`min_samples_leaf=20`) casi no puede cortar con ~40 filas
-  por partición: AUC de validación cruzada 0.22. Optuna baja la hoja a 4 y sube `learning_rate`; con
-  nuevos, AUC 0.853 → 0.938 y F1 0.674 → 0.782.
-- **La métrica que se maximiza importa.** Por AUC, Random Forest elige `class_weight=None`: ordena igual
-  de bien (AUC 0.967 con nuevos) pero casi nunca supera el umbral de 0.5 y el recall cae de 0.44 a 0.18.
-  Con `--metrica F1` elige `balanced_subsample` y hojas de 10: recall 0.84 y F1 0.80 con nuevos (AUC 0.948).
+- **Ganan poco, y en validación cruzada la ganancia es optimista** (cada estudio eligió mirando esas particiones).
+  HistGB: AUC de validación cruzada 0,850 → 0,875; con nuevos, ROC-AUC 0,842 → 0,887 y PR-AUC 0,586 → 0,620.
+  Random Forest: 0,849 → 0,871; con nuevos, 0,865 → 0,880 y PR-AUC 0,584 → 0,594. Con 90 eventos en los nuevos,
+  diferencias de PR-AUC de 0,01 a 0,03 no son concluyentes.
+- **La métrica que se maximiza importa.** Por defecto se maximiza ROC-AUC, que no depende del umbral. Random
+  Forest elige `balanced_subsample` y, con el umbral fijo de 0,5, pasa de recall 0,411 y precisión 0,822 a recall
+  0,756 y precisión 0,300; HistGB elige `class_weight=None` y queda en recall 0,444 y precisión 0,851.
+- **Por qué no reemplazan al campeón.** El campeón se elige por PR-AUC en validación cruzada repetida, con
+  intervalo y prueba de Nadeau-Bengio, y su umbral sale de las predicciones fuera de partición. Para que los árboles
+  afinados compitan con ese criterio: `make campeon ARGS="--optuna 20"` (afina con `average_precision`).
 
 ```bash
 make optuna                                         # 60 intentos por modelo, maximiza AUC
@@ -574,44 +699,39 @@ Los datos generados no traen vacíos, así que para comparar imputadores el scri
 
 | Técnica | Dónde | PR-AUC | Dif. con la base | IC 95 % de la diferencia |
 |---|---|---|---|---|
-| **Base**: mediana, OneHot, StandardScaler, recorte IQR, `class_weight` | `features.build_preprocessor` | 0,857 | — | — |
-| Sin balancear | `tecnicas.clasificador` | 0,914 | **0,057** | 0,028 a 0,086 ✔ |
-| SMOTE | `imblearn` (también `make train ARGS="--smote"`) | 0,861 | 0,004 | −0,007 a 0,014 |
-| ADASYN | `imblearn` | 0,843 | **−0,014** | −0,027 a −0,002 ✔ |
-| SimpleImputer(mean) | `numeric_strategy="mean"` | 0,859 | 0,001 | −0,000 a 0,003 |
-| KNNImputer | `numeric_strategy="knn"` | 0,858 | 0,001 | −0,007 a 0,008 |
-| IterativeImputer | `numeric_strategy="iterative"` | 0,858 | 0,001 | −0,002 a 0,004 |
-| SimpleImputer + MissingIndicator | `missing_indicator=True` | 0,854 | −0,003 | −0,023 a 0,017 |
-| OrdinalEncoder | `encoding="ordinal"` | 0,892 | **0,035** | 0,007 a 0,062 ✔ |
-| TargetEncoder | `encoding="target"` | 0,906 | **0,049** | 0,024 a 0,073 ✔ |
-| MinMaxScaler | `scaler="minmax"` | 0,882 | **0,024** | 0,004 a 0,045 ✔ |
-| MaxAbsScaler | `scaler="maxabs"` | 0,882 | **0,025** | 0,005 a 0,046 ✔ |
-| RobustScaler | `scaler="robust"` | 0,861 | 0,004 | −0,001 a 0,009 |
-| Normalizer | `scaler="normalizer"` | 0,842 | −0,016 | −0,084 a 0,053 |
-| Variables nuevas (creación y transformación) | `abandono.CrearVariables` | 0,855 | −0,003 | −0,020 a 0,015 |
-| Binning (KBinsDiscretizer, 5 rangos) | `bins=5, bin_columns=...` | 0,853 | −0,004 | −0,032 a 0,024 |
-| PCA (95 % de la varianza) | `pca_components=0.95` | 0,875 | 0,018 | −0,008 a 0,044 |
-| RFE (15 columnas) | `rfe_features=15` | 0,864 | 0,007 | −0,024 a 0,039 |
+| **Base**: mediana, OneHot, StandardScaler, recorte IQR, `class_weight` | `features.build_preprocessor` | 0,531 | — | — |
+| Sin balancear | `tecnicas.clasificador` | 0,541 | **0,009** | 0,002 a 0,017 ✔ |
+| SMOTE | `imblearn` | 0,531 | −0,000 | −0,015 a 0,014 |
+| ADASYN | `imblearn` | 0,521 | −0,010 | −0,032 a 0,011 |
+| SimpleImputer(mean) | `numeric_strategy="mean"` | 0,533 | 0,001 | −0,003 a 0,005 |
+| KNNImputer | `numeric_strategy="knn"` | 0,531 | −0,000 | −0,005 a 0,004 |
+| IterativeImputer | `numeric_strategy="iterative"` | 0,532 | 0,001 | −0,004 a 0,006 |
+| SimpleImputer + MissingIndicator | `missing_indicator=True` | 0,533 | 0,001 | −0,002 a 0,005 |
+| OrdinalEncoder | `encoding="ordinal"` | 0,545 | 0,014 | −0,003 a 0,030 |
+| TargetEncoder | `encoding="target"` | 0,552 | **0,021** | 0,004 a 0,037 ✔ |
+| MinMaxScaler | `scaler="minmax"` | 0,524 | −0,007 | −0,016 a 0,003 |
+| MaxAbsScaler | `scaler="maxabs"` | 0,525 | −0,007 | −0,016 a 0,003 |
+| RobustScaler | `scaler="robust"` | 0,531 | −0,000 | −0,001 a 0,001 |
+| Normalizer | `scaler="normalizer"` | 0,544 | 0,013 | −0,002 a 0,027 |
+| Variables nuevas (creación y transformación) | `abandono.CrearVariables` | 0,536 | 0,005 | −0,005 a 0,014 |
+| Binning (KBinsDiscretizer, 5 rangos) | `bins=5, bin_columns=...` | 0,530 | −0,002 | −0,010 a 0,007 |
+| PCA (95 % de la varianza) | `pca_components=0.95` | 0,496 | −0,036 | −0,068 a −0,003 ✔ |
+| RFE (15 columnas) | `rfe_features=15` | 0,241 | −0,290 | −0,349 a −0,232 ✔ |
 
-*Datos de desarrollo, foto a 3 meses: 4.602 asociados, de los que 105 se retiran. Logística, 5 particiones × 3
-repeticiones. ✔ = concluyente: el intervalo de la diferencia, partición a partición, no toca el 0.*
+*Datos de desarrollo sincronizados: 5.000 asociados y 503 etiquetas sintéticas. Logística, 5 particiones × 3
+repeticiones; se generaron vacíos aleatorios al 10 % para comparar imputadores. Los IC son diferencias pareadas
+por partición y no ajustan por probar múltiples técnicas. ✔ indica que el intervalo de esta comparación no toca 0.*
 
-**Cómo leerlo.** Una técnica sola varía ±0,052 entre particiones, pero eso exagera el ruido de la
-**diferencia**: las particiones difíciles lo son para todas. Por eso la diferencia con la base se mide partición a
-partición (`tecnicas.comparar`, la misma prueba t corregida del campeón). Con 2.000 asociados las variables nuevas
-(+0,032) y el indicador de vacíos (+0,021) parecían mejorar; con 5.000 quedan en
-−0,003 y −0,003: eran ruido. Lo que sí se sostiene:
+**Cómo leerlo.** En esta semilla, sin balancear mejora +0,009 y TargetEncoder +0,021 frente a la base; el resto
+de los cambios pequeños tiene intervalos que incluyen cero. La repetición con seeds 7, 42 y 2026 muestra que la
+ganancia de sin balancear es positiva (+0,007 a +0,013), pero no concluyente en todos los seeds. TargetEncoder
+empeora en un seed y Normalizer mejora numéricamente en los tres, aunque sus intervalos no son concluyentes
+salvo una comparación. El baseline Dummy (prior) da AP igual a la prevalencia, 0,094–0,101, y ROC-AUC 0,5.
+No se promueve Normalizer solo por su métrica: no hay justificación de dominio independiente.
 
-- **Sin balancear le gana a `class_weight`** (0,057). La PR-AUC solo mira el orden de los
-  puntajes, y con estos datos reponderar las clases lo empeora; el umbral se elige aparte igual. Entra como
-  candidato del campeón.
-- **TargetEncoder y OrdinalEncoder le ganan al OneHot** (0,049 y 0,035). Son
-  las categóricas (cargo, ciudad, agencia): una columna por categoría no es la mejor forma de pasárselas a la
-  logística aquí. TargetEncoder entra como candidato.
-- **Min-max y max-abs ayudan un poco** (0,024); Normalizer, que escala cada fila y no cada
-  columna, no es concluyente. A los árboles el escalado no les cambia nada (pruébalo con `--clasificador hist_gb`).
-- **ADASYN empeora** (−0,014) y SMOTE no cambia nada: con una logística, re-muestrear no le gana a
-  ponderar.
+La selección de candidatos es, por tanto, exploratoria. Sin balancear se conserva como baseline simple;
+TargetEncoder se conserva como alternativa para categóricas; ningún resultado permite recomendar técnica para el
+extracto real. SMOTE no aporta en esta ejecución; PCA y RFE empeoran la PR-AUC sintética.
 
 **Feature engineering** (`abandono.CrearVariables`, opcional; no cambia el campeón):
 

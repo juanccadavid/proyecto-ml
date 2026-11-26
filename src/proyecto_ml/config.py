@@ -2,14 +2,42 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-load_dotenv(ROOT_DIR / ".env", override=False)
+ENV_PATH = ROOT_DIR / ".env"
+_DOTENV_CARGADO: dict[str, str] = {}
+_DOTENV_FIRMA: str | None = None
+
+
+def _recargar_dotenv() -> None:
+    """Sincroniza ``ENV_PATH`` con ``os.environ`` si su contenido cambió, sin pisar variables del entorno externo."""
+    global _DOTENV_FIRMA
+    firma = hashlib.sha256(ENV_PATH.read_bytes()).hexdigest() if ENV_PATH.exists() else ""
+    if firma == _DOTENV_FIRMA:
+        return
+    nuevos = {k: v for k, v in dotenv_values(ENV_PATH).items() if v is not None} if firma else {}
+    for clave, anterior in list(_DOTENV_CARGADO.items()):
+        if os.environ.get(clave) == anterior:  # nadie la sobrescribió desde la terminal ni con monkeypatch
+            if clave in nuevos:
+                os.environ[clave] = nuevos[clave]
+                _DOTENV_CARGADO[clave] = nuevos[clave]
+            else:
+                os.environ.pop(clave, None)
+                del _DOTENV_CARGADO[clave]
+    for clave, valor in nuevos.items():
+        if clave not in os.environ:
+            os.environ[clave] = valor
+            _DOTENV_CARGADO[clave] = valor
+    _DOTENV_FIRMA = firma
+
+
+_recargar_dotenv()
 
 DATA_DIR = ROOT_DIR / "data"
 RAW_DIR = DATA_DIR / "raw"
@@ -54,6 +82,7 @@ ORIGENES = (ORIGEN_SINTETICO, ORIGEN_REAL)
 
 def origen_datos(origen: str | None = None) -> str:
     """El origen de los datos: ``origen``, o ``ORIGEN_DATOS`` del .env, o "sintetico" si no se dice nada."""
+    _recargar_dotenv()
     valor = (origen or os.getenv("ORIGEN_DATOS", "") or ORIGEN_SINTETICO).strip()
     if valor not in ORIGENES:
         raise ValueError(f"ORIGEN_DATOS debe ser uno de {ORIGENES}, no {valor!r}")
@@ -69,15 +98,16 @@ FECHA_CORTE_DEFECTO = "2026-03-31"  # la del extracto real (DataAnonimizada.xlsx
 
 
 def fecha_corte() -> str:
-    """Fecha del extracto (``FECHA_CORTE`` del .env): la foto del asociado se toma 3 meses antes. Con el extracto
-    real debe ser su fecha de extracción; si no, la foto y la etiqueta de retiro quedan corridas."""
+    """Fecha del corte C (``FECHA_CORTE`` del .env): las variables se miden en t0 = C y el evento cae en (C, C + 3m].
+    Con el extracto real debe coincidir con su fecha de corte."""
+    _recargar_dotenv()
     return os.getenv("FECHA_CORTE", "").strip() or FECHA_CORTE_DEFECTO
 
 
 def temporalidad_confirmada() -> bool:
-    """``TEMPORALIDAD_CONFIRMADA=si`` en el .env: el fondo confirmó que los conteos del extracto (ULT3MESES y los
-    demás de comportamiento) se miden a la fecha de observación t0 y no a la de extracción. Sin eso, una evaluación
-    con datos reales puede tener fuga temporal y no se da por válida (se entrena igual, pero queda marcada)."""
+    """``TEMPORALIDAD_CONFIRMADA=si`` en el .env: el fondo confirmó que las variables y conteos del extracto
+    (ULT3MES y demás de comportamiento) están medidos al corte t0 = C y no incluyen hechos posteriores al evento."""
+    _recargar_dotenv()
     return os.getenv("TEMPORALIDAD_CONFIRMADA", "").strip().lower() in ("si", "sí", "true", "1")
 
 
@@ -89,6 +119,7 @@ def aviso_origen(origen: str | None = None) -> str:
 
 
 def get_settings() -> Settings:
+    _recargar_dotenv()
     default_mlflow = f"sqlite:///{(ROOT_DIR / 'mlflow.db').as_posix()}"
     return Settings(
         data_path=_resolve(os.getenv("DATA_PATH", "data/processed/dataset.parquet")),
