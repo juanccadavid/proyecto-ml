@@ -273,11 +273,11 @@
       "tasa_retiro": 0.8602150537634409,
       "perfil": {
         "#SOLICITUDCREDITOS_ULT3MES": 0.032258064516129004,
-        "#SOLICITUD_CANCELACIONAHORROS": 2.43010752688172,
+        "#SOLICITUD_CANCELACIONAHORROS": 2.4301075268817205,
         "#SOLICITUD_RETIROPARCIALAHORROS": 0.7849462365591398,
         "#CANTIDAD_AHORROSALAVISTA": 0.24731182795698925,
-        "#CANTIDAD_AHORROSCONTRACTUALES": 0.19354838709677424,
-        "#CANTIDAD_SERVICIOS": 0.17204301075268819
+        "#CANTIDAD_AHORROSCONTRACTUALES": 0.19354838709677413,
+        "#CANTIDAD_SERVICIOS": 0.17204301075268813
       }
     },
     "estable": {
@@ -293,7 +293,7 @@
       }
     }
   },
-  "fecha": "2026-11-25T18:14:18",
+  "fecha": "2026-11-25T19:34:52",
   "filas": 5000,
   "tasa_retiro": 0.1006,
   "folds": 5,
@@ -324,7 +324,7 @@
     "version.optuna": "5.0.0"
   },
   "codigo": {
-    "git.commit": "d1a069caac67",
+    "git.commit": "8e432e3e3b67",
     "git.sucio": "true"
   },
   "argumentos": {
@@ -595,6 +595,56 @@
       "pr_auc": 0.16623843657799828,
       "precision": 0.14160070360598065,
       "recall": 0.34328358208955223
+    }
+  ],
+  "prevalencia_comprobacion": {
+    "escenario": "tasa 30 %, señal 100 % (generador)",
+    "prevalencia": 0.2912,
+    "precision_esperada": 0.6186750913899413,
+    "precision_medida": 0.6044864226682408,
+    "recall_esperado": 0.7157057654075547,
+    "recall_medido": 0.7032967032967034
+  },
+  "prevalencia": [
+    {
+      "prevalencia": 0.02,
+      "precision_alerta": 0.07458321288017607,
+      "recall_alerta": 0.7157057654075547,
+      "precision_alto": 0.4230771135219762,
+      "umbral_recalculado": 0.4000000000000001,
+      "umbral_alto_recalculado": 0.7566666666666667
+    },
+    {
+      "prevalencia": 0.05,
+      "precision_alerta": 0.17208136800286988,
+      "recall_alerta": 0.7157057654075547,
+      "precision_alto": 0.6541263901194081,
+      "umbral_recalculado": 0.21,
+      "umbral_alto_recalculado": 0.5722222222222223
+    },
+    {
+      "prevalencia": 0.1,
+      "precision_alerta": 0.3049718136735472,
+      "recall_alerta": 0.7157057654075547,
+      "precision_alto": 0.7997033890733843,
+      "umbral_recalculado": 0.11666666666666665,
+      "umbral_alto_recalculado": 0.41111111111111115
+    },
+    {
+      "prevalencia": 0.2,
+      "precision_alerta": 0.4967993371589898,
+      "recall_alerta": 0.7157057654075547,
+      "precision_alto": 0.8998331254182634,
+      "umbral_recalculado": 0.06333333333333334,
+      "umbral_alto_recalculado": 0.27
+    },
+    {
+      "prevalencia": 0.3,
+      "precision_alerta": 0.6285949102910486,
+      "recall_alerta": 0.7157057654075547,
+      "precision_alto": 0.9390244349189782,
+      "umbral_recalculado": 0.06333333333333334,
+      "umbral_alto_recalculado": 0.19666666666666666
     }
   ],
   "shap_nuevos": {

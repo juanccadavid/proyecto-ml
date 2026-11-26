@@ -25,7 +25,11 @@ pero el extracto y sus predicciones individuales nunca se adjuntan.
   por asociado, se queda en `reports/` (ignorado por Git) y no se sube como artefacto.
 - **Riesgos que quedan, en local:** `reports/figures/segmentos.html` y `data/processed/predicciones.csv` tienen una
   fila por asociado (sin identificadores) y existen solo en el equipo del custodio. `docker-compose.yml` monta
-  `./data` (solo lectura) y pasa el `.env` al contenedor: no compartir ese contenedor ni su volumen de MLflow.
+  `./data` en solo lectura; no compartir el contenedor ni su volumen de MLflow.
+- **Los contenedores no reciben secretos.** `docker-compose.yml` ya no carga el `.env` completo (`env_file`): cada
+  servicio recibe solo las variables de datos que lee (`ORIGEN_DATOS`, `FECHA_CORTE`...). `SUPABASE_SECRET_KEY`,
+  `SUPABASE_DB_URL`, `ANON_SALT` y los tokens no entran a ningún contenedor, y `.dockerignore` deja el `.env` fuera
+  de la imagen (`test_los_contenedores_no_reciben_los_secretos_del_env`).
 
 ## Seudonimización y anonimía
 

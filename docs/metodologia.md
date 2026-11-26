@@ -6,7 +6,7 @@
 >
 > **Vigencia de las cifras.** Las cifras sintéticas de esta página se recalcularon el 25-nov-2026 con el generador
 > actual: 5.000 asociados, 503 etiquetas sintéticas (10,1 %), corte 31-mar-2026 y evento en
-> (31-mar, 30-jun-2026]. Experimento principal: `reports/metrics/campeon_20261125_181558.json`; técnicas:
+> (31-mar, 30-jun-2026]. Experimento principal: `reports/metrics/campeon_20261125_193634.json`; técnicas:
 > `reports/metrics/tecnicas_20261125_180351.json`. Son experimentos reproducibles del generador, no validación
 > del fondo. Los `campeon_*.json` no se versionan por defecto (los regenera cada `make pipeline`): el que se cita
 > aquí se fija a propósito con `git add -f`, como indica [reports/README.md](../reports/README.md). Con el
@@ -58,7 +58,7 @@ Además, para el Random Forest, `reports/figures/abandono_importancia_rf.html` e
 (Plotly: al pasar el mouse muestra variable e importancia) con su `feature_importances_` por columna ya
 transformada, con el prefijo de su rama (`num__`, `clip__`, `cat__SEXO_F`...). Es la importancia propia del
 bosque (cuánto reduce la impureza): favorece a las continuas, que admiten muchos cortes. En
-`reports/metrics/abandono_20261125_184901.json`, `EDAD` y las dos antigüedades tienen 0,067–0,071 de MDI cada una y no
+`reports/metrics/abandono_20261125_184901.json`, `EDAD` y las dos antigüedades tienen 0,066–0,071 de MDI cada una y no
 aparecen entre las 5 primeras por permutación. `SALARIO` sí aporta en las dos (MDI 0,095; permutación 0,037 en el
 bosque), porque el generador lo hace depender de la etiqueta sintética. En código:
 `figura_importancia_interactiva(importancia_arbol(rf), "titulo")`.
@@ -339,7 +339,7 @@ Cada punto se verificó en el código y tiene una prueba que impide que vuelva a
 **Qué del campeón sale directamente de la lógica sintética.** El generador hace depender de la etiqueta solo
 siete variables (`generador.PRODUCTOS`, `DISMINUCION_CUOTAS` y un factor sobre el salario); las demás se sortean
 sin relación con ella. La importancia SHAP del campeón (`shap_nuevos` en
-`reports/metrics/campeon_20261125_181558.json`, 100 asociados nuevos) reproduce esa construcción:
+`reports/metrics/campeon_20261125_193634.json`, 100 asociados nuevos) reproduce esa construcción:
 
 | Variable | ¿Depende de la etiqueta en el generador? | |contribución| SHAP promedio |
 |---|---|---|
@@ -375,6 +375,29 @@ ni estiman el rendimiento sobre el fondo:
 Las dos primeras filas difieren solo en la prevalencia: con el mismo modelo y la misma señal, la PR-AUC pasa de
 0,563 a 0,760 y la precisión de 0,277 a 0,604. Por eso la PR-AUC solo se compara a igual tasa de retiro, y los
 asociados nuevos de todos los scripts salen con la de desarrollo (`generador.asociados_nuevos`).
+
+**Si la tasa de retiro del fondo no es 10 %.** Los umbrales salen de la prevalencia sintética. Reponderar las
+predicciones fuera de partición (`campeon.sensibilidad_prevalencia`: positivos × π'/π, negativos × (1 − π')/(1 − π))
+da la precisión esperada a otra tasa sin etiquetas individuales: basta la tasa trimestral de retiro del fondo, un
+agregado. Supone que cambia **cuántos** se retiran y no **cómo es** quien se retira (cambio de prevalencia); sin
+etiquetas reales ese supuesto no se puede comprobar con el fondo. Campeón actual (`campeon.json`, clave
+`prevalencia`):
+
+| Tasa trimestral de retiro | Precisión de la alerta (umbral 0,117) | Precisión de "se retira" (umbral 0,410) | Umbral alto para 80 % |
+|---|---:|---:|---:|
+| 2 % | 0,075 | 0,423 | 0,757 |
+| 5 % | 0,172 | 0,654 | 0,572 |
+| 10 % (sintética) | 0,305 | 0,800 | 0,411 |
+| 20 % | 0,497 | 0,900 | 0,270 |
+| 30 % | 0,629 | 0,939 | 0,197 |
+
+El recall (0,716) no cambia: depende solo de quienes se retiran. **Comprobación** con el escenario del generador al
+29,1 %, que es un cambio de prevalencia puro: precisión esperada 0,619, medida 0,604. Con una tasa real del 2 %, los
+umbrales actuales prometerían que 8 de cada 10 asociados en "se retira" se van, y serían 4. Para una probabilidad
+calibrada, `campeon.ajustar_probabilidad` (Saerens, Latinne y Decaestecker, 2002) la lleva a la nueva tasa; el
+campeón usa `class_weight="balanced"` y su puntaje no es una probabilidad calibrada, así que con él se usan los
+umbrales recalculados. Las dos funciones tienen pruebas con el generador a otra tasa
+(`test_precision_esperada_a_otra_tasa_coincide_con_la_medida`).
 
 El deterioro al debilitar la señal ilustra la dependencia del modelo respecto a las reglas programadas. No permite
 acotar el rendimiento real: la tasa real futura tampoco está disponible y no hay etiquetas con las que calibrar
@@ -438,8 +461,8 @@ se aprenden) y se valida con **KFold**, porque en regresión no hay clases que e
 predictor (`test_regresion_sin_fuga_y_referencia`).
 
 **Elección y evaluación separadas.** Antes de elegir se aparta una **reserva** del 20 %. La validación cruzada
-compara la referencia (`DummyRegressor`, predecir el promedio) con Ridge, Random Forest y HistGB sobre el resto y
-elige por R²; ese R² es optimista para el elegido, porque es el mejor de varios sobre las mismas particiones. La
+compara la referencia (`DummyRegressor`, predecir el promedio) con Ridge, Random Forest, HistGB y dos modelos que
+aprenden el logaritmo del salario (Ridge y HistGB en logaritmo) sobre el resto, y elige por R²; ese R² es optimista para el elegido, porque es el mejor de varios sobre las mismas particiones. La
 cifra que se reporta es la de la **reserva**: el elegido y la referencia, entrenados sin ella, medidos una sola vez
 (`supera_referencia` se decide ahí). En los datos sintéticos, Ridge no supera al promedio en la reserva. En el
 extracto real, HistGradientBoosting sí supera al promedio para **estimar salario** en esa reserva; esto no valida
@@ -447,8 +470,14 @@ el clasificador de abandono.
 
 **Error relativo y por tramo.** Además de MAE, RMSE y R², se reporta `MdAPE` (mediana del error relativo) y el error
 por quintil del salario predicho (`regresion.error_por_tramo`). Con el extracto real el error es **heterocedástico**:
-crece con el salario y el error relativo casi se duplica en el quintil más alto, donde el modelo además se aleja
-del promedio real. Un MAE global promedia errores muy distintos; para salarios altos la estimación es poco útil.
+crece con el salario, y con el HistGB en pesos el error relativo casi se duplicaba en el quintil más alto. Por eso
+compiten los modelos en logaritmo: el error que minimizan es relativo, como en la ecuación de salarios de Mincer.
+
+**Intervalo de predicción por tramo.** Cada estimación lleva un intervalo multiplicativo [ŷ ÷ f, ŷ × f] que debería
+contener 8 de cada 10 salarios reales (`regresion.calibrar_intervalo`). f se calibra con los errores relativos
+**fuera de partición** de la parte de elección (conformal con corrección de muestra finita), nunca con la reserva, y
+hay **un f por quintil** del salario predicho (conformal "Mondrian"). La reserva mide la cobertura en total y por
+quintil: un intervalo que cubre el 80 % en promedio pero no en los salarios altos no sirve para esos asociados.
 
 **Es una estimación transversal.** Salario y predictores se miden en el mismo corte: el modelo describe cómo van
 juntos en esa foto y sirve para estimar el salario de quien no lo reporta en ese corte. No pronostica salarios
@@ -456,19 +485,36 @@ futuros ni mide efectos causales.
 
 CV sintética del 80 % de elección (5 folds; valores de consola del `make pipeline` del 25-nov):
 
-| Métrica | Referencia (promedio) | Ridge | Random Forest | HistGB |
-|---|---:|---:|---:|---:|
-| MAE | 1.170 M | 1.195 M | 1.217 M | 1.278 M |
-| RMSE | 1.924 M | 1.945 M | 1.963 M | 2.021 M |
-| R² | −0,001 | −0,023 | −0,042 | −0,103 |
+| Métrica | Referencia (promedio) | Ridge | Ridge en log | Random Forest | HistGB en log | HistGB |
+|---|---:|---:|---:|---:|---:|---:|
+| MAE | 1.170 M | 1.195 M | 1.096 M | 1.217 M | 1.154 M | 1.278 M |
+| RMSE | 1.924 M | 1.945 M | 1.957 M | 1.963 M | 1.992 M | 2.021 M |
+| R² | −0,001 | −0,023 | −0,035 | −0,042 | −0,073 | −0,103 |
 
-En la reserva sintética, Ridge obtiene R² −0,022 y MAE mayor que la referencia (1,252 M frente a 1,234 M);
-en 5.000 asociados nuevos, R² es −0,016 frente a −0,003 del promedio. No supera el baseline. El generador
+En la reserva sintética, Ridge obtiene R² −0,022 y MAE mayor que la referencia (1,252 M frente a 1,234 M); en
+1.000 asociados nuevos (952 con salario), R² es −0,016 frente a −0,003 del promedio. No supera el baseline. El
+intervalo del 80 % cubre el 78,1 % de la reserva y entre 74,0 % y 83,5 % por quintil (200 asociados por quintil),
+con f de 1,61 a 1,70 (`reports/metrics/regresion_20261125_192920.json`). El generador
 muestrea el salario mediante cuantiles y aplica además un factor sintético asociado a la etiqueta; por tanto, no es
 correcto describirlo como lognormal independiente ni usarlo como evidencia de una relación real.
 
-En `make real`, HistGradientBoosting obtiene R² 0,190 y MdAPE 0,159 en la reserva real, frente a R² 0,000 y
-MdAPE 0,210 del promedio. Es evidencia agregada para estimación transversal del salario, no predicción de retiro.
+En `make real`, la validación cruzada elige **HistGB en logaritmo** (R² 0,222 frente a 0,216 del HistGB en pesos; la
+diferencia es menor que la desviación entre particiones, 0,02). Sobre la misma reserva real (2.891 asociados):
+
+| En la reserva real | Promedio (referencia) | HistGB en pesos (antes) | HistGB en logaritmo (ahora) |
+|---|---:|---:|---:|
+| R² | 0,000 | 0,190 | 0,189 |
+| MAE frente al promedio | — | −16 % | −21 % |
+| MdAPE | 0,210 | 0,159 | 0,148 |
+| MdAPE en el quintil más alto | — | 0,280 | 0,225 |
+| Intervalo del 80 %: cobertura total | — | — | 79,8 % |
+| Cobertura por quintil (un f para todos → un f por quintil) | — | — | 66,8 %–88,8 % → 78,2 %–82,2 % |
+
+El R² no cambia; lo que mejora es el error relativo, sobre todo en los salarios altos (MAE 5,7 % menor que el del
+HistGB en pesos). Con un solo f (1,37), el intervalo cubría el 80 % en promedio pero el 66,8 % en el quintil más
+alto; con un f por quintil (de 1,30 a 1,60), todos los quintiles quedan entre 78,2 % y 82,2 %. En los salarios más
+altos la estimación sigue siendo la menos precisa: su intervalo va de ÷1,60 a ×1,60. Es evidencia agregada para
+estimación transversal del salario, no predicción de retiro.
 No se publican salarios absolutos del extracto. Resultados completos locales en `reports/metrics/` y
 `reports/figures/regresion_salario.html`.
 

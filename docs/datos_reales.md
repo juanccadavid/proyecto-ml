@@ -82,7 +82,7 @@ coordenada por asociado, se queda en `reports/` sin subirse.
 |---|---|---|---|
 | Clasificación de abandono (`make campeon`) | solo sintéticos | solo sintéticos (validación cruzada, nuevos del generador, escenarios) | que el pipeline recupera la regla del generador; nada sobre el fondo |
 | Segmentación (`segmentos-real`) | extracto real | estabilidad (semillas, bootstrap, k); sin etiqueta externa | segmentos exploratorios que describen el extracto (ver metodología) |
-| Regresión del salario (`regresion-real`) | extracto real | reserva del 20 % que no se usa para elegir, frente a `DummyRegressor`; error relativo (MdAPE) y error por quintil | asociación transversal en el corte, no pronóstico ni causalidad |
+| Regresión del salario (`regresion-real`) | extracto real | reserva del 20 % que no se usa para elegir, frente a `DummyRegressor`; error relativo (MdAPE), error por quintil e intervalo del 80 % con su cobertura por quintil | asociación transversal en el corte, no pronóstico ni causalidad |
 | Predicción (`predecir-real`) | campeón entrenado con sintéticos | **sin validación** contra retiros reales; solo su parecido con los sintéticos (validación adversaria) | un orden de revisión según la regla del generador, no una probabilidad de retiro del fondo |
 
 `predecir-real` aplica a los asociados reales el campeón entrenado con los sintéticos. El puntaje ordena por las

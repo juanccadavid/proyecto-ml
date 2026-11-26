@@ -23,13 +23,24 @@ antes una **reserva** (``FRACCION_RESERVA``) que no se usa para elegir: la valid
 mismo corte. El modelo describe cómo se asocia el salario con esas variables en esa foto: sirve para estimar el de
 quien no lo reporta en el mismo corte, no para pronosticar salarios futuros ni para leer efectos causales (más
 antigüedad no "produce" más salario en el modelo; solo van juntos en los datos).
+
+**Error proporcional al salario.** Con el extracto real el error crece con el salario (heterocedasticidad): un MAE
+en pesos promedia errores muy distintos. Por eso compiten también dos modelos que aprenden ``log(SALARIO)``
+(``_en_logaritmo``), como la ecuación de salarios de Mincer, y la estimación lleva un **intervalo de predicción
+multiplicativo** [ŷ ÷ f, ŷ × f] (``calibrar_intervalo``). f sale de los errores relativos fuera de partición de la
+validación cruzada (conformal con corrección de muestra finita), **uno por tramo de salario predicho** (conformal
+"Mondrian"): con un solo f, en el extracto real el intervalo cubría el 80 % en promedio pero el 67 % en los salarios
+más altos. La reserva mide si cubre lo prometido, en total y por tramo (``error_por_tramo`` con ``intervalo``).
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
 from sklearn.base import clone
+from sklearn.compose import TransformedTargetRegressor
 from sklearn.dummy import DummyRegressor
 from sklearn.ensemble import HistGradientBoostingRegressor, RandomForestRegressor
 from sklearn.linear_model import Ridge
@@ -46,6 +57,7 @@ NUMERICAS = [c for c in a.NUMERICAS if c != OBJETIVO]
 CATEGORICAS = [c for c in a.CATEGORICAS if c not in FUGA]
 RECORTE = [c for c in a.COLUMNAS_RECORTE if c != OBJETIVO]
 FRACCION_RESERVA = 0.2  # no se usa para elegir el modelo: mide al elegido una sola vez
+NIVEL_INTERVALO = 0.8  # 8 de cada 10 salarios reales deberían caer dentro del intervalo de predicción
 ERRORES = ["MAE", "MSE", "RMSE"]
 SCORING = {
     "MAE": "neg_mean_absolute_error",
@@ -58,7 +70,16 @@ TITULOS = {
     "ridge": "Ridge",
     "random_forest": "Random Forest",
     "hist_gb": "HistGradientBoosting",
+    "ridge_log": "Ridge en logaritmo",
+    "hist_gb_log": "HistGradientBoosting en logaritmo",
 }
+
+
+def _en_logaritmo(estimador) -> TransformedTargetRegressor:
+    """Aprende log(SALARIO) y devuelve pesos: el error pasa a ser relativo (errar un 10 % pesa igual en cualquier
+    salario). Devuelve la media geométrica, algo menor que la aritmética: si eso empeora el R², la validación cruzada
+    lo dice."""
+    return TransformedTargetRegressor(regressor=estimador, func=np.log, inverse_func=np.exp)
 
 
 def modelos(random_state: int = 42) -> dict[str, Pipeline]:
@@ -70,6 +91,8 @@ def modelos(random_state: int = 42) -> dict[str, Pipeline]:
             n_estimators=300, min_samples_leaf=5, n_jobs=-1, random_state=random_state
         ),
         "hist_gb": HistGradientBoostingRegressor(random_state=random_state),
+        "ridge_log": _en_logaritmo(Ridge(alpha=1.0)),
+        "hist_gb_log": _en_logaritmo(HistGradientBoostingRegressor(random_state=random_state)),
     }
     # PrepararVariables entrega también SALARIO; el ColumnTransformer lo descarta (remainder="drop").
     return {
@@ -129,21 +152,88 @@ def metricas(y, prediccion) -> dict[str, float]:
     }
 
 
-def error_por_tramo(y, prediccion, tramos: int = 5) -> pd.DataFrame:
+def _positiva(prediccion) -> np.ndarray:
+    """Las predicciones por debajo del salario mínimo plausible se llevan a ese mínimo (Ridge puede dar negativos)."""
+    return np.clip(np.asarray(prediccion, dtype=float), a.SALARIO_PLAUSIBLE[0], None)
+
+
+def amplitud_conformal(y, prediccion_oof, nivel: float = NIVEL_INTERVALO) -> float:
+    """q tal que [ŷ·e^−q, ŷ·e^q] cubre ``nivel`` de los salarios: el cuantil conformal de |log(real / predicho)|.
+
+    ``prediccion_oof`` debe venir de modelos que no vieron cada fila (``prediccion_fuera_de_particion``): con
+    predicciones de entrenamiento los errores salen chicos y el intervalo, demasiado estrecho. El rango
+    ⌈(n + 1)·nivel⌉ es la corrección de muestra finita; si supera n, no hay garantía y se devuelve infinito.
+    """
+    residuo = np.sort(np.abs(np.log(np.asarray(y, dtype=float) / _positiva(prediccion_oof))))
+    rango = int(np.ceil((len(residuo) + 1) * nivel))
+    return float(residuo[rango - 1]) if rango <= len(residuo) else float("inf")
+
+
+@dataclass(frozen=True)
+class Intervalo:
+    """Intervalo multiplicativo [ŷ ÷ e^q, ŷ × e^q] con un q por tramo de salario predicho.
+
+    ``bordes`` son los cortes entre tramos (cuantiles de las predicciones fuera de partición) y ``q`` la amplitud en
+    escala logarítmica de cada tramo. Con un solo tramo es el intervalo conformal de siempre.
+    """
+
+    bordes: np.ndarray
+    q: np.ndarray
+    nivel: float
+
+    def tramo(self, prediccion) -> np.ndarray:
+        return np.searchsorted(self.bordes, _positiva(prediccion), side="right")
+
+    def limites(self, prediccion) -> tuple[np.ndarray, np.ndarray]:
+        base, q = _positiva(prediccion), self.q[self.tramo(prediccion)]
+        return base * np.exp(-q), base * np.exp(q)
+
+
+def calibrar_intervalo(y, prediccion_oof, nivel: float = NIVEL_INTERVALO, tramos: int = 5) -> Intervalo:
+    """Un ``amplitud_conformal`` por tramo del salario predicho (conformal Mondrian): cubre ``nivel`` en cada tramo y
+    no solo en promedio, aunque el error relativo crezca con el salario. Necesita predicciones fuera de partición."""
+    y, base = np.asarray(y, dtype=float), _positiva(prediccion_oof)
+    bordes = np.quantile(base, np.linspace(0, 1, tramos + 1)[1:-1])
+    grupo = np.searchsorted(bordes, base, side="right")
+    q = np.array([amplitud_conformal(y[grupo == k], base[grupo == k], nivel) for k in range(tramos)])
+    return Intervalo(bordes=bordes, q=q, nivel=nivel)
+
+
+def cobertura(y, prediccion, intervalo: Intervalo) -> dict[str, float]:
+    """Qué fracción de los salarios reales cae dentro del intervalo, frente a la prometida, y sus factores."""
+    inferior, superior = intervalo.limites(prediccion)
+    y = np.asarray(y, dtype=float)
+    return {
+        "nivel": intervalo.nivel,
+        "cobertura": float(np.mean((y >= inferior) & (y <= superior))),
+        "factor_min": float(np.exp(intervalo.q.min())),
+        "factor_max": float(np.exp(intervalo.q.max())),
+    }
+
+
+def error_por_tramo(y, prediccion, tramos: int = 5, intervalo: Intervalo | None = None) -> pd.DataFrame:
     """El error según el nivel de salario predicho (quintiles por defecto): si crece con el salario, los
-    residuos son heterocedásticos y un solo MAE promedia errores muy distintos. Cada fila es un agregado de un
-    quinto de la muestra (nunca un asociado): sirve también como figura de los resultados con datos reales."""
+    residuos son heterocedásticos y un solo MAE promedia errores muy distintos. Con ``intervalo``
+    (``calibrar_intervalo``) agrega la cobertura y el factor del intervalo en cada tramo. Cada fila es un agregado
+    de un quinto de la muestra (nunca un asociado): sirve también como figura de los resultados con datos reales."""
     y, prediccion = np.asarray(y, dtype=float), np.asarray(prediccion, dtype=float)
     tramo = pd.qcut(prediccion, tramos, labels=False, duplicates="drop")
     tabla = pd.DataFrame({"tramo": tramo, "real": y, "predicho": prediccion, "error": np.abs(y - prediccion)})
     tabla["error_relativo"] = tabla["error"] / tabla["real"]
-    salida = tabla.groupby("tramo").agg(
-        asociados=("real", "size"),
-        predicho_medio=("predicho", "mean"),
-        real_medio=("real", "mean"),
-        MAE=("error", "mean"),
-        MdAPE=("error_relativo", "median"),
-    )
+    columnas = {
+        "asociados": ("real", "size"),
+        "predicho_medio": ("predicho", "mean"),
+        "real_medio": ("real", "mean"),
+        "MAE": ("error", "mean"),
+        "MdAPE": ("error_relativo", "median"),
+    }
+    if intervalo is not None:
+        inferior, superior = intervalo.limites(prediccion)
+        tabla["dentro"] = (y >= inferior) & (y <= superior)
+        tabla["factor"] = superior / _positiva(prediccion)
+        columnas["cobertura"] = ("dentro", "mean")
+        columnas["factor"] = ("factor", "mean")
+    salida = tabla.groupby("tramo").agg(**columnas)
     return salida.rename(index=lambda t: int(t) + 1).rename_axis("tramo_predicho")
 
 
@@ -206,6 +296,7 @@ def figura_por_tramo(tabla: pd.DataFrame, titulo: str):
     import plotly.graph_objects as go
 
     x = [f"Tramo {t}" for t in tabla.index]
+    cobertura = tabla["cobertura"] if "cobertura" in tabla else pd.Series(np.nan, index=tabla.index)
     fig = go.Figure()
     fig.add_bar(
         x=x,
@@ -213,9 +304,9 @@ def figura_por_tramo(tabla: pd.DataFrame, titulo: str):
         name="real (promedio del tramo)",
         marker_color="#2a78d6",
         error_y={"type": "data", "array": tabla["MAE"], "color": "#898781"},
-        customdata=np.column_stack([tabla["asociados"], tabla["MAE"], tabla["MdAPE"]]),
+        customdata=np.column_stack([tabla["asociados"], tabla["MAE"], tabla["MdAPE"], cobertura]),
         hovertemplate="%{x}: %{customdata[0]} asociados<br>real medio $%{y:,.0f}<br>MAE $%{customdata[1]:,.0f}"
-        "<br>MdAPE %{customdata[2]:.1%}<extra></extra>",
+        "<br>MdAPE %{customdata[2]:.1%}<br>dentro del intervalo %{customdata[3]:.1%}<extra></extra>",
     )
     fig.add_scatter(
         x=x, y=tabla["predicho_medio"], mode="lines+markers", name="predicho (promedio)", line={"color": "#eb6834"}

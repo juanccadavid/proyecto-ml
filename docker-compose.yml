@@ -3,6 +3,18 @@
 #   docker compose --profile pipeline run --rm campeon     ->  elige el campeón (escribe models/ y reports/)
 # Responsabilidades separadas: "campeon" entrena y es el único que escribe models/; "app" solo lee el campeón.
 # Linux: models/ y reports/ deben ser escribibles por el uid 1000 (appuser): sudo chown -R 1000 models reports
+# Variables: cada contenedor recibe SOLO las que lee (x-entorno-datos), no el .env completo. Los secretos del .env
+# (SUPABASE_SECRET_KEY, SUPABASE_DB_URL, ANON_SALT, GITHUB_PAT, HF_TOKEN) no entran a ningún contenedor. Compose toma
+# los valores del .env de esta carpeta al interpolar ${...}; sin .env (CI) quedan los valores por defecto.
+x-entorno-datos: &entorno-datos
+  ORIGEN_DATOS: ${ORIGEN_DATOS:-sintetico}
+  FECHA_CORTE: ${FECHA_CORTE:-2026-03-31}
+  TEMPORALIDAD_CONFIRMADA: ${TEMPORALIDAD_CONFIRMADA:-no}
+  DATOS_ASOCIADOS: ${DATOS_ASOCIADOS:-data/ejemplo/asociados_ejemplo.parquet}
+  RANDOM_STATE: ${RANDOM_STATE:-42}
+  MLFLOW_EXPERIMENT_NAME: ${MLFLOW_EXPERIMENT_NAME:-proyecto-1}
+  MLFLOW_TRACKING_URI: http://mlflow:5000
+
 services:
   app:
     build: .
@@ -11,11 +23,8 @@ services:
     command: streamlit run src/proyecto_ml/app_abandono.py --server.address=0.0.0.0 --server.port=8501 --server.headless=true
     ports:
       - "8501:8501"
-    env_file:
-      - path: .env
-        required: false
     environment:
-      MLFLOW_TRACKING_URI: http://mlflow:5000
+      <<: *entorno-datos
       STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
     volumes:
       - ./models:/app/models:ro   # el campeón (abandono_campeon.joblib + campeon.json): solo lectura
@@ -56,11 +65,8 @@ services:
     profiles: ["pipeline"]        # no arranca con "up": se corre a pedido
     # CAMPEON_ARGS: opciones de make campeon (ej. "--datos data/raw/anon.parquet" o "--repeticiones 1").
     command: python scripts/elegir_campeon.py ${CAMPEON_ARGS:-}
-    env_file:
-      - path: .env
-        required: false
     environment:
-      MLFLOW_TRACKING_URI: http://mlflow:5000
+      <<: *entorno-datos
       GIT_COMMIT: ${GIT_COMMIT:-}  # la imagen no lleva .git: el commit llega de afuera (make docker-campeon, CI)
     volumes:
       - ./models:/app/models      # escribe el campeón
